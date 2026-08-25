@@ -20,10 +20,3 @@ class TemasResponse(BaseModel):
 
 class SireResponse(StatusResponse):
     facturas_guardadas: int
-
-class ScrapingResponse(StatusResponse):
-    client_id: Optional[str] = None
-    sunat_client_id: Optional[str] = None
-    client_secret_preview: Optional[str] = None
-    scraping_ejecutado: bool
-    credentials_source: Optional[str] = None

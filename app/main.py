@@ -9,7 +9,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api.routes import analysis, analytics, invoices, periods, references, scraping, sire, sol_users
+from app.api.routes import analysis, analytics, invoices, periods, references, sire, sol_users
 from app.db.database import (
     close_mongo_connection,
     connect_to_mongo,
@@ -122,11 +122,6 @@ app.include_router(
     sire.router,
     prefix="/sol-users/{user_id}/periodos/{periodo}/propuesta",
     tags=["SIRE"],
-)
-app.include_router(
-    scraping.router,
-    prefix="/sol-users/{user_id}/periodos/{periodo}/scraping",
-    tags=["Scraping"],
 )
 app.include_router(
     analysis.router,

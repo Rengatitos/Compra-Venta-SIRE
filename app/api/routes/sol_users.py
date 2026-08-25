@@ -231,7 +231,7 @@ async def refresh_sunat_token(
     if not client_id or not client_secret:
         raise HTTPException(
             status_code=400,
-            detail="El usuario no tiene sunat_client_id/sunat_client_secret en BD. Ejecuta scraping primero.",
+            detail="El usuario no tiene sunat_client_id/sunat_client_secret en BD. Regístralos manualmente antes de continuar.",
         )
 
     try:
