@@ -57,11 +57,9 @@ async def update_period(user_id: str, periodo: str, update_data: PeriodUpdate, d
 
 @router.delete("/{periodo}")
 async def delete_period(user_id: str, periodo: str, db = Depends(get_db), user = Depends(require_same_user)):
-    # Eliminar facturas asociadas
     facturas_col = db["facturas"]
     await facturas_col.delete_many({"user_id": user_id, "periodo": periodo})
 
-    # Eliminar el periodo
     periods_col = db["periodos"]
     result = await periods_col.delete_one({"user_id": user_id, "periodo": periodo})
 

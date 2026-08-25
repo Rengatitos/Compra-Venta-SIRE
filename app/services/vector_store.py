@@ -4,10 +4,6 @@ logger = logging.getLogger(__name__)
 
 
 async def cargar_global_en_memoria(col) -> list[dict]:
-    """
-    Carga todos los documentos del vector y devuelve una lista de dicts
-    con 'texto', 'metadata' y 'embedding'. Se llama una vez en el lifespan.
-    """
     try:
         cursor = col.find({}, {"_id": 0, "texto": 1, "metadata": 1, "embedding": 1})
         docs = await cursor.to_list(length=None)
@@ -24,14 +20,7 @@ async def guardar_chunks_usuario(
     embeddings: list[dict],
     col,
 ) -> int:
-    """
-        1. Hace upsert de los chunks de un documento para un usuario.
-        2. elimina los chunks previos del mismo documento
-        3. inserta los nuevos.
-        4. Devuelve la cantidad de chunks insertados.
-    """
     try:
-        # Eliminar chunks anteriores del mismo documento para este usuario
         resultado = await col.delete_many(
             {"user_id": user_id, "metadata.documento": filename}
         )
@@ -70,10 +59,6 @@ async def guardar_chunks_usuario(
 
 
 async def eliminar_documento_usuario(user_id: str, filename: str, col) -> int:
-    """
-    Elimina todos los chunks de un documento específico del usuario.
-    Devuelve la cantidad de chunks eliminados.
-    """
     try:
         resultado = await col.delete_many(
             {"user_id": user_id, "metadata.documento": filename}
@@ -95,9 +80,6 @@ async def eliminar_documento_usuario(user_id: str, filename: str, col) -> int:
 
 
 async def listar_documentos_usuario(user_id: str, col) -> list[str]:
-    """
-    Devuelve la lista de nombres de documentos únicos indexados para un usuario.
-    """
     try:
         nombres = await col.distinct("metadata.documento", {"user_id": user_id})
         return sorted(nombres)
@@ -107,9 +89,6 @@ async def listar_documentos_usuario(user_id: str, col) -> list[str]:
 
 
 async def obtener_chunks_usuario(user_id: str, col) -> list[dict]:
-    """
-    Devuelve todos los chunks (con embedding) de un usuario para búsqueda semántica.
-    """
     try:
         cursor = col.find(
             {"user_id": user_id},
@@ -122,9 +101,6 @@ async def obtener_chunks_usuario(user_id: str, col) -> list[dict]:
 
 
 async def obtener_datos_simplificados(user_id: str, col) -> list[dict]:
-    """
-    Devuelve los chunks sin el campo embedding.
-    """
     try:
         cursor = col.find(
             {"user_id": user_id},

@@ -49,7 +49,6 @@ async def verify_user(
     credentials: HTTPAuthorizationCredentials = Security(bearer_scheme),
     db=Depends(get_user_db),
 ) -> dict:
-    """Decodifica el JWT y devuelve el documento del usuario desde MongoDB."""
     if not credentials or not credentials.credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -72,11 +71,6 @@ async def verify_user(
 
 
 def require_same_user(user_id: str, user: dict = Depends(verify_user)) -> dict:
-    """Dependencia compartida: exige que el usuario autenticado sea el dueño del `user_id` del path.
-
-    Reemplaza el bloque `if str(user["_id"]) != user_id: raise HTTPException(403, ...)`
-    que estaba duplicado en periods.py, invoices.py, sol_users.py y analysis.py.
-    """
     if str(user["_id"]) != user_id:
         raise HTTPException(status_code=403, detail="No tienes permiso para acceder a este recurso")
     return user

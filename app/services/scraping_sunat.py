@@ -12,10 +12,8 @@ URL_MENU = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm"
 
 
 def _hacer_login(page, ruc: str, usuario: str, password: str) -> None:
-    """Login SOL compartido (maneja iframes y detección de errores)."""
     page.goto(URL_MENU, wait_until="domcontentloaded", timeout=60000)
 
-    # Detectar si el formulario está en un iframe
     iframes = page.frames
     login_frame = page
 
@@ -56,11 +54,9 @@ def _hacer_login(page, ruc: str, usuario: str, password: str) -> None:
     if not ruc_found:
         raise Exception("No se encontró el formulario de login SOL después de 20 segundos")
 
-    # Hacer clic en opción "Por RUC" si existe
     if login_frame.locator("#btnPorRuc").count() > 0:
         login_frame.click("#btnPorRuc")
 
-    # Rellenar campos de login
     ruc_field = login_frame.locator("#txtRuc").first
     if ruc_field.count() == 0:
         ruc_field = login_frame.locator("input[name='ruc']").first
@@ -92,7 +88,6 @@ def _hacer_login(page, ruc: str, usuario: str, password: str) -> None:
 
     page.wait_for_timeout(2000)
 
-    # Verificar si hay mensajes de error que indiquen credenciales incorrectas
     posibles_errores = [".msgError", ".alert-danger", "#errorMsg", ".error-message"]
     for selector in posibles_errores:
         try:
@@ -105,12 +100,10 @@ def _hacer_login(page, ruc: str, usuario: str, password: str) -> None:
         except Exception:
             continue
 
-    # Check textual en el body por si fallan los selectores
     body_text = page.locator("body").text_content() or ""
     if "Usuario o Clave Incorrectos" in body_text or "el RUC es incorrecto" in body_text.lower():
         raise ValueError("Credenciales SOL incorrectas (detectado por texto en página)")
 
-    # Si quedó en api-seguridad, regresar a menu para estabilizar sesión
     if "api-seguridad.sunat.gob.pe" in page.url:
         page.goto(URL_MENU, wait_until="domcontentloaded", timeout=30000)
         page.wait_for_timeout(1000)
@@ -135,9 +128,6 @@ def _scrape_detalles(
     headed: bool = False,
     slow_mo_ms: int = 0,
 ) -> dict:
-    """
-    Scrapea el detalle de los ítems para una lista de facturas.
-    """
     URL_MENU = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm"
     debug_logs = []
 
@@ -167,13 +157,10 @@ def _scrape_detalles(
             )
             page = context.new_page()
 
-            # --- LOGIN (helper compartido con _scrape_credenciales) ---
             _hacer_login(page, ruc, usuario, password)
             page.wait_for_timeout(3000)
 
-            # --- NAVEGAR AL MENÚ DE CONSULTA DE FACTURAS ---
             try:
-                # Empresas
                 tab_empresas = page.locator("#btnEmpresas, a:has-text('Empresas')").first
                 if tab_empresas.count() > 0:
                     tab_empresas.click()
@@ -187,10 +174,8 @@ def _scrape_detalles(
             iframe = page.frame_locator("#iframeApplication")
             
             for fac in facturas_a_buscar:
-                # RECARGAMOS el menu para cada factura para evitar que se quede en la tabla de resultados
                 try:
                     page.evaluate("if(typeof ejecuta === 'function'){ ejecuta('MenuInternet.htm?action=iconExecute&code=11.9.5.1.1',false,'Consultar Factura, Boletas y Notas','#nivel1_11','11.9.5.1.1'); }")
-                    # Esperar a que el campo tipoConsulta sea visible: señal de que el form Dojo inicializó
                     iframe.locator("input#criterio\\.tipoConsulta").wait_for(state="visible", timeout=15000)
                     page.wait_for_timeout(500)
                 except Exception as e:
@@ -209,11 +194,9 @@ def _scrape_detalles(
                 log(f"Buscando factura: {serie_num}")
 
                 try:
-                    # Parsear la fecha de emision a dd/mm/yyyy
                     fecha_emision_str = ""
                     if fecha_emision:
                         if "T" in fecha_emision:
-                            # 2026-02-15T...
                             ymd = fecha_emision.split("T")[0].split("-")
                             if len(ymd) == 3:
                                 fecha_emision_str = f"{ymd[2]}/{ymd[1]}/{ymd[0]}"
@@ -225,17 +208,15 @@ def _scrape_detalles(
                             fecha_emision_str = fecha_emision.split(" ")[0]
                     
                     if not fecha_emision_str:
-                        # Fallback a un rango amplio o el mes actual si no hay fecha?
                         pass
 
-                    # 1. Tipo de Consulta
                     combo = iframe.locator("input#criterio\\.tipoConsulta").first
                     if combo.count() > 0:
                         combo.click()
                         combo.fill("")
                         page.wait_for_timeout(500)
                         combo.press_sequentially("FE Recibidas", delay=100)
-                        page.wait_for_timeout(1500) # Esperar a que Dojo abra el popup
+                        page.wait_for_timeout(1500)
                         
                         opcion_popup = iframe.locator("li.dijitMenuItem:has-text('FE Recibidas'), li.dijitMenuItem:has-text('Recibidas')").first
                         if opcion_popup.count() > 0:
@@ -246,7 +227,6 @@ def _scrape_detalles(
                             combo.press("Enter")
                         page.wait_for_timeout(1000)
 
-                    # 2. RUC Emisor
                     ruc_input = iframe.locator("input#criterio\\.ruc").first
                     if ruc_input.count() > 0:
                         ruc_input.click()
@@ -255,7 +235,6 @@ def _scrape_detalles(
                         ruc_input.press("Tab")
                         page.wait_for_timeout(500)
 
-                    # 3. Serie
                     serie_input = iframe.locator("input#criterio\\.serie").first
                     if serie_input.count() > 0:
                         serie_input.click()
@@ -264,7 +243,6 @@ def _scrape_detalles(
                         serie_input.press("Tab")
                         page.wait_for_timeout(500)
 
-                    # 4. Número
                     numero_input = iframe.locator("input#criterio\\.numero").first
                     if numero_input.count() > 0:
                         numero_input.click()
@@ -273,7 +251,6 @@ def _scrape_detalles(
                         numero_input.press("Tab")
                         page.wait_for_timeout(500)
 
-                    # 5. Fechas (Desde y Hasta)
                     if fecha_emision_str:
                         fec_desde = iframe.locator("input#criterio\\.fecDesde").first
                         if fec_desde.count() > 0:
@@ -291,11 +268,9 @@ def _scrape_detalles(
                             fec_hasta.press("Tab")
                             page.wait_for_timeout(500)
                     
-                    # Click buscar
                     btn_buscar = iframe.locator("#criterio\\.btnContinuar, #btnBuscar, button:has-text('Buscar'), input[value='Buscar']").first
                     btn_buscar.click(force=True)
                     
-                    # Esperar tabla de resultados o el botón visualizar (puede tardar un poco en cargar por red)
                     btn_visualizar = iframe.locator("a:has(img[src*='viewdoc.gif']), a[onclick*='consultaFactura.view'], a[title*='Visualizar'], button[title*='Visualizar'], img[title*='Visualizar'], img[alt*='Visualizar'], a:has(img[src*='impresora']), a:has(img[src*='pdf'])").first
                     
                     try:
@@ -304,7 +279,6 @@ def _scrape_detalles(
                         pass
                     
                     if btn_visualizar.count() > 0:
-                        # Visualizar abre un popup en ww1.sunat.gob.pe (dominio diferente)
                         log(f"Abriendo popup para {serie_num}")
                         with context.expect_page(timeout=15000) as popup_info:
                             btn_visualizar.click()
@@ -312,7 +286,6 @@ def _scrape_detalles(
                         popup.wait_for_load_state("domcontentloaded", timeout=15000)
                         page.wait_for_timeout(1000)
 
-                        # Extraer ítems: solo filas donde cantidad es numérico
                         PALABRAS_EXCLUIR = {
                             "cant.(a)", "u.m.", "código", "descripción", "valor unit.(b)",
                             "precio unit.", "valor v.(a)*(b)", "icbper",

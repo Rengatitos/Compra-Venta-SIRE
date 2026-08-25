@@ -7,12 +7,9 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 MONGO_URI = settings.MONGO_URI
-# sol_users, periodos y facturas viven todos en la misma base (ver README) —
-# get_db() y get_user_db() son accesores separados a propósito, no una base distinta.
 DB_NAME = settings.MONGO_FACTURASDB_NAME
 DB_USER = DB_NAME
 
-# Instancia global
 client: AsyncIOMotorClient = None
 db = None
 user_db = None

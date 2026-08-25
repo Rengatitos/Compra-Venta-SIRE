@@ -6,7 +6,7 @@ _PERIODO_RE = re.compile(r"^20\d{2}(0[1-9]|1[0-2])$")
 
 
 class PeriodBase(BaseModel):
-    periodo: str  # Format: YYYYMM 
+    periodo: str
 
     @field_validator("periodo")
     @classmethod

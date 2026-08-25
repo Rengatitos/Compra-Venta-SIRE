@@ -65,7 +65,6 @@ async def get_sire_propuesta(
 
 
 async def _run_scrape_background(tenant_id, cliente_id, cuenta_id, periodo, db, user_db, user_id):
-    """Tarea que corre en segundo plano, sin bloquear el request HTTP."""
     try:
         logger.info("BG scrape_detalles iniciado user_id=%s periodo=%s", user_id, periodo)
         resultado = await sire_service.procesar_detalles_scraper(

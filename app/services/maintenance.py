@@ -1,9 +1,4 @@
 async def deduplicate_facturas(db) -> int:
-    """Elimina facturas duplicadas (mismo user_id/periodo/serie_numero) dejando la más reciente.
-
-    Corre en el startup de la app (ver app/main.py::lifespan) para evitar doble
-    análisis por duplicados históricos.
-    """
     facturas_col = db["facturas"]
     pipeline = [
         {

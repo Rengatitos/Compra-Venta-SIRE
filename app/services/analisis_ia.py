@@ -13,18 +13,12 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Embedding global (PCGE)
 vector_db: list[dict] = []
 
 _client: genai.Client | None = None
 
 
 def _get_client() -> genai.Client:
-    """Construye el cliente Gemini de forma perezosa (al primer uso, no al importar el módulo).
-
-    Antes se construía a nivel de módulo: si faltaba GEMINI_API_KEY, el import
-    de todo el paquete de rutas fallaba en seco en vez de fallar solo al usarse.
-    """
     global _client
     if _client is None:
         _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -32,7 +26,6 @@ def _get_client() -> genai.Client:
 
 
 async def cargar_vector(col) -> None:
-    """Carga embedding desde la colección global de MongoDB."""
     from app.services.vector_store import cargar_global_en_memoria
 
     global vector_db
@@ -41,9 +34,6 @@ async def cargar_vector(col) -> None:
 
 
 def extraer_chunks_pdf(pdf_bytes: bytes, filename: str, max_chars: int = 1500) -> list[dict]:
-    """
-    Extrae texto de un PDF en memoria y lo divide en chunks para embeddings.
-    """
     try:
         import fitz
 
@@ -95,9 +85,6 @@ def extraer_chunks_pdf(pdf_bytes: bytes, filename: str, max_chars: int = 1500) -
 
 
 def generar_embeddings_pdf(chunks: list[dict]) -> list[dict]:
-    """
-    Genera embeddings para los chunks extraidos de PDFs de referencia.
-    """
     resultado = []
     for chunk in chunks:
         try:
@@ -280,7 +267,6 @@ async def procesar_lote_extracciones(
 
     facturas_pendientes_raw = await cursor.to_list(length=1000)
 
-    # Evita doble analisis cuando existen duplicados historicos por serie_numero.
     facturas_pendientes = []
     series_vistas = set()
     duplicadas = 0
@@ -320,7 +306,6 @@ async def procesar_lote_extracciones(
                 )
                 return "sin_datos"
 
-            # Enriquecer con el detalle real de SUNAT si está disponible
             detalle_sunat = row.get("detalle_compras_sunat")
             texto_para_ia = str(raw_data)
             if detalle_sunat:

@@ -13,9 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 async def obtener_token_api_oficial(ruc, usuario, password, client_id, client_secret):
-    """
-    Obtiene el token usando la API oficial OAUTH de SUNAT.
-    """
     url_token = f"https://api-seguridad.sunat.gob.pe/v1/clientessol/{client_id}/oauth2/token/"
     username_completo = f"{ruc}{usuario}"
 
@@ -67,7 +64,6 @@ async def procesar_y_guardar_comprobantes(data, user_id, periodo, db):
         ruc_emisor = comprobante.get("numDocIdentidadProveedor", "")
         if not ruc_emisor or ruc_emisor == "0":
             ruc_emisor = comprobante.get("numRuc", "")
-        # Prioriza campos explícitos del PROVEEDOR para evitar tomar razón social del comprador.
         nombre_proveedor = (
             comprobante.get("desRazonSocialProveedor")
             or comprobante.get("nomRazonSocialProveedor")
@@ -85,7 +81,6 @@ async def procesar_y_guardar_comprobantes(data, user_id, periodo, db):
             fecha_raw = comprobante.get("fecEmision", "")[:10]
             dt = datetime.strptime(fecha_raw, "%Y-%m-%d")
             
-            # Validar que el comprobante pertenezca al periodo solicitado
             if dt.strftime("%Y%m") != periodo:
                 continue
                 
@@ -134,11 +129,6 @@ def _obtener_credenciales_sunat(empresa):
 
 
 async def _renovar_token(empresa: dict, client_id: str, client_secret: str, users_col):
-    """Desencripta la password y pide un token nuevo a SUNAT, persistiéndolo si tiene éxito.
-
-    Compartido entre la obtención inicial del token y el retry ante un 401 en
-    obtener_propuesta (antes duplicado casi verbatim en ambos puntos).
-    """
     password = decrypt_password(empresa["password"]) if empresa.get("password") else ""
     sunat_token, error = await obtener_token_api_oficial(
         empresa["ruc"],

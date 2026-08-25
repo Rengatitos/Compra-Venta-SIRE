@@ -28,16 +28,6 @@ async def ejecutar_analisis(
     db=Depends(get_db),
     user=Depends(require_same_user),
 ):
-    """
-    Ejecuta el análisis con Gemini para las facturas pendientes.
-
-    RAG de usuario (por orden de prioridad):
-      1. PDFs adjuntados en esta petición (procesados en memoria, no se persisten).
-      2. Si no se adjuntan PDFs, se usan los chunks previamente indexados en MongoDB
-         para este usuario (subidos vía /references/upload/{user_id}).
-
-    Límite: 5 peticiones/minuto por IP.
-    """
     try:
         logger.info(
             "POST analisis IA user_id=%s periodo=%s auth_user_id=%s rubro=%s archivos=%s",
@@ -50,7 +40,6 @@ async def ejecutar_analisis(
 
         vector_db_usuario = []
 
-        # Prioridad 1: PDFs adjuntos en esta petición
         for archivo in archivos:
             if not archivo.filename or not archivo.filename.lower().endswith(".pdf"):
                 continue
@@ -68,7 +57,6 @@ async def ejecutar_analisis(
                 )
                 vector_db_usuario.extend(embeddings_chunks)
 
-        # Prioridad 2: chunks MongoDB para este usuario
         if not vector_db_usuario:
             col = get_vector_users_col()
             vector_db_usuario = await vector_store.obtener_chunks_usuario(user_id, col)

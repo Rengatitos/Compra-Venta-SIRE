@@ -50,7 +50,6 @@ async def lifespan(app: FastAPI):
     await connect_to_mongo()
     db = get_db()
 
-    # Limpieza para evitar doble analisis por duplicados historicos.
     try:
         eliminadas = await maintenance.deduplicate_facturas(db)
         if eliminadas:
@@ -58,7 +57,6 @@ async def lifespan(app: FastAPI):
     except PyMongoError as exc:
         logger.exception("No se pudo ejecutar deduplicacion de facturas: %s", exc)
 
-    # Índices de colecciones de negocio
     await db["sol_users"].create_index("ruc")
     await db["periodos"].create_index([("user_id", 1), ("periodo", 1)], unique=True)
     await db["facturas"].create_index([("user_id", 1), ("periodo", 1)])
@@ -81,13 +79,11 @@ async def lifespan(app: FastAPI):
             exc,
         )
 
-    # Índices de colecciones
     vector_global = get_vector_global_col()
     vector_users = get_vector_users_col()
     await vector_global.create_index([("metadata.documento", 1)])
     await vector_users.create_index([("user_id", 1), ("metadata.documento", 1)])
 
-    # Cargar embedding global en memoria
     await analisis_ia.cargar_vector(vector_global)
 
     yield

@@ -80,7 +80,6 @@ def _extract_rubro(token: str) -> str:
 
 @router.post("/login", response_model=TokenResponse, summary="Iniciar sesión y obtener JWT")
 async def login(payload: SolUserLogin, db=Depends(get_user_db)):
-    """Login con RUC + usuario + contraseña. Devuelve un JWT Bearer."""
     user = await db["sol_users"].find_one({"ruc": payload.ruc, "usuario": payload.usuario})
     stored = user.get("password", "") if user else ""
     try:
@@ -104,7 +103,6 @@ async def create_user(
     user: SolUserCreate,
     db=Depends(get_user_db),
 ):
-    """Crea un nuevo usuario SOL."""
     collection = db["sol_users"]
     existing = await collection.find_one({"ruc": user.ruc, "usuario": user.usuario})
     if existing:
@@ -214,10 +212,6 @@ async def refresh_sunat_token(
     db=Depends(get_user_db),
     user=Depends(require_same_user),
 ):
-    """
-    Obtiene un nuevo token Bearer de SUNAT usando las credenciales OAuth
-    almacenadas en la BD del usuario.
-    """
     from app.services.sire_service import obtener_token_api_oficial
 
     ruc = user.get("ruc")

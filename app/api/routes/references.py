@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 @router.get("/files/{user_id}", response_model=FileListResponse)
 async def listar_archivos(user_id: str, user=Depends(require_same_user)):
-    """Lista los PDFs indexados por el usuario."""
     col = get_vector_users_col()
     archivos = await vector_store.listar_documentos_usuario(user_id, col)
     return {"archivos": archivos}
@@ -27,7 +26,6 @@ async def subir_referencia(
     archivo: UploadFile = File(...),
     user=Depends(require_same_user),
 ):
-    """Sube un PDF, extrae chunks, genera embeddings y los guarda en vector_users."""
     if not archivo.filename or not archivo.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF.")
 
@@ -79,7 +77,6 @@ async def eliminar_referencia(
     filename: str,
     user=Depends(require_same_user),
 ):
-    """Elimina todos los chunks de un documento indexado del usuario."""
     col = get_vector_users_col()
     eliminados = await vector_store.eliminar_documento_usuario(user_id, filename, col)
     if eliminados == 0:
@@ -89,7 +86,6 @@ async def eliminar_referencia(
 
 @router.get("/data/{user_id}", response_model=DataResponse)
 async def obtener_datos_vectoriales(user_id: str, user=Depends(require_same_user)):
-    """Devuelve los textos indexados para el usuario."""
     col = get_vector_users_col()
     datos = await vector_store.obtener_datos_simplificados(user_id, col)
     return {"data": datos}
@@ -97,7 +93,6 @@ async def obtener_datos_vectoriales(user_id: str, user=Depends(require_same_user
 
 @router.get("/base-topics", response_model=TemasResponse)
 async def obtener_temas_base(user=Depends(verify_user)):
-    """Lista los documentos de la base global PCGE."""
     temas = set()
     for item in analisis_ia.vector_db:
         doc_name = item.get("metadata", {}).get("documento")

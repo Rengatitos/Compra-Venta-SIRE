@@ -2,7 +2,6 @@ from typing import Any, Dict, List, Optional
 
 
 def build_match_filter(user_ids: List[str], periodo: str, tipo_operacion: str, extra: Optional[Dict[str, Any]] = None) -> dict:
-    """Filtro Mongo compartido por todas las consultas de analytics (antes duplicado 5 veces)."""
     filtro = {
         "user_id": {"$in": user_ids},
         "periodo": periodo,
@@ -16,7 +15,6 @@ def build_match_filter(user_ids: List[str], periodo: str, tipo_operacion: str, e
 async def get_target_user_ids(rucs: Optional[str], db, token_payload: dict) -> List[str]:
     sol_users_col = db["sol_users"]
 
-    # Si no nos pasan RUCs, no hay nada que buscar.
     if not rucs:
         return []
 
@@ -24,8 +22,6 @@ async def get_target_user_ids(rucs: Optional[str], db, token_payload: dict) -> L
     if not ruc_list:
         return []
 
-    # Buscar los usuarios SOL que coincidan con los RUCs pasados.
-    # Como el token global ya está verificado, confiamos en los RUCs que el frontend (quien llamó a contabilidad-core) nos pasa.
     target_users = await sol_users_col.find({"ruc": {"$in": ruc_list}}).to_list(None)
     return [str(u["_id"]) for u in target_users]
 
@@ -163,6 +159,5 @@ async def get_invoices_by_day(user_ids: List[str], periodo: str, tipo_operacion:
 async def get_invoices_list(user_ids: List[str], periodo: str, tipo_operacion: str, db, limit: int = 200) -> list:
     facturas_col = db["facturas"]
     query = build_match_filter(user_ids, periodo, tipo_operacion)
-    # Excluimos metadata larga si no es necesaria para la tabla
     cursor = facturas_col.find(query, {"_id": 0, "xml_content": 0, "pdf_content": 0}).sort("fecha_emision", -1).limit(limit)
     return await cursor.to_list(limit)

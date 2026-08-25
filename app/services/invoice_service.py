@@ -5,7 +5,6 @@ logger = logging.getLogger(__name__)
 
 
 def dedupe_by_reference(invoices: list[dict]) -> list[dict]:
-    """Conserva el primer registro por referencia; evita exportar/mostrar duplicados históricos."""
     deduped: list[dict] = []
     seen_refs = set()
     for row in invoices:
@@ -18,7 +17,6 @@ def dedupe_by_reference(invoices: list[dict]) -> list[dict]:
 
 
 def parse_metadata(row: dict) -> dict:
-    """Parsea metadata_procesada de forma segura. Retorna dict vacío si falla."""
     if not row.get("metadata_procesada"):
         return {}
     try:
@@ -34,7 +32,6 @@ def parse_metadata(row: dict) -> dict:
 
 
 def serialize_factura(row: dict) -> dict:
-    """Serializa una factura con todos los campos base + metadata."""
     fac = {
         "_ID_REFERENCIA": row.get("serie_numero"),
         "RUC_EMISOR": row.get("ruc_emisor"),

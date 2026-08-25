@@ -10,7 +10,6 @@ class InvoiceDetailItem(BaseModel):
 
 
 class SunatInvoiceData(BaseModel):
-    """Datos crudos sincronizados desde el SIRE/SUNAT."""
     id_referencia: str = Field(..., alias="_ID_REFERENCIA")
     ruc_emisor: Optional[str] = Field(None, alias="RUC_EMISOR")
     nombre_proveedor: Optional[str] = Field(None, alias="NOMBRE_PROVEEDOR")
@@ -22,7 +21,6 @@ class SunatInvoiceData(BaseModel):
 
 
 class AIAnalysisData(BaseModel):
-    """Resultado del análisis/clasificación contable hecho por Gemini."""
     detalle: List[InvoiceDetailItem] = []
     cuenta_contable: Optional[str] = None
     centro_costos: Optional[str] = None
@@ -33,15 +31,12 @@ class AIAnalysisData(BaseModel):
 
 
 class InvoiceWorkflowData(BaseModel):
-    """Metadata de workflow/UI editable por el usuario, independiente del origen SUNAT o IA."""
     Documentos: Optional[bool] = None
     Descripcion: Optional[str] = None
     Observaciones: Optional[str] = None
 
 
 class InvoiceResponse(SunatInvoiceData, AIAnalysisData, InvoiceWorkflowData):
-    """Vista compuesta de una factura para la API. El JSON de salida no cambia:
-    solo se separaron los campos en sub-modelos por responsabilidad (SUNAT / IA / workflow)."""
 
     model_config = {
         "populate_by_name": True,

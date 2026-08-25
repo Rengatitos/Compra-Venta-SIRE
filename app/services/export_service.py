@@ -21,10 +21,6 @@ def _normalize_result(value):
 
 
 def _fmt_money(value, fallback: str | None = None) -> str:
-    """Formatea un monto a 2 decimales; si falla, devuelve `fallback` o el valor como texto.
-
-    Antes este patrón (try/except desnudo) estaba repetido 3 veces en este archivo.
-    """
     try:
         return f"{float(value):.2f}"
     except (TypeError, ValueError):
@@ -64,18 +60,15 @@ def generate_excel_from_invoice(invoice_data: dict) -> io.BytesIO:
     ws = wb.active
     ws.title = "Factura"
 
-    # Encabezado
     ws.append(["Campo", "Valor"])
     header_font = Font(bold=True)
     for cell in ws[1]:
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center")
 
-    # Datos
     for key, value in invoice_data.items():
         ws.append([str(key), _as_text(value)])
 
-    # Ajustar ancho de columnas
     ws.column_dimensions['A'].width = 30
     ws.column_dimensions['B'].width = 50
 
@@ -94,18 +87,15 @@ def generate_pdf_from_invoice(invoice_data: dict) -> io.BytesIO:
     elements = []
     styles = getSampleStyleSheet()
     
-    # Custom styles
     title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=16, textColor=colors.HexColor('#333333'), spaceAfter=2)
     subtitle_style = ParagraphStyle('SubtitleStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=10, textColor=colors.HexColor('#666666'), spaceAfter=20)
     section_title = ParagraphStyle('SectionTitle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=11, textColor=colors.HexColor('#1976d2'), spaceBefore=15, spaceAfter=8)
     normal_style = styles['Normal']
     italic_style = ParagraphStyle('ItalicStyle', parent=styles['Normal'], fontName='Helvetica-Oblique', textColor=colors.HexColor('#555555'))
     
-    # Header
     elements.append(Paragraph(str(invoice_data.get("_ID_REFERENCIA", "Factura")), title_style))
     elements.append(Paragraph(str(invoice_data.get("NOMBRE_PROVEEDOR", "Proveedor")), subtitle_style))
     
-    # Extract RAW_DATA
     rd_str = invoice_data.get("RAW_DATA")
     rd = {}
     if rd_str:
@@ -125,7 +115,6 @@ def generate_pdf_from_invoice(invoice_data: dict) -> io.BytesIO:
     
     total = _fmt_money(invoice_data.get("TOTAL", 0))
 
-    # 1. INFORMACIÓN GENERAL
     elements.append(Paragraph("INFORMACIÓN GENERAL", section_title))
     data_gen = [
         [Paragraph("<b>Fecha de Emisión:</b>", normal_style), Paragraph(str(invoice_data.get("FECHA_EMISION", "-")), normal_style),
@@ -135,7 +124,6 @@ def generate_pdf_from_invoice(invoice_data: dict) -> io.BytesIO:
     table_gen.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'LEFT'), ('VALIGN', (0,0), (-1,-1), 'TOP')]))
     elements.append(table_gen)
     
-    # 2. CLASIFICACIÓN CONTABLE
     elements.append(Paragraph("CLASIFICACIÓN CONTABLE", section_title))
     resultado = str(invoice_data.get("resultado") or "PENDIENTE")
     confianza = str(invoice_data.get("ia_confidence") or "0%")
@@ -150,7 +138,6 @@ def generate_pdf_from_invoice(invoice_data: dict) -> io.BytesIO:
     elements.append(Spacer(1, 4))
     elements.append(Paragraph(f"<i>{observaciones}</i>", italic_style))
     
-    # 3. DATOS DEL PROVEEDOR Y COMPROBANTE
     data_prov = [
         [Paragraph("DATOS DEL PROVEEDOR", section_title), Paragraph("DATOS DEL COMPROBANTE", section_title)],
         [Paragraph(f"<b>RUC:</b> {invoice_data.get('RUC_EMISOR', '-')}", normal_style), Paragraph(f"<b>Tipo de Carga:</b> {tipo_carga}", normal_style)],
@@ -162,7 +149,6 @@ def generate_pdf_from_invoice(invoice_data: dict) -> io.BytesIO:
     table_prov.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'LEFT'), ('VALIGN', (0,0), (-1,-1), 'TOP')]))
     elements.append(table_prov)
     
-    # 4. MONTOS
     elements.append(Paragraph("MONTOS", section_title))
     data_montos = [
         [Paragraph(f"<b>BI Gravada:</b> {bi_gravada}", normal_style),
@@ -173,7 +159,6 @@ def generate_pdf_from_invoice(invoice_data: dict) -> io.BytesIO:
     table_montos.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'LEFT'), ('VALIGN', (0,0), (-1,-1), 'TOP')]))
     elements.append(table_montos)
     
-    # 5. RESUMEN DE COMPRAS
     elements.append(Paragraph("RESUMEN DE COMPRAS", section_title))
     detalle = invoice_data.get("detalle")
     
@@ -297,7 +282,7 @@ def generate_pdf_from_invoices_batch(invoices_data: list[dict]) -> io.BytesIO:
     resumen = f"Total comprobantes: {total_count} &nbsp;&nbsp;|&nbsp;&nbsp; Monto Acumulado: S/ {total_amount:,.2f}"
     elements.append(Paragraph(resumen, subtitle_style))
     
-    for inv in invoices_data[:500]:  # Limite seguro
+    for inv in invoices_data[:500]:
         ref = _as_text(inv.get("_ID_REFERENCIA"))
         prov = _as_text(inv.get("NOMBRE_PROVEEDOR", "Proveedor Desconocido"))
         monto = _fmt_money(inv.get("TOTAL"))
@@ -315,7 +300,6 @@ def generate_pdf_from_invoices_batch(invoices_data: list[dict]) -> io.BytesIO:
         
         elements.append(Paragraph(f"<i>Justificación: {obs}</i>", item_obs))
         
-        # Separador sutil
         sep_table = Table([['']], colWidths=['100%'])
         sep_table.setStyle(TableStyle([
             ('LINEBELOW', (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
