@@ -22,12 +22,7 @@ dependencies = [
     "reportlab>=4.0.0",
     "pymupdf>=1.24.0",
     "python-multipart>=0.0.20",
-    "shared-auth-lib",
 ]
-
-
-[tool.uv.sources]
-shared-auth-lib = { path = "shared-auth-lib" }
 
 [dependency-groups]
 dev = [

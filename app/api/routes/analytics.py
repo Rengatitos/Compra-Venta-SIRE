@@ -2,12 +2,10 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Depends, Query, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from typing import Optional
-import jwt
 
 from app.core.auth import decode_token
 from app.db.database import get_db
 from app.services import analytics_service
-from shared_auth_lib.auth_utils import JWT_SECRET_KEY, JWT_ALGORITHM, INTERNAL_APIS_AUDIENCE, AUTH_API_ISSUER
 
 security = HTTPBearer()
 
@@ -15,13 +13,8 @@ router = APIRouter()
 
 
 async def verify_dashboard_token(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:
-    token = credentials.credentials
     try:
-        return jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM], audience=INTERNAL_APIS_AUDIENCE, issuer=AUTH_API_ISSUER)
-    except Exception:
-        pass
-    try:
-        return decode_token(token)
+        return decode_token(credentials.credentials)
     except Exception:
         raise HTTPException(status_code=401, detail="Token inválido")
 

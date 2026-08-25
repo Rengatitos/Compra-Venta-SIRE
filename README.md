@@ -6,22 +6,17 @@ Módulo de facturación electrónica con integración SIRE (SUNAT). Gestiona usu
 
 | Variable | Descripción | Requerida |
 |---|---|---|
-| `MONGO_URI_DEV` | Conexión a MongoDB (entorno desarrollo) | Sí |
+| `MONGO_URI` | Conexión a la (única) base de datos Mongo | Sí |
 | `MONGO_FACTURASDB_NAME` | Base con `sol_users`, `periodos` y `facturas` (`Mod_Facturas`) | Sí |
-| `MONGO_CONTDB_NAME` | Base maestra de contabilidad (`CONTABILIDAD_CORE`) | Sí |
 | `GEMINI_API_KEY` | API key de Google/Gemini para análisis de facturas | Sí |
 | `JWT_SECRET_KEY` | Clave de firma JWT | Sí |
 | `JWT_ALGORITHM` | Algoritmo de firma (`HS256`) | Sí |
 | `JWT_EXPIRE_HOURS` | Validez del token en horas | No (default: 2) |
 | `ADMIN_TOKEN` | Token administrativo para endpoints internos | Sí |
+| `SOL_USER_CRYPTO_KEY` | Clave para cifrar credenciales SOL almacenadas en Mongo | No |
+| `SUNAT_CLIENT_ID` | Client ID del cliente SUNAT (SIRE) | No |
+| `SUNAT_CLIENT_SECRET` | Client secret del cliente SUNAT (SIRE) | No |
 | `URL_SIRE_PROPUESTA` | Endpoint de la API SIRE de SUNAT | Sí |
-| `GEMINI_REQUEST_MODE` | `free` (por tandas) o `normal` | No (default: `free`) |
-| `GEMINI_FREE_BATCH_SIZE` | Tamaño de tanda para modo `free` | No (default: 5) |
-| `GEMINI_FREE_WAIT_SECONDS` | Espera entre tandas en modo `free` (segundos) | No (default: 55) |
-| `ENVIRONMENT` | `development` o `production` | No |
-| `API_HOST` | Host de escucha | No (default: 0.0.0.0) |
-| `API_PORT` | Puerto del servicio | No (default: 9007) |
-| `MONGO_URI_PROD` | Conexión MongoDB para producción | Solo si `ENVIRONMENT=production` |
 
 ## Endpoints
 
@@ -51,8 +46,6 @@ playwright install chromium
 ```
 https://api-sire.sunat.gob.pe/v1/contribuyente/migeigv/libros/rce/propuesta/web/propuesta/{PERIODO}/busqueda
 ```
-
-Si Gemini responde `429 RESOURCE_EXHAUSTED`, usar `GEMINI_REQUEST_MODE=free` con `GEMINI_FREE_WAIT_SECONDS=55`.
 
 ## Ejecutar
 

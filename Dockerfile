@@ -5,7 +5,6 @@ WORKDIR /app
 
 # Instalar dependencias del proyecto
 COPY pyproject.toml ./
-COPY shared-auth-lib ./shared-auth-lib
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-install-project --no-dev
@@ -25,7 +24,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copiar el entorno virtual y dependencias del workspace
 COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/shared-auth-lib /app/shared-auth-lib
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
