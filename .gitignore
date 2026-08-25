@@ -1,0 +1,17 @@
+# datos
+*.json
+!package.json
+*.png
+*.log
+.env
+test1.py
+
+# entornos
+venv/
+.venv/
+
+# cache
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*$py.class

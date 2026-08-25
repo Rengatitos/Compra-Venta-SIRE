@@ -1,0 +1,22 @@
+# Git
+.git
+.gitignore
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+
+# Caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.ruff_cache/
+.pytest_cache/
+
+# Archivos de entorno y secretos
+.env
+.env.local
+
+test1.py
