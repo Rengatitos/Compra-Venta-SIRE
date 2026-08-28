@@ -1,60 +1,30 @@
 import logging
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-MONGO_URI = settings.MONGO_URI
-DB_NAME = settings.MONGO_FACTURASDB_NAME
-DB_USER = DB_NAME
-
-client: AsyncIOMotorClient = None
-db = None
-user_db = None
-vector_global_col = None
-vector_users_col = None
+client: AsyncIOMotorClient | None = None
+db: AsyncIOMotorDatabase | None = None
 
 
-async def connect_to_mongo():
-    global client, db, user_db, vector_global_col, vector_users_col
-    client = AsyncIOMotorClient(MONGO_URI)
-    db = client[DB_NAME]
-    user_db = client[DB_USER]
-    vector_global_col = db["vector_global"]
-    vector_users_col = db["vector_users"]
-    logger.info(f"Connected to MongoDB.")
+async def connect_to_mongo() -> None:
+    global client, db
+    client = AsyncIOMotorClient(settings.MONGO_URI)
+    db = client[settings.MONGO_FACTURASDB_NAME]
+    logger.info("Conectado a MongoDB base=%s", settings.MONGO_FACTURASDB_NAME)
 
 
-async def close_mongo_connection():
-    global client, db, user_db, vector_global_col, vector_users_col
+async def close_mongo_connection() -> None:
+    global client, db
     if client:
         client.close()
         client = None
         db = None
-        user_db = None
-        vector_global_col = None
-        vector_users_col = None
-        logger.info("MongoDB connection closed")
+        logger.info("Conexión a MongoDB cerrada")
 
 
-def get_db():
-    global db
+def get_db() -> AsyncIOMotorDatabase:
     return db
-
-
-def get_user_db():
-    global user_db
-    return user_db
-
-
-def get_vector_global_col():
-    global vector_global_col
-    return vector_global_col
-
-
-def get_vector_users_col():
-    global vector_users_col
-    return vector_users_col
-
