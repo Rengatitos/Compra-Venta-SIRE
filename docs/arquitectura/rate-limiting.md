@@ -1,14 +1,14 @@
 # Rate limiting
 
-[main.py](../../app/main.py:44) crea un limitador global basado en la dirección IP remota del cliente y lo registra como estado de la aplicación, junto con el manejador de excepción para cuando se excede el límite.
+Los límites de tasa se implementan con `slowapi`, indexados por IP remota ([get_remote_address](../../app/main.py:8)). Cada router que necesita límites propios instancia su propio `Limiter` local (mismo `key_func`), y el manejador de excepción se registra una sola vez en [main.py](../../app/main.py:65).
 
-Sin embargo, cada router que necesita límites de tasa —[sol_users.py](../../app/api/routes/sol_users.py), [sire.py](../../app/api/routes/sire.py) y [analysis.py](../../app/api/routes/analysis.py)— vuelve a instanciar su propio limitador local (con la misma configuración basada en IP remota) y aplica los límites sobre sus propios endpoints usando esa instancia local, en vez de reutilizar el limitador global de la aplicación.
+| Endpoint | Límite | Razón |
+|---|---|---|
+| `POST /api/v1/empresas` | 5/minuto | Evitar registro masivo de empresas. |
+| `POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/propuesta` | 10/minuto | La API oficial de SUNAT también tiene sus propios límites; evita saturarla desde un solo cliente. |
+| `POST /api/v1/empresas/{ruc}/periodos/{periodo}/analisis` | 5/minuto | Cada llamada dispara una o más peticiones a Gemini, que tiene costo y límites propios. |
+| `POST /api/v1/empresas/{ruc}/periodos/{periodo}/detalle` | 5/minuto | Cada llamada lanza un navegador Playwright completo contra el portal SOL. |
 
-## Límites conocidos
+El resto de los endpoints no tiene límite propio.
 
-- Crear usuario SOL ([create_user](../../app/api/routes/sol_users.py:101)): 5 por minuto.
-- Sincronizar propuesta SIRE ([get_sire_propuesta](../../app/api/routes/sire.py:20)): 10 por minuto.
-- Disparar scraping de detalle ([post_scrape_detalles](../../app/api/routes/sire.py:93)): 5 por minuto.
-- Ejecutar análisis con IA ([ejecutar_analisis](../../app/api/routes/analysis.py:22)): 5 por minuto.
-
-El resto de los endpoints no tiene límite de tasa propio.
+Si se excede un límite, `slowapi` devuelve `429 Too Many Requests` a través de [_rate_limit_exceeded_handler](../../app/main.py:64), registrado como manejador de `RateLimitExceeded`.

@@ -1,12 +1,12 @@
 # Modelo de datos — periodos
 
-Un periodo fiscal de sincronización SIRE para un usuario. Poblada por [create_period](../../app/api/routes/periods.py:11).
+Un periodo fiscal de sincronización SIRE para una empresa. Poblada por [crear_periodo](../../app/api/v1/routes/periodos.py:14).
 
 | Campo | Tipo | Descripción |
 |---|---|---|
-| usuario | str | Id de Mongo del usuario SOL, como cadena de texto. |
-| periodo | str | Formato año-mes de seis dígitos. |
-| estado | str | Pendiente al crearse; terminado cuando la sincronización de la propuesta SIRE completa el proceso (con o sin comprobantes, incluyendo el caso en que SUNAT no tiene propuestas para ese periodo). Ver [flujo de sincronización SIRE](../flujo/03-sincronizacion-sire.md). |
-| fecha de creación | str, ISO, sin zona horaria — una inconsistencia frente al campo equivalente de sol_users, que sí guarda la fecha con zona horaria UTC. |
+| `empresa_id` | str | `_id` de la empresa dueña, como cadena. |
+| `periodo` | str | Formato `YYYYMM`, validado por [domain/periodo.py](../../app/domain/periodo.py). |
+| `estado` | str | `pendiente` al crearse; `sincronizado` cuando la sincronización de la propuesta SIRE completa el proceso con éxito; `sin_propuesta` cuando SUNAT no tiene propuesta para ese periodo. Ver [flujo de sincronización](../flujo/03-sincronizacion-propuesta.md). También puede establecerse manualmente vía `PUT`. |
+| `fecha_creacion` | str, ISO con zona horaria UTC | |
 
-Índice: único compuesto por usuario y periodo.
+Índice: único compuesto por `(empresa_id, periodo)`.

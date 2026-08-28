@@ -1,3 +1,5 @@
 # Flujo — Crear periodo
 
-El endpoint [create_period](../endpoints/periods.md) crea un periodo fiscal en estado pendiente. El formato del periodo se valida con una expresión regular que exige año 20xx y mes entre 01 y 12. El periodo es único por usuario: esa unicidad está garantizada tanto por la validación de la aplicación como por un índice único de Mongo (ver [modelo de datos de periodos](../modelo-datos/periodos.md)).
+[POST /api/v1/empresas/{ruc}/periodos](../endpoints/periodos.md) crea un periodo fiscal en estado `pendiente`. El formato se valida contra [PERIODO_RE](../../app/domain/periodo.py:5) (año `20xx`, mes `01`-`12`), tanto en el schema de creación como en la dependencia [periodo_valido](../../app/api/v1/deps.py:26) que usan el resto de las rutas que reciben `{periodo}` como parámetro de path.
+
+El periodo es único por empresa: la unicidad está garantizada tanto por la validación del schema como por el índice único `(empresa_id, periodo)` en Mongo (ver [modelo de datos de periodos](../modelo-datos/periodos.md)).

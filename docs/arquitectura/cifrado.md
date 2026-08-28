@@ -1,17 +1,20 @@
 # Cifrado de contraseñas SOL
 
-Todo el código relevante está en [encryption.py](../../app/core/encryption.py).
+Las contraseñas SOL (las credenciales de la empresa ante SUNAT Operaciones en Línea) se cifran de forma **reversible**, no se hashean, porque el sistema necesita la contraseña en texto plano para autenticar contra la API oficial de SUNAT y para el scraping del portal.
 
-Las contraseñas SOL (las credenciales SUNAT de cada empresa) se guardan cifradas, no hasheadas, porque el sistema necesita recuperarlas en texto plano para autenticar contra la API OAuth de SUNAT ([obtener_token_api_oficial](../../app/services/sire_service.py:15)) y, opcionalmente, para el login del scraping con Playwright.
+## Cómo funciona
 
-## Derivación de la clave
+[encryption.py](../../app/core/encryption.py) usa Fernet (cifrado simétrico autenticado) de la librería `cryptography`:
 
-La función [_get_fernet](../../app/core/encryption.py:6) deriva una clave de cifrado determinística: toma la variable de entorno SOL_USER_CRYPTO_KEY si está definida; si no, usa JWT_SECRET_KEY como semilla. La intención, según el propio criterio del código, es priorizar una clave dedicada para el cifrado de contraseñas SOL, pero tolerar reutilizar el secreto del JWT si no se configuró una clave separada. La semilla elegida se pasa por un hash SHA-256 y el resultado de 32 bytes se codifica para obtener una clave válida para el esquema de cifrado usado (Fernet, de la librería cryptography).
+1. La semilla es `SOL_USER_CRYPTO_KEY` si está definida; si no, cae a `JWT_SECRET_KEY`. Ver [_get_fernet](../../app/core/encryption.py:6).
+2. La semilla se pasa por SHA-256 para obtener 32 bytes, y esos bytes se codifican en base64 URL-safe, que es el formato que Fernet exige para su clave.
+3. [encrypt_password](../../app/core/encryption.py:14) y [decrypt_password](../../app/core/encryption.py:18) delegan directamente en Fernet.
 
-Las funciones [encrypt_password](../../app/core/encryption.py:14) y [decrypt_password](../../app/core/encryption.py:18) son wrappers directos sobre las operaciones de cifrado y descifrado de esa clave derivada.
+## Dónde se usa
 
-## Implicación de rotación de secretos
+- Al crear o actualizar una empresa ([empresas.py](../../app/api/v1/routes/empresas.py)), la contraseña se cifra antes de guardarse.
+- Al hacer login ([auth.py](../../app/api/v1/routes/auth.py)), al renovar el token de SUNAT ([empresas.py](../../app/api/v1/routes/empresas.py:96)), al obtener el token OAuth inicial ([sunat/auth.py](../../app/services/sunat/auth.py:65)) y al hacer scraping ([scraping_sunat.py](../../app/services/scraping_sunat.py)), la contraseña se descifra para compararla o enviarla a SUNAT.
 
-Como la clave de cifrado se deriva de SOL_USER_CRYPTO_KEY (o, en su ausencia, de JWT_SECRET_KEY), rotar JWT_SECRET_KEY sin haber fijado antes SOL_USER_CRYPTO_KEY invalida el descifrado de todas las contraseñas SOL ya guardadas: quedarían indescifrables hasta que se restaure el valor anterior de la clave. En producción conviene fijar SOL_USER_CRYPTO_KEY explícitamente desde el principio y nunca rotarla sin un plan de re-cifrado de los datos existentes.
+## Implicación de rotar secretos
 
-Ver también [inicio](../inicio.md) para el detalle de estas dos variables de entorno, y [modelo de datos de usuarios SOL](../modelo-datos/sol-users.md) para el campo donde se guarda la contraseña cifrada.
+Si `SOL_USER_CRYPTO_KEY` (o, en su ausencia, `JWT_SECRET_KEY`) cambia, **todas las contraseñas ya cifradas dejan de poder descifrarse**: no hay versionado de clave ni migración automática. Rotar ese secreto en producción exige re-cifrar todas las contraseñas SOL almacenadas, o pedirle a cada empresa que las vuelva a registrar.

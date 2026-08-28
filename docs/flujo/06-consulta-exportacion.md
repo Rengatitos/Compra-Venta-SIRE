@@ -1,13 +1,13 @@
-# Flujo — Consulta y exportación de facturas
+# Flujo — Consulta y exportación de comprobantes
 
-[serialize_factura](../../app/services/invoice_service.py:34) combina los campos "crudos" que llegan de SIRE (identificador de referencia, RUC del emisor, etc.) con el resultado del análisis con IA, que puede estar guardado como objeto o como texto JSON según qué ruta lo haya escrito por última vez. [parse_metadata](../../app/services/invoice_service.py:19) normaliza ambas representaciones para que el resto del sistema no tenga que preocuparse por cuál de las dos está presente.
+[comprobante_service.serializar](../../app/services/comprobante_service.py:35) convierte un documento de Mongo a la forma que expone la API: resuelve la descripción legible del tipo de comprobante desde el catálogo ([describe_comprobante](../../app/domain/catalogos.py)), convierte fechas BSON a `date` y montos `Decimal128` a `float` (ver [_mongo.py](../../app/repositories/_mongo.py)), y expone el resultado del análisis IA bajo la clave `analisis` (o `None` si el comprobante aún no fue analizado).
 
-[dedupe_by_reference](../../app/services/invoice_service.py:7) conserva solo el primer registro por identificador de referencia al listar o exportar facturas, como defensa adicional ante duplicados históricos que aún no hayan sido limpiados por la deduplicación de arranque (ver [ciclo de vida](../arquitectura/ciclo-de-vida.md)).
+No existe deduplicación al leer: el índice único `uniq_comprobante` (ver [ciclo de vida](../arquitectura/ciclo-de-vida.md)) garantiza que un comprobante no pueda insertarse dos veces, así que listar y exportar leen directamente sin filtrar duplicados históricos.
 
 ## Exportación
 
-El servicio de exportación genera Excel (con [generate_excel_from_invoice](../../app/services/export_service.py:58) y [generate_excel_from_invoices_batch](../../app/services/export_service.py:199)) y PDF (con [generate_pdf_from_invoice](../../app/services/export_service.py:81) y [generate_pdf_from_invoices_batch](../../app/services/export_service.py:252)), tanto para una factura individual como para un lote completo del periodo. El PDF por lote tiene un límite de 500 facturas, como medida de seguridad de tamaño y tiempo de renderizado.
+[export_service.py](../../app/services/export_service.py) genera Excel (`excel_de_comprobante`, `excel_de_lote`) y PDF (`pdf_de_comprobante`, `pdf_de_lote`), tanto para un comprobante individual como para un lote completo del periodo. El PDF por lote tiene un límite de 500 comprobantes, como medida de tamaño y tiempo de renderizado.
 
-[_consistency_label](../../app/services/export_service.py:30) implementa una heurística de consistencia: compara la suma de los importes del detalle generado por la IA contra el total real del comprobante, para marcar visualmente si ese detalle es completo, si fue inferido, o si amerita revisión manual antes de confiar en él.
+[_consistencia](../../app/services/export_service.py:47) implementa una heurística: compara la suma de los importes del detalle generado por la IA contra el total real del comprobante, para marcar si ese detalle está completo, fue inferido, o amerita revisión manual antes de confiar en él.
 
-Ver [endpoints — Invoices](../endpoints/invoices.md) para el detalle de cada endpoint de consulta y exportación.
+Ver [endpoints — Comprobantes](../endpoints/comprobantes.md) para el detalle de cada endpoint de consulta y exportación.

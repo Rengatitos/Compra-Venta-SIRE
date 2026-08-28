@@ -1,11 +1,15 @@
 # Flujo — Registro y login
 
-## Registro de un usuario SOL
+## Registro de una empresa
 
-Se crea un usuario SOL con el endpoint [create_user](../endpoints/sol-users.md): RUC, usuario SOL, contraseña SOL (que se cifra antes de guardarse, ver [cifrado](../arquitectura/cifrado.md)), y opcionalmente las credenciales OAuth del cliente SIRE registrado en SUNAT, junto con los identificadores del sistema externo que integra esta API (tenant, cliente y cuenta).
+Se registra una empresa con [POST /api/v1/empresas](../endpoints/empresas.md): RUC, usuario SOL, contraseña SOL (que se cifra antes de guardarse, ver [cifrado](../arquitectura/cifrado.md)), y opcionalmente las credenciales OAuth del cliente SIRE (`sunat_client_id`/`sunat_client_secret`) si la empresa tiene las suyas propias registradas en SUNAT — si no las tiene, se usan las globales de `SUNAT_CLIENT_ID`/`SUNAT_CLIENT_SECRET` como respaldo.
 
-Estas credenciales OAuth se ingresan manualmente, igual que cualquier otro campo del usuario. Anteriormente existía un flujo de scraping que las obtenía automáticamente navegando el portal SOL con Playwright; ese scraping de credenciales fue eliminado por completo del código. Lo único que queda de Playwright en el sistema es la extracción del detalle de ítems de facturas ya sincronizadas, descrita en [flujo de scraping de detalle](04-scraping-detalle.md).
+Estas credenciales OAuth se ingresan manualmente. No existe un flujo de scraping que las obtenga automáticamente navegando el portal SOL. Lo único que hace Playwright en el sistema es la extracción del detalle de ítems de comprobantes ya sincronizados, descrita en [flujo de extracción de detalle](04-extraccion-detalle.md).
 
 ## Login
 
-El endpoint [login](../endpoints/sol-users.md) recibe el RUC, el usuario y la contraseña; descifra la contraseña almacenada y la compara en texto plano contra la enviada. Si coincide, se emite un token que incluye el identificador de usuario y el RUC, válido por la cantidad de horas configurada (ver [inicio](../inicio.md) y [autenticación](../arquitectura/autenticacion.md)).
+[POST /api/v1/auth/login](../endpoints/empresas.md) recibe RUC, usuario y contraseña; descifra la contraseña almacenada y la compara en texto plano contra la enviada. Si coincide, se emite un JWT con `empresa_id` y `ruc`, válido por `JWT_EXPIRE_HOURS` horas (ver [inicio](../inicio.md) y [autenticación](../arquitectura/autenticacion.md)).
+
+## Token de la API SIRE
+
+El JWT propio de la aplicación no tiene relación con el token OAuth que la empresa necesita para hablar con la API oficial de SUNAT. Ese segundo token se obtiene la primera vez que se sincroniza una propuesta ([flujo de sincronización](03-sincronizacion-propuesta.md)) o explícitamente vía [POST /api/v1/empresas/{ruc}/token-sunat](../endpoints/empresas.md), y se guarda en el documento de la empresa para reutilizarse en llamadas siguientes.

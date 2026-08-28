@@ -1,27 +1,27 @@
 # Flujo — Análisis con IA
 
-El endpoint [ejecutar_analisis](../endpoints/analysis.md) llama a [procesar_lote_extracciones](../../app/services/analisis_ia.py:246).
+[POST /api/v1/empresas/{ruc}/periodos/{periodo}/analisis](../endpoints/analisis.md) llama a [procesar_lote](../../app/services/analisis_ia.py:246).
 
 ## RAG de dos niveles
 
-1. **Base global (normativa contable).** Cargada una sola vez en memoria al arrancar el servidor, mediante [cargar_vector](../../app/services/analisis_ia.py:28), leyendo la colección de embeddings globales durante el [ciclo de vida](../arquitectura/ciclo-de-vida.md) de la aplicación. Representa normativa contable estándar (el Plan Contable General Empresarial).
+1. **Base global (normativa contable, PCGE).** Cargada una sola vez en memoria al arrancar el servidor con [cargar_vector](../../app/services/analisis_ia.py:28), leyendo la colección `vector_global` durante el [ciclo de vida](../arquitectura/ciclo-de-vida.md) de la aplicación. Compartida entre todas las empresas.
 
-2. **RAG de usuario**, resuelto en el propio router del endpoint de análisis, no en el servicio, con el siguiente orden de prioridad: primero, los PDFs adjuntados en la misma petición de análisis, que se procesan en memoria y no se persisten; si no se adjuntan, se usan los fragmentos previamente indexados en la colección de embeddings por usuario, subidos con anterioridad mediante el endpoint de subida de referencias (ver [endpoints — References](../endpoints/references.md)).
+2. **RAG de empresa**, resuelto en la propia ruta de análisis, no en el servicio, con este orden de prioridad: primero, los PDFs adjuntados en la misma petición (procesados en memoria, no persistidos); si no se adjuntan, los chunks ya indexados en `vector_usuarios` para esa empresa, subidos previamente vía [referencias](../endpoints/referencias.md).
 
 ## Detalles del proceso
 
-El cliente de Gemini, en [_get_client](../../app/services/analisis_ia.py:21), se construye de forma perezosa, en el primer uso, no al importar el módulo. Así, si falta la variable de entorno de la API key de Gemini, solo falla la llamada que efectivamente necesita el modelo, en vez de impedir que se cargue todo el paquete de rutas al arrancar la aplicación.
+El cliente de Gemini, en [_get_client](../../app/services/analisis_ia.py:18), se construye de forma perezosa en el primer uso, no al importar el módulo, y valida `GEMINI_API_KEY` en ese momento — si falta, falla con un `RuntimeError` explícito en la primera llamada, no en silencio ni al arrancar toda la aplicación.
 
-[buscar_contexto](../../app/services/analisis_ia.py:111) genera el embedding del texto de la factura y calcula la similitud de coseno contra cada elemento de la base global y de la base del usuario, en memoria, devolviendo los veinte resultados más relevantes de cada fuente como texto plano de contexto. Esta búsqueda ocurre completamente en memoria, no con un índice vectorial de la base de datos — ver la limitación de escalabilidad señalada en [ciclo de vida](../arquitectura/ciclo-de-vida.md).
+[buscar_contexto](../../app/services/analisis_ia.py:111) genera el embedding del texto del comprobante y calcula similitud de coseno contra cada elemento de la base global y de la de la empresa, en memoria (no hay índice vectorial de base de datos), devolviendo los veinte resultados más relevantes de cada fuente como texto plano de contexto.
 
-[extraer_datos_factura](../../app/services/analisis_ia.py:170) arma un prompt con reglas de negocio explícitas (la serie F corresponde a una factura de bienes o servicios, la serie E a honorarios o servicios profesionales), el contexto normativo recuperado, y le pide al modelo de Gemini —configurado para responder en formato JSON— un resultado con el detalle de líneas (producto, categoría contable, cantidad, importe y razón), la cuenta contable, el centro de costos, la condición de IGV, el resultado de la clasificación (costo, gasto, activo o no determinado), el nivel de confianza de la IA, su estado, una descripción y observaciones.
+[extraer_datos_factura](../../app/services/analisis_ia.py:170) arma un prompt con reglas de negocio explícitas sobre la serie del comprobante (F = factura de bienes/servicios, E = recibo por honorarios), el contexto normativo recuperado, y le pide a `gemini-2.5-flash` — configurado para responder en JSON estricto — un resultado con: el detalle de líneas (producto, categoría contable, cantidad, importe, razón), la cuenta contable sugerida (código PCGE), el centro de costos, la condición de IGV, el resultado de la clasificación (`COSTO`/`GASTO`/`ACTIVO`/`NO DETERMINADO`), el nivel de confianza, el estado (`Analizado`/`Requiere revision humana`), una descripción y observaciones.
 
-Si la factura tiene detalle de compras de SUNAT (obtenido por el scraping opcional, ver [flujo de scraping de detalle](04-scraping-detalle.md)), ese detalle real se concatena al texto enviado al modelo para enriquecer la clasificación.
+El texto que recibe el modelo lo arma [comprobante_service.texto_para_ia](../../app/services/comprobante_service.py:64): antepone los campos ya normalizados del comprobante (tipo, serie-número, contraparte, fecha, montos) al JSON crudo del SIRE (`extra.raw_sire`) y, si existe, al detalle de ítems extraído por scraping (`detalle_sunat` — ver [flujo de extracción de detalle](04-extraccion-detalle.md)).
 
-Se seleccionan como pendientes las facturas cuyo estado de procesamiento sea "recibida de SIRE", "error de análisis", o esté ausente o vacío — es decir, el sistema reintenta automáticamente las facturas que fallaron en una corrida anterior.
+## Selección de pendientes
 
-Como defensa adicional a la deduplicación global que corre en el arranque del servidor (ver [ciclo de vida](../arquitectura/ciclo-de-vida.md)), este proceso también deduplica por número de serie dentro del propio lote que está procesando, para no analizar dos veces —y gastar cuota de la API de Gemini innecesariamente— el mismo comprobante si hubiera duplicados históricos.
+[listar_pendientes_analisis](../../app/repositories/comprobantes.py:147) selecciona los comprobantes cuyo `estado_procesamiento` sea `sire_recibido`, `error_analisis`, o esté ausente — es decir, el sistema reintenta automáticamente lo que falló en una corrida anterior. Un comprobante sin `extra.raw_sire` ni `detalle_sunat` se marca directamente `sin_datos` sin llamar a Gemini.
 
-Todas las facturas pendientes se procesan en paralelo, cada una en un hilo separado, porque la librería de Gemini usada aquí es síncrona.
+Todos los comprobantes pendientes se procesan en paralelo con `asyncio.gather`, cada llamada al modelo despachada a un hilo (`asyncio.to_thread`) porque el SDK de Gemini usado aquí es síncrono.
 
-Al terminar, el estado de procesamiento de cada factura se actualiza a analizada, a error de análisis, o a sin datos, según el resultado obtenido.
+Al terminar, cada comprobante queda en `analizado`, `error_analisis` o `sin_datos` según el resultado, y la respuesta agrega los conteos (`procesadas`, `errores`, `sin_datos`) sobre el total de pendientes encontrados.
