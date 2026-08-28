@@ -1,5 +1,6 @@
 import asyncio
-from datetime import datetime
+from datetime import date, datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
@@ -9,6 +10,13 @@ from app.core.encryption import decrypt_password
 load_dotenv()
 
 URL_MENU = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm"
+
+LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
+
+
+def _ruta_log(nombre: str) -> str:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    return str(LOG_DIR / nombre)
 
 
 def _hacer_login(page, ruc: str, usuario: str, password: str) -> None:
@@ -128,7 +136,6 @@ def _scrape_detalles(
     headed: bool = False,
     slow_mo_ms: int = 0,
 ) -> dict:
-    URL_MENU = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm"
     debug_logs = []
 
     def log(msg: str):
@@ -180,35 +187,25 @@ def _scrape_detalles(
                     page.wait_for_timeout(500)
                 except Exception as e:
                     log(f"Error cargando iframe: {e}")
-                    page.screenshot(path="/app/logs/error_iframe_timeout.png")
+                    page.screenshot(path=_ruta_log("error_iframe_timeout.png"))
                     continue
                 
                 serie_num = fac.get("serie_numero", "")
-                ruc_emisor = fac.get("ruc_emisor", "")
-                fecha_emision = fac.get("fecha_emision", "")
-                
-                if not serie_num or "-" not in serie_num:
+                ruc_emisor = fac.get("documento_contraparte", "")
+                fecha_emision = fac.get("fecha_emision")
+                serie = fac.get("serie", "")
+                numero = fac.get("numero", "")
+
+                if not serie or not numero:
                     continue
-                    
-                serie, numero = serie_num.split("-", 1)
-                log(f"Buscando factura: {serie_num}")
+
+                log(f"Buscando comprobante: {serie_num}")
 
                 try:
+                    # El portal espera dd/mm/aaaa.
                     fecha_emision_str = ""
-                    if fecha_emision:
-                        if "T" in fecha_emision:
-                            ymd = fecha_emision.split("T")[0].split("-")
-                            if len(ymd) == 3:
-                                fecha_emision_str = f"{ymd[2]}/{ymd[1]}/{ymd[0]}"
-                        elif "-" in fecha_emision:
-                            ymd = fecha_emision.split(" ")[0].split("-")
-                            if len(ymd) == 3:
-                                fecha_emision_str = f"{ymd[2]}/{ymd[1]}/{ymd[0]}"
-                        elif "/" in fecha_emision:
-                            fecha_emision_str = fecha_emision.split(" ")[0]
-                    
-                    if not fecha_emision_str:
-                        pass
+                    if isinstance(fecha_emision, (datetime, date)):
+                        fecha_emision_str = fecha_emision.strftime("%d/%m/%Y")
 
                     combo = iframe.locator("input#criterio\\.tipoConsulta").first
                     if combo.count() > 0:
@@ -326,17 +323,17 @@ def _scrape_detalles(
                             
                     else:
                         log(f"No se encontro boton visualizar para {serie_num}")
-                        page.screenshot(path=f"/app/logs/no_visualizar_{serie_num.replace('-', '_')}.png")
+                        page.screenshot(path=_ruta_log(f"no_visualizar_{serie_num.replace('-', '_')}.png"))
                         try:
                             html = iframe.locator("body").inner_html()
-                            with open(f"/app/logs/no_visualizar_{serie_num.replace('-', '_')}.html", "w", encoding="utf-8") as f:
+                            with open(_ruta_log(f"no_visualizar_{serie_num.replace('-', '_')}.html"), "w", encoding="utf-8") as f:
                                 f.write(html)
-                        except:
+                        except Exception:
                             pass
                         
                 except Exception as e:
                     log(f"Error procesando {serie_num}: {str(e)}")
-                    page.screenshot(path=f"/app/logs/error_{serie_num.replace('-', '_')}.png")
+                    page.screenshot(path=_ruta_log(f"error_{serie_num.replace('-', '_')}.png"))
 
             return resultados
 
@@ -350,40 +347,25 @@ def _scrape_detalles(
                 browser.close()
 
 
-async def obtener_detalles_facturas_recibidas(
-    tenant_id: str,
-    cliente_id: str,
-    cuenta_id: str,
-    facturas_a_buscar: list[dict],
-    user_db,
+async def obtener_detalles(
+    empresa: dict,
+    comprobantes: list[dict],
     debug: bool = False,
     headed: bool = False,
     slow_mo_ms: int = 0,
-):
-    users_col = user_db["sol_users"]
-    empresa = await users_col.find_one({
-        "tenant_id": tenant_id,
-        "cliente_id": cliente_id,
-        "cuenta_id": cuenta_id
-    })
-    if not empresa:
-        raise Exception("Usuario no encontrado en la BD")
+) -> dict:
+    password_cifrada = empresa.get("password")
+    if not password_cifrada:
+        raise ValueError("No hay contraseña SOL guardada para ejecutar el scraping")
 
-    sunat_password = empresa.get("password")
-    if not sunat_password:
-        raise Exception("No hay contraseña SOL guardada para ejecutar el scraping.")
-    sunat_password = decrypt_password(sunat_password)
-
-    resultados = await asyncio.to_thread(
+    return await asyncio.to_thread(
         _scrape_detalles,
         empresa["ruc"],
         empresa["usuario"],
-        sunat_password,
-        facturas_a_buscar,
+        decrypt_password(password_cifrada),
+        comprobantes,
         debug,
         headed,
         slow_mo_ms,
     )
-    
-    return resultados
 

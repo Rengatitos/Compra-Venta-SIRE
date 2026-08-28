@@ -1,15 +1,13 @@
 import asyncio
 import json
 import logging
-import os
 
 import numpy as np
-from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-
-load_dotenv()
+from app.core.config import settings
+from app.domain.comprobante import EstadoProcesamiento
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +19,18 @@ _client: genai.Client | None = None
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
-        _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        if not settings.GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY no está configurada en el entorno")
+        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
     return _client
 
 
-async def cargar_vector(col) -> None:
-    from app.services.vector_store import cargar_global_en_memoria
+async def cargar_vector(db) -> None:
+    from app.repositories import vectores as repo_vectores
 
     global vector_db
-    vector_db = await cargar_global_en_memoria(col)
-    logger.info("vector listo con %s chunks", len(vector_db))
+    vector_db = await repo_vectores.cargar_global(db)
+    logger.info("Vector global listo con %s chunks", len(vector_db))
 
 
 def extraer_chunks_pdf(pdf_bytes: bytes, filename: str, max_chars: int = 1500) -> list[dict]:
@@ -212,14 +212,14 @@ def extraer_datos_factura(texto_factura: str, vector_db_usuario=None, rubro: str
       "centro_costos": "Centro de costos sugerido",
       "condicion_igv": "Gravado | Exonerado | Inafecto",
       "resultado": "COSTO | GASTO | ACTIVO | NO DETERMINADO",
-      "ia_confidence": "95% | 70% | 40%",
-      "ia_status": "Analizado | Requiere revision humana",
-      "Documentos": true,
-      "Descripcion": "Resumen tecnico de la transaccion, maximo 80 palabras",
-      "Observaciones": "Observaciones tecnicas reales (Evita la palabra 'inferido' y justifica usando el rubro y los datos crudos)"
+      "confianza": "95% | 70% | 40%",
+      "estado": "Analizado | Requiere revision humana",
+      "documentos": true,
+      "descripcion": "Resumen tecnico de la transaccion, maximo 80 palabras",
+      "observaciones": "Observaciones tecnicas reales (Evita la palabra 'inferido' y justifica usando el rubro y los datos crudos)"
     }}
 
-    INFORMACION CRUDA DE LA FACTURA:
+    INFORMACION DEL COMPROBANTE:
     """
 
     response_json = _get_client().models.generate_content(
@@ -243,131 +243,74 @@ def _build_result(total_encontradas: int, resultados: list[str]):
     }
 
 
-async def procesar_lote_extracciones(
-    user_id: str,
-    periodo: str,
+async def procesar_lote(
     db,
+    empresa_id: str,
+    periodo: str,
     vector_db_usuario=None,
     rubro: str = "General",
-):
-    facturas_col = db["facturas"]
+) -> dict:
+    from app.repositories import comprobantes as repo_comprobantes
+    from app.services.comprobante_service import texto_para_ia
 
-    cursor = facturas_col.find(
-        {
-            "user_id": user_id,
-            "periodo": periodo,
-            "$or": [
-                {"estado_procesamiento": "sire_recibido"},
-                {"estado_procesamiento": "error_analisis"},
-                {"estado_procesamiento": {"$exists": False}},
-                {"estado_procesamiento": ""},
-            ],
-        }
-    ).sort([("_id", -1)])
+    pendientes = await repo_comprobantes.listar_pendientes_analisis(db, empresa_id, periodo)
 
-    facturas_pendientes_raw = await cursor.to_list(length=1000)
-
-    facturas_pendientes = []
-    series_vistas = set()
-    duplicadas = 0
-    for row in facturas_pendientes_raw:
-        serie_num = row.get("serie_numero")
-        key = serie_num if serie_num else str(row.get("_id"))
-        if key in series_vistas:
-            duplicadas += 1
-            continue
-        series_vistas.add(key)
-        facturas_pendientes.append(row)
-
-    if duplicadas:
-        logger.warning(
-            "Analisis IA detecto duplicados user_id=%s periodo=%s duplicadas_omitidas=%s",
-            user_id,
-            periodo,
-            duplicadas,
+    if not pendientes:
+        logger.info(
+            "Análisis IA sin pendientes empresa_id=%s periodo=%s", empresa_id, periodo
         )
-
-    if not facturas_pendientes:
-        logger.info("Analisis IA sin pendientes user_id=%s periodo=%s", user_id, periodo)
         return _build_result(0, [])
 
-    async def analizar_y_actualizar_factura(row):
-        serie_num = row.get("serie_numero")
-        raw_data = row.get("raw_data", "")
-        factura_id = row["_id"]
+    async def analizar(documento) -> str:
+        serie_numero = documento.get("serie_numero")
+        documento_id = documento["_id"]
 
+        extra = documento.get("extra") or {}
+        if not extra.get("raw_sire") and not documento.get("detalle_sunat"):
+            logger.warning(
+                "Comprobante sin datos suficientes para analizar serie_numero=%s",
+                serie_numero,
+            )
+            await repo_comprobantes.actualizar_estado(
+                db, documento_id, EstadoProcesamiento.SIN_DATOS
+            )
+            return "sin_datos"
 
         try:
-            if not raw_data or len(str(raw_data)) < 10:
-                logger.warning("Factura sin datos suficientes para analisis serie_numero=%s", serie_num)
-                await facturas_col.update_one(
-                    {"_id": factura_id},
-                    {"$set": {"estado_procesamiento": "sin_datos"}},
-                )
-                return "sin_datos"
-
-            detalle_sunat = row.get("detalle_compras_sunat")
-            texto_para_ia = str(raw_data)
-            if detalle_sunat:
-                lineas_detalle = "\n".join(
-                    f"- Cant: {item.get('cantidad','')} {item.get('unidad_medida','')} | "
-                    f"Descripcion: {item.get('descripcion','')} | "
-                    f"V.Unit: {item.get('valor_unitario','')} | "
-                    f"P.Unit: {item.get('precio_unitario','')} | "
-                    f"Total: {item.get('valor_venta','')}"
-                    for item in detalle_sunat
-                )
-                texto_para_ia = (
-                    f"{texto_para_ia}\n\n"
-                    f"DETALLE REAL DE LOS ITEMS (extraido de SUNAT):\n{lineas_detalle}"
-                )
-
-            datos_procesados = await asyncio.to_thread(
+            datos = await asyncio.to_thread(
                 extraer_datos_factura,
-                texto_para_ia,
+                texto_para_ia(documento),
                 vector_db_usuario,
                 rubro,
             )
-            datos_procesados["_ID_REFERENCIA"] = serie_num
-
-            await facturas_col.update_one(
-                {"_id": factura_id},
-                {
-                    "$set": {
-                        "metadata_procesada": datos_procesados,
-                        "estado_procesamiento": "analizado",
-                    }
-                },
+            await repo_comprobantes.guardar_analisis(
+                db, documento_id, datos, EstadoProcesamiento.ANALIZADO
             )
-
             return "exito"
-
         except Exception:
-            logger.exception("Error procesando factura mediante Gemini serie_numero=%s", serie_num)
-            await facturas_col.update_one(
-                {"_id": factura_id},
-                {"$set": {"estado_procesamiento": "error_analisis"}},
+            logger.exception(
+                "Error analizando comprobante con Gemini serie_numero=%s", serie_numero
+            )
+            await repo_comprobantes.actualizar_estado(
+                db, documento_id, EstadoProcesamiento.ERROR_ANALISIS
             )
             return "error"
 
     logger.info(
-        "Iniciando analisis IA user_id=%s periodo=%s facturas=%s",
-        user_id,
+        "Iniciando análisis IA empresa_id=%s periodo=%s comprobantes=%s",
+        empresa_id,
         periodo,
-        len(facturas_pendientes),
+        len(pendientes),
     )
 
-    resultados = await asyncio.gather(
-        *[analizar_y_actualizar_factura(row) for row in facturas_pendientes]
-    )
-
-    resumen = _build_result(len(facturas_pendientes), resultados)
+    resultados = await asyncio.gather(*[analizar(documento) for documento in pendientes])
+    resumen = _build_result(len(pendientes), list(resultados))
 
     logger.info(
-        "Analisis IA finalizado user_id=%s periodo=%s total=%s procesadas=%s errores=%s sin_datos=%s",
-        user_id,
+        "Análisis IA finalizado empresa_id=%s periodo=%s total=%s procesadas=%s errores=%s sin_datos=%s",
+        empresa_id,
         periodo,
-        len(facturas_pendientes),
+        len(pendientes),
         resumen["procesadas"],
         resumen["errores"],
         resumen["sin_datos"],

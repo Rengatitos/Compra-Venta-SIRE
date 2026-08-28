@@ -1,163 +1,186 @@
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
+
+from typing import Any
+
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+from app.domain.comprobante import Libro
+from app.repositories import comprobantes as repo_comprobantes
+from app.repositories import empresas as repo_empresas
+from app.repositories._mongo import NOMBRE_COL_COMPROBANTES, monto_a_float
 
 
-def build_match_filter(user_ids: List[str], periodo: str, tipo_operacion: str, extra: Optional[Dict[str, Any]] = None) -> dict:
-    filtro = {
-        "user_id": {"$in": user_ids},
+def _col(db: AsyncIOMotorDatabase):
+    return db[NOMBRE_COL_COMPROBANTES]
+
+
+def build_match_filter(
+    empresa_ids: list[str],
+    periodo: str,
+    libro: Libro,
+    extra: dict[str, Any] | None = None,
+) -> dict:
+    filtro: dict[str, Any] = {
+        "empresa_id": {"$in": empresa_ids},
         "periodo": periodo,
-        "$or": [{"tipo_operacion": tipo_operacion}, {"tipo_operacion": {"$exists": False}}],
+        "libro": libro.value,
     }
     if extra:
         filtro.update(extra)
     return filtro
 
 
-async def get_target_user_ids(rucs: Optional[str], db, token_payload: dict) -> List[str]:
-    sol_users_col = db["sol_users"]
-
+async def get_target_empresa_ids(
+    rucs: str | None, db: AsyncIOMotorDatabase
+) -> list[str]:
     if not rucs:
         return []
-
-    ruc_list = [r.strip() for r in rucs.split(",") if r.strip()]
-    if not ruc_list:
+    lista = [r.strip() for r in rucs.split(",") if r.strip()]
+    if not lista:
         return []
-
-    target_users = await sol_users_col.find({"ruc": {"$in": ruc_list}}).to_list(None)
-    return [str(u["_id"]) for u in target_users]
+    return await repo_empresas.listar_ids_por_rucs(db, lista)
 
 
-async def get_summary(user_ids: List[str], periodo: str, tipo_operacion: str, db) -> dict:
-    facturas_col = db["facturas"]
-    match_filter = build_match_filter(user_ids, periodo, tipo_operacion)
+async def get_summary(
+    empresa_ids: list[str], periodo: str, libro: Libro, db: AsyncIOMotorDatabase
+) -> dict:
+    filtro = build_match_filter(empresa_ids, periodo, libro)
 
     pipeline_totales = [
-        {"$match": match_filter},
-        {"$group": {
-            "_id": None,
-            "total_invoices": {"$sum": 1},
-            "total_monto": {"$sum": "$total"},
-            "total_igv": {"$sum": "$igv"}
-        }}
+        {"$match": filtro},
+        {
+            "$group": {
+                "_id": None,
+                "total_comprobantes": {"$sum": 1},
+                "total_monto": {"$sum": "$total"},
+                "total_igv": {"$sum": "$igv"},
+            }
+        },
     ]
     pipeline_procesadas = [
-        {"$match": match_filter},
-        {"$group": {
-            "_id": {"$cond": [{"$gt": ["$metadata_procesada.resultado", None]}, "procesada", "pendiente"]},
-            "count": {"$sum": 1}
-        }}
+        {"$match": filtro},
+        {
+            "$group": {
+                "_id": {
+                    "$cond": [
+                        {"$gt": ["$metadata_procesada.resultado", None]},
+                        "procesada",
+                        "pendiente",
+                    ]
+                },
+                "count": {"$sum": 1},
+            }
+        },
     ]
 
-    res_totales = await facturas_col.aggregate(pipeline_totales).to_list(1)
-    res_procesadas = await facturas_col.aggregate(pipeline_procesadas).to_list(None)
+    res_totales = await _col(db).aggregate(pipeline_totales).to_list(1)
+    res_procesadas = await _col(db).aggregate(pipeline_procesadas).to_list(None)
 
-    totales = res_totales[0] if res_totales else {"total_invoices": 0, "total_monto": 0, "total_igv": 0}
+    totales = res_totales[0] if res_totales else {}
 
-    if not totales.get("total_igv") and totales.get("total_monto", 0) > 0:
-        totales["total_igv"] = totales["total_monto"] - (totales["total_monto"] / 1.18)
-
-    procesadas_count = 0
-    pendientes_count = 0
-    for p in res_procesadas:
-        if p["_id"] == "procesada":
-            procesadas_count = p["count"]
+    procesadas = 0
+    pendientes = 0
+    for item in res_procesadas:
+        if item["_id"] == "procesada":
+            procesadas = item["count"]
         else:
-            pendientes_count += p["count"]
+            pendientes += item["count"]
 
     return {
-        "total_invoices": totales.get("total_invoices", 0),
-        "total_monto": totales.get("total_monto", 0),
-        "total_igv": totales.get("total_igv", 0),
-        "procesadas": procesadas_count,
-        "pendientes": pendientes_count
+        "total_comprobantes": totales.get("total_comprobantes", 0),
+        "total_monto": monto_a_float(totales.get("total_monto")),
+        "total_igv": monto_a_float(totales.get("total_igv")),
+        "procesadas": procesadas,
+        "pendientes": pendientes,
     }
 
 
-async def get_top_suppliers(user_ids: List[str], periodo: str, limit: int, tipo_operacion: str, db) -> list:
-    facturas_col = db["facturas"]
-    match_filter = build_match_filter(
-        user_ids, periodo, tipo_operacion,
-        extra={"nombre_proveedor": {"$ne": "", "$exists": True}},
+async def get_top_contrapartes(
+    empresa_ids: list[str],
+    periodo: str,
+    limit: int,
+    libro: Libro,
+    db: AsyncIOMotorDatabase,
+) -> list:
+    filtro = build_match_filter(
+        empresa_ids,
+        periodo,
+        libro,
+        extra={"razon_social": {"$ne": "", "$exists": True}},
     )
     pipeline = [
-        {"$match": match_filter},
-        {"$group": {
-            "_id": "$nombre_proveedor",
-            "total_monto": {"$sum": "$total"}
-        }},
+        {"$match": filtro},
+        {"$group": {"_id": "$razon_social", "total_monto": {"$sum": "$total"}}},
         {"$sort": {"total_monto": -1}},
         {"$limit": limit},
-        {"$project": {
-            "_id": 0,
-            "name": "$_id",
-            "total": "$total_monto"
-        }}
     ]
-    return await facturas_col.aggregate(pipeline).to_list(limit)
+    filas = await _col(db).aggregate(pipeline).to_list(limit)
+    return [{"name": f["_id"], "total": monto_a_float(f["total_monto"])} for f in filas]
 
 
-async def get_ai_classification(user_ids: List[str], periodo: str, tipo_operacion: str, db) -> list:
-    facturas_col = db["facturas"]
-    match_filter = build_match_filter(
-        user_ids, periodo, tipo_operacion,
+async def get_ai_classification(
+    empresa_ids: list[str], periodo: str, libro: Libro, db: AsyncIOMotorDatabase
+) -> list:
+    filtro = build_match_filter(
+        empresa_ids,
+        periodo,
+        libro,
         extra={"metadata_procesada.resultado": {"$exists": True, "$ne": None}},
     )
     pipeline = [
-        {"$match": match_filter},
-        {"$group": {
-            "_id": "$metadata_procesada.resultado",
-            "value": {"$sum": 1}
-        }},
-        {"$project": {
-            "_id": 0,
-            "name": "$_id",
-            "value": 1
-        }}
+        {"$match": filtro},
+        {"$group": {"_id": "$metadata_procesada.resultado", "value": {"$sum": 1}}},
     ]
-    res = await facturas_col.aggregate(pipeline).to_list(None)
-    counts = {"GASTO": 0, "COSTO": 0, "MIXTO": 0, "OTROS": 0}
-    for item in res:
-        name = str(item.get("name", "")).upper()
-        if "GASTO" in name:
-            counts["GASTO"] += item["value"]
-        elif "COSTO" in name:
-            counts["COSTO"] += item["value"]
-        elif "MIXTO" in name:
-            counts["MIXTO"] += item["value"]
+    filas = await _col(db).aggregate(pipeline).to_list(None)
+
+    conteos = {"GASTO": 0, "COSTO": 0, "MIXTO": 0, "OTROS": 0}
+    for item in filas:
+        nombre = str(item.get("_id", "")).upper()
+        if "GASTO" in nombre:
+            conteos["GASTO"] += item["value"]
+        elif "COSTO" in nombre:
+            conteos["COSTO"] += item["value"]
+        elif "MIXTO" in nombre:
+            conteos["MIXTO"] += item["value"]
         else:
-            counts["OTROS"] += item["value"]
+            conteos["OTROS"] += item["value"]
 
-    return [{"name": k, "value": v} for k, v in counts.items() if v > 0]
+    return [{"name": k, "value": v} for k, v in conteos.items() if v > 0]
 
 
-async def get_invoices_by_day(user_ids: List[str], periodo: str, tipo_operacion: str, db) -> list:
-    facturas_col = db["facturas"]
-    match_filter = build_match_filter(user_ids, periodo, tipo_operacion)
+async def get_comprobantes_by_day(
+    empresa_ids: list[str], periodo: str, libro: Libro, db: AsyncIOMotorDatabase
+) -> list:
+    filtro = build_match_filter(
+        empresa_ids, periodo, libro, extra={"fecha_emision": {"$ne": None}}
+    )
     pipeline = [
-        {"$match": match_filter},
-        {"$project": {
-            "dia": {"$substr": ["$fecha_emision", 0, 2]}
-        }},
-        {"$group": {
-            "_id": "$dia",
-            "qty": {"$sum": 1}
-        }},
-        {"$sort": {"_id": 1}}
+        {"$match": filtro},
+        {"$group": {"_id": {"$dayOfMonth": "$fecha_emision"}, "qty": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
     ]
-    res = await facturas_col.aggregate(pipeline).to_list(None)
-    final_res = []
-    for item in res:
-        dia = item["_id"]
-        if dia and "-" in dia:
-            continue
-        final_res.append({
-            "name": f"Día {dia}",
-            "qty": item["qty"]
-        })
-    return sorted(final_res, key=lambda x: x["name"])
+    filas = await _col(db).aggregate(pipeline).to_list(None)
+    return [{"name": f"Día {f['_id']:02d}", "qty": f["qty"]} for f in filas]
 
 
-async def get_invoices_list(user_ids: List[str], periodo: str, tipo_operacion: str, db, limit: int = 200) -> list:
-    facturas_col = db["facturas"]
-    query = build_match_filter(user_ids, periodo, tipo_operacion)
-    cursor = facturas_col.find(query, {"_id": 0, "xml_content": 0, "pdf_content": 0}).sort("fecha_emision", -1).limit(limit)
-    return await cursor.to_list(limit)
+async def get_comprobantes_list(
+    empresa_ids: list[str],
+    periodo: str,
+    libro: Libro,
+    db: AsyncIOMotorDatabase,
+    limit: int = 200,
+) -> list:
+    from app.services.comprobante_service import serializar_lote
+
+    filtro = build_match_filter(empresa_ids, periodo, libro)
+    cursor = _col(db).find(filtro).sort("fecha_emision", -1).limit(limit)
+    filas = await cursor.to_list(limit)
+    return serializar_lote(filas)
+
+
+async def periodos_disponibles(
+    empresa_ids: list[str], db: AsyncIOMotorDatabase
+) -> list[str]:
+    if not empresa_ids:
+        return []
+    return await repo_comprobantes.periodos_disponibles(db, empresa_ids)
