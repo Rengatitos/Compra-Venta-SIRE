@@ -27,4 +27,27 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ruff>=0.15.10",
+    "pytest>=8.3.0",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "B008",  # FastAPI declara dependencias como valores por defecto.
+    "UP042", # `str, Enum` en vez de `StrEnum`: pydantic y FastAPI serializan
+             # el primero de forma predecible en respuestas y parámetros.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Texto de prompts y selectores del portal SOL: cortarlos los vuelve ilegibles.
+"app/services/analisis_ia.py" = ["E501"]
+"app/services/scraping_sunat.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# El proyecto no se instala como paquete; se importa desde la raíz.
+pythonpath = ["."]
