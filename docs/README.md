@@ -1,5 +1,13 @@
 # Documentación — Sire (facturas-api)
 
+> **⚠️ Esta carpeta está desactualizada.** Describe la estructura anterior al
+> refactor de alineación: rutas `/sol-users/{user_id}/…`, colecciones
+> `sol_users` y `facturas`, y archivos en `app/api/routes/` que ya no existen.
+>
+> Para el estado actual: [README](../README.md) (estructura y endpoints) y
+> [PLAN.md](../PLAN.md) (arquitectura y decisiones). Regenerar estas páginas
+> contra el código nuevo está pendiente.
+
 Índice de toda la documentación del sistema.
 
 ## Qué es el sistema
