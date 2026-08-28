@@ -15,6 +15,7 @@ app/
   core/            configuración, autenticación, cifrado
   schemas/         modelos Pydantic de request/response
 tests/domain/      tests sin I/O
+frontend/          SPA en React + TypeScript que consume esta API (README propio)
 ```
 
 La regla que sostiene la separación: **`domain/` no importa `app.db`, `app.repositories` ni `requests`**. Todo lo que entra son estructuras de datos, y por eso se puede testear sin Mongo ni SUNAT.
@@ -87,6 +88,21 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 9007 --reload
 ```
 
 Playwright solo hace falta para el endpoint de extracción de detalle.
+
+## Frontend
+
+Con la API arriba, el panel web se levanta aparte. `CORS_ORIGINS` ya incluye `http://localhost:5173`
+por defecto, y en desarrollo el proxy de Vite apunta a `127.0.0.1:9007`.
+
+```bash
+npm install --prefix frontend
+```
+
+```bash
+npm run dev --prefix frontend
+```
+
+Detalles de arquitectura, diseño y accesibilidad en [frontend/README.md](frontend/README.md).
 
 ## Tests y lint
 
