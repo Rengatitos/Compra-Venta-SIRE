@@ -1,5 +1,11 @@
+import json
+from typing import Annotated
+
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+# El default cubre el frontend en desarrollo (Vite en 5173).
+CORS_ORIGINS_POR_DEFECTO = ["http://localhost:5173", "http://localhost:3000"]
 
 
 class Settings(BaseSettings):
@@ -23,15 +29,42 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str | None = None
 
-    # Lista separada por comas. El default cubre el frontend en desarrollo.
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # Orígenes permitidos por CORS. Se acepta tanto la lista separada por comas
+    # que documenta `.env.example` como una lista JSON.
+    #
+    # `NoDecode` es imprescindible: sin él, pydantic-settings trata cualquier
+    # campo complejo del entorno como JSON y falla en `prepare_field_value`
+    # antes de que `_parsear_origenes` llegue a ejecutarse, así que el formato
+    # con comas reventaba el arranque con JSONDecodeError.
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = CORS_ORIGINS_POR_DEFECTO
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
-    def _split_origins(cls, v):
-        if isinstance(v, str):
-            return [origen.strip() for origen in v.split(",") if origen.strip()]
-        return v
+    def _parsear_origenes(cls, v):
+        if not isinstance(v, str):
+            return v
+
+        texto = v.strip()
+        # Un valor vacío significa "no lo configuré", no "no permitas nada":
+        # dejar la lista vacía bloquearía al frontend sin ninguna pista del por qué.
+        if not texto:
+            return list(CORS_ORIGINS_POR_DEFECTO)
+
+        # Con NoDecode ya nadie decodifica el JSON, así que hay que hacerlo aquí
+        # para no romper los despliegues que ya usaban esa forma.
+        if texto.startswith("["):
+            try:
+                decodificado = json.loads(texto)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "CORS_ORIGINS parece una lista JSON pero no se pudo decodificar. "
+                    "Usa una lista separada por comas o un JSON válido."
+                ) from exc
+            if not isinstance(decodificado, list):
+                raise ValueError("CORS_ORIGINS en JSON debe ser una lista de cadenas")
+            return [str(origen).strip() for origen in decodificado if str(origen).strip()]
+
+        return [origen.strip() for origen in texto.split(",") if origen.strip()]
 
 
 settings = Settings()
