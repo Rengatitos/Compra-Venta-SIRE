@@ -1,0 +1,82 @@
+.selector {
+  min-inline-size: 12rem;
+}
+
+.grafico {
+  inline-size: 100%;
+  block-size: 16rem;
+}
+
+.graficoAlto {
+  inline-size: 100%;
+  block-size: 20rem;
+}
+
+.tabla {
+  inline-size: 100%;
+  font-size: var(--text-body-sm);
+  border-collapse: collapse;
+}
+
+.leyenda {
+  padding-block-end: var(--space-2);
+  font-size: var(--text-label-md);
+  color: var(--color-text-secondary);
+  text-align: start;
+}
+
+.celdaCabecera {
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-label);
+  text-align: start;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.celda {
+  padding: var(--space-2) var(--space-3);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.celdaNumerica {
+  padding: var(--space-2) var(--space-3);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  border-block-end: 1px solid var(--color-border);
+}
+
+.alternar {
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  color: var(--color-text-label);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.alternar:hover {
+  color: var(--color-text-primary);
+}
+
+/* Entrada escalonada de los paneles, como pide design.md. Solo transform y
+   opacity, y únicamente si el usuario no ha pedido reducir el movimiento. */
+@media (prefers-reduced-motion: no-preference) {
+  .entrada {
+    animation: aparecer var(--duration-slow) var(--ease-out) both;
+    animation-delay: calc(var(--indice, 0) * 70ms);
+  }
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}

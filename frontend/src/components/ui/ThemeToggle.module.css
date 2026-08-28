@@ -1,0 +1,22 @@
+.boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+.boton:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-2);
+  border-color: var(--color-border);
+}
+
+.icono {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}

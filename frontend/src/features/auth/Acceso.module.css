@@ -1,0 +1,99 @@
+.pagina {
+  display: grid;
+  place-items: center;
+  min-block-size: 100vh;
+  padding: var(--space-6) var(--space-4);
+}
+
+.tarjeta {
+  inline-size: 100%;
+  max-inline-size: 27rem;
+  padding: var(--space-6);
+  background-color: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.encabezado {
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.marca {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-label);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.titulo {
+  margin-block: var(--space-3) var(--space-2);
+  font-size: var(--text-display-md);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-display);
+}
+
+.tituloEspaciado {
+  margin-block-end: var(--space-6);
+}
+
+.intro {
+  margin-block-end: var(--space-6);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.aviso {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  font-size: var(--text-body-sm);
+  color: var(--color-danger);
+  background-color: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-control);
+}
+
+.exito {
+  color: var(--color-success);
+  background-color: var(--color-success-bg);
+  border-color: var(--color-success-border);
+}
+
+.pie {
+  margin-block-start: var(--space-5);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.opcionales {
+  margin-block-start: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.resumen {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-body-sm);
+  cursor: pointer;
+}
+
+.detalleCuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 0 var(--space-4) var(--space-4);
+}

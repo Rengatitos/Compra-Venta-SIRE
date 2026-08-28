@@ -1,0 +1,83 @@
+/* Reset mínimo. Nada de anular outlines sin sustituto, nada de overflow oculto. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  /* Sigue siendo necesario en iOS Safari, que no soporta la versión sin prefijo. */
+  /* stylelint-disable-next-line property-no-vendor-prefix */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-md);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+img,
+picture,
+svg,
+video,
+canvas {
+  display: block;
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-display);
+  text-wrap: balance;
+}
+
+p,
+li {
+  text-wrap: pretty;
+}
+
+ul[class],
+ol[class] {
+  padding-inline-start: 0;
+  list-style: none;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+/* Anillo de foco único para toda la app. Se aplica a cualquier elemento
+   enfocable y nunca se elimina: solo se reposiciona con --focus-offset. */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: var(--focus-offset, 2px);
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}

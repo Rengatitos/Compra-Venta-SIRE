@@ -1,0 +1,65 @@
+/* Estilos globales: solo el lienzo y un par de utilidades. Todo lo demás vive
+   en un *.module.css junto a su componente. */
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+}
+
+/* Deliberadamente NO hay `overflow-x: hidden` global: el desbordamiento se
+   resuelve donde nace (ver el contenedor scrollable de DataTable). */
+
+a {
+  color: var(--color-link);
+  text-decoration-color: var(--color-link-underline);
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  text-decoration-color: currentcolor;
+}
+
+::selection {
+  background-color: var(--color-accent);
+  color: var(--color-bg);
+}
+
+/* Barras de desplazamiento discretas, nunca ocultas: siguen siendo visibles y
+   arrastrables (requisito de accesibilidad). */
+* {
+  scrollbar-color: var(--color-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+/* Texto solo para tecnologías de asistencia. Se usa, entre otras cosas, para
+   exponer los datos de cada gráfico como tabla real. */
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+
+/*
+ * Los colores no se transicionan a propósito: sus valores vienen de tokens que
+ * se sustituyen de golpe al cambiar de tema, y una propiedad de color en
+ * transición puede quedarse congelada en el valor del tema anterior (se
+ * reproduce en una pestaña que no está produciendo frames). Se transicionan
+ * solo transform, box-shadow y opacity, que no dependen del tema.
+ */
+
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+  }
+}

@@ -1,0 +1,207 @@
+/*
+ * Tokens de diseño — única fuente de valores visuales de la aplicación.
+ * Basados en el frontmatter de design.md ("Nexus Analytics Dashboard").
+ *
+ * DOS TEMAS. El modo claro es el predeterminado y vive en `:root`; el oscuro
+ * se activa con `data-theme="dark"` en el elemento raíz (ver src/lib/theme.ts).
+ * Solo se redefinen los tokens de color: tipografía, espaciado, radios y motion
+ * son comunes, así que cualquier componente sirve en ambos temas sin tocarlo.
+ *
+ * No se sigue `prefers-color-scheme` automáticamente: el requisito es que la
+ * aplicación arranque en claro. Lo que sí se respeta es la elección explícita
+ * del usuario, que se recuerda entre visitas.
+ *
+ * Desviaciones deliberadas respecto de design.md, ambas por contraste:
+ *
+ *   1. design.md declara surface #94A3B8 con text-primary #FFFFFF. Ese par da
+ *      2.56:1 y no llega al 4.5:1 de WCAG 2.1 AA. En el tema oscuro, #94A3B8
+ *      pasa a ser acento y etiqueta sobre fondo oscuro (8.19:1) y las
+ *      superficies son negros elevados, que es además lo que muestra la
+ *      referencia visual: paneles anidados sobre negro.
+ *   2. En el tema claro no se puede reutilizar esa gama: #94A3B8 sobre blanco
+ *      da 2.56:1. Los grises de texto bajan a la familia slate-600/700 y la
+ *      paleta de gráficos se oscurece para mantener 3:1 como objeto gráfico.
+ *
+ * Todo par texto/fondo definido aquí supera 4.5:1 en los dos temas.
+ */
+
+:root {
+  /* ——— Tema claro (predeterminado) ——— */
+  color-scheme: light;
+
+  /* Fondo y superficies */
+  --color-bg: #f8fafc;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #f1f5f9;
+  --color-surface-3: #e9eef5;
+  --color-surface-hover: #e2e8f0;
+
+  /* Texto (contraste sobre --color-surface-1) */
+  --color-text-primary: #0f172a; /* 17.9:1 */
+  --color-text-secondary: #475569; /* 7.49:1 */
+  --color-text-label: #475569; /* 7.49:1 */
+
+  /* Acento y bordes */
+  --color-accent: #475569;
+  --color-accent-strong: #0f172a; /* fondo del botón primario */
+  --color-accent-hover: #1e293b;
+  --color-border: rgb(15 23 42 / 12%);
+  --color-border-strong: rgb(15 23 42 / 22%);
+  --color-focus: #0f172a;
+
+  /* En el tema claro el color del enlace coincide con el del texto, así que el
+     subrayado es la única señal: se refuerza para que no dependa del color
+     (WCAG 1.4.1). En el oscuro el enlace ya es más claro que el cuerpo. */
+  --color-link: #0f172a;
+  --color-link-underline: rgb(15 23 42 / 45%);
+
+  /* Estado. Los ratios son contra el fondo teñido del propio estado sobre
+     --color-surface-3, que es el peor caso donde aparecen (insignias dentro de
+     tablas y paneles anidados). Con la familia 700 de Tailwind el verde y el
+     ámbar se quedaban en 3.9:1 ahí, así que bajan a la 800. */
+  --color-success: #166534; /* 5.45:1 */
+  --color-warning: #92400e; /* 5.40:1 */
+  --color-danger: #991b1b; /* 6.22:1 */
+  --color-info: #475569; /* 5.81:1 */
+  --color-success-bg: rgb(22 101 52 / 8%);
+  --color-warning-bg: rgb(146 64 14 / 8%);
+  --color-danger-bg: rgb(153 27 27 / 8%);
+  --color-info-bg: rgb(71 85 105 / 8%);
+  --color-success-border: rgb(22 101 52 / 32%);
+  --color-warning-border: rgb(146 64 14 / 32%);
+  --color-danger-border: rgb(153 27 27 / 32%);
+  --color-info-border: rgb(71 85 105 / 32%);
+
+  /* Series de gráfico. Todas ≥ 3:1 sobre la superficie, que es lo que exige
+     WCAG 1.4.11 para objetos gráficos no textuales. */
+  --chart-1: #0f172a;
+  --chart-2: #334155;
+  --chart-3: #64748b;
+  --chart-4: #7a8aa0;
+  --chart-grid: rgb(15 23 42 / 10%);
+
+  /* Capas compuestas: cabecera translúcida, backdrop del diálogo y los dos
+     gradientes del fondo ambiental. */
+  --color-header-bg: rgb(248 250 252 / 82%);
+  --color-backdrop: rgb(15 23 42 / 42%);
+  --ambient-1: rgb(71 85 105 / 10%);
+  --ambient-2: rgb(15 23 42 / 5%);
+  --ambient-mask: #000000;
+
+  /* Sombra */
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 6%), 0 8px 24px rgb(15 23 42 / 6%);
+  --shadow-lift: 0 2px 4px rgb(15 23 42 / 8%), 0 16px 36px rgb(15 23 42 / 10%);
+  --shadow-dialog: 0 24px 64px rgb(15 23 42 / 24%);
+
+  /* ——— Comunes a los dos temas ——— */
+
+  /* Tipografía */
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'Cascadia Mono',
+    monospace;
+
+  /* display-lg: 64px en design.md; clamp para que no desborde en móvil. */
+  --text-display-lg: clamp(2.25rem, 1.5rem + 4vw, 4rem);
+  --text-display-md: clamp(1.75rem, 1.25rem + 2vw, 2.5rem);
+  --text-title: 1.25rem;
+  --text-body-md: 1rem;
+  --text-body-sm: 0.875rem;
+  --text-label-md: 0.75rem;
+
+  --leading-display: 1.04;
+  --leading-body: 1.6;
+  --leading-label: 1.2;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  --tracking-label: 0.06em;
+
+  /* Espaciado (base 8px, design.md) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 5rem;
+
+  --gap: 1rem; /* 16px  */
+  --card-padding: 1.5rem; /* 24px  */
+  --section-padding: 5rem; /* 80px  */
+
+  /* Radios */
+  --radius-card: 14px;
+  --radius-control: 14px;
+  --radius-pill: 9999px;
+  --radius-sm: 8px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+  --duration-slow: 480ms;
+
+  /* Layout */
+  --shell-nav-width: 15rem;
+  --content-max-width: 90rem;
+  --z-dialog: 100;
+  --z-toast: 200;
+}
+
+/* ——— Tema oscuro: el de design.md ——— */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-bg: #000000;
+  --color-surface-1: #0a0a0b;
+  --color-surface-2: #111113;
+  --color-surface-3: #17171a;
+  --color-surface-hover: #1c1c20;
+
+  --color-text-primary: #ffffff; /* 21:1   */
+  --color-text-secondary: #a1a1aa; /* 8.20:1 */
+  --color-text-label: #94a3b8; /* 8.19:1 */
+
+  --color-accent: #94a3b8;
+  --color-accent-strong: #e2e8f0;
+  --color-accent-hover: #ffffff;
+  --color-border: rgb(203 213 225 / 14%);
+  --color-border-strong: rgb(203 213 225 / 24%);
+  --color-focus: #cbd5e1;
+
+  --color-link: #e2e8f0;
+  --color-link-underline: rgb(203 213 225 / 40%);
+
+  /* Medidos igual que en claro, contra el fondo teñido sobre surface-3. */
+  --color-success: #4ade80; /* 8.11:1 */
+  --color-warning: #fbbf24; /* 8.40:1 */
+  --color-danger: #f87171; /* 5.46:1 */
+  --color-info: #94a3b8; /* 5.75:1 */
+  --color-success-bg: rgb(74 222 128 / 12%);
+  --color-warning-bg: rgb(251 191 36 / 12%);
+  --color-danger-bg: rgb(248 113 113 / 12%);
+  --color-info-bg: rgb(148 163 184 / 12%);
+  --color-success-border: rgb(74 222 128 / 32%);
+  --color-warning-border: rgb(251 191 36 / 32%);
+  --color-danger-border: rgb(248 113 113 / 35%);
+  --color-info-border: rgb(148 163 184 / 30%);
+
+  --chart-1: #e2e8f0;
+  --chart-2: #94a3b8;
+  --chart-3: #cbd5e1;
+  --chart-4: #64748b;
+  --chart-grid: rgb(203 213 225 / 10%);
+
+  --color-header-bg: rgb(0 0 0 / 72%);
+  --color-backdrop: rgb(0 0 0 / 72%);
+  --ambient-1: rgb(148 163 184 / 14%);
+  --ambient-2: rgb(203 213 225 / 8%);
+  --ambient-mask: #000000;
+
+  --shadow-card: 0 1px 0 rgb(255 255 255 / 4%) inset, 0 12px 32px rgb(0 0 0 / 60%);
+  --shadow-lift: 0 1px 0 rgb(255 255 255 / 6%) inset, 0 20px 44px rgb(0 0 0 / 70%);
+  --shadow-dialog: 0 32px 80px rgb(0 0 0 / 80%);
+}

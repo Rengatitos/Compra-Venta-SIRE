@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Panel de control del SIRE de SUNAT: periodos, propuesta de compras, analisis contable con IA y exportacion de comprobantes."
+    />
+    <title>SIRE App</title>
+    <script>
+      /*
+        El tema se aplica antes del primer pintado para que quien haya elegido
+        el modo oscuro no vea un destello claro al cargar. El predeterminado es
+        claro, así que solo hay que actuar cuando la preferencia guardada es
+        'dark'. La clave y los valores son los de src/lib/theme.ts.
+      */
+      (function () {
+        try {
+          var guardado = localStorage.getItem('sire.tema');
+          document.documentElement.dataset.theme = guardado === 'dark' ? 'dark' : 'light';
+        } catch (error) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

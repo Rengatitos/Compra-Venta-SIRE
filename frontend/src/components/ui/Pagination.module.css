@@ -1,0 +1,12 @@
+.navegacion {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.indicador {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}

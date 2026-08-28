@@ -1,0 +1,113 @@
+/* Composiciones de layout reutilizables. Siguen siendo CSS Modules (clases
+   locales), así que no hay estilos globales sueltos ni cascada sorpresa. */
+
+/* Apilado vertical con el ritmo de --gap. */
+.pila {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-inline-size: 0;
+}
+
+.pilaAmplia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-inline-size: 0;
+}
+
+/* Fila de métricas: se reacomoda sola, sin breakpoints arbitrarios. */
+.rejillaMetricas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--gap);
+}
+
+/* Bento del dashboard: dos tercios / un tercio en pantallas anchas, una sola
+   columna en cuanto deja de caber. */
+.bento {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
+  gap: var(--gap);
+  align-items: start;
+}
+
+.bentoAncho {
+  grid-column: span 2;
+}
+
+@media (width <= 60rem) {
+  .bentoAncho {
+    grid-column: auto;
+  }
+}
+
+/* Rejilla de formulario: dos columnas cuando hay sitio. */
+.rejillaFormulario {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  gap: var(--gap);
+  align-items: start;
+}
+
+.fila {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.filaFin {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Lista de pares dato/valor para las fichas de detalle. */
+.definiciones {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  gap: var(--gap);
+  margin: 0;
+}
+
+.termino {
+  margin-block-end: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-label);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.descripcion {
+  margin: 0;
+  font-size: var(--text-body-md);
+  overflow-wrap: anywhere;
+}
+
+.numerica {
+  font-variant-numeric: tabular-nums;
+}
+
+.textoSecundario {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Bloques preformateados (JSON del scraping): scroll propio, nunca del body. */
+.preformateado {
+  max-block-size: 24rem;
+  padding: var(--space-4);
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  line-height: var(--leading-body);
+  color: var(--color-text-secondary);
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}

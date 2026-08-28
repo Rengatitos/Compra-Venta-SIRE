@@ -1,0 +1,84 @@
+.saltar {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: var(--z-toast);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-body-sm);
+  color: var(--color-bg);
+  text-decoration: none;
+  background-color: var(--color-accent-strong);
+  border-radius: var(--radius-control);
+  transform: translateY(-200%);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.saltar:focus-visible {
+  transform: translateY(0);
+}
+
+.armazon {
+  display: grid;
+  grid-template-areas:
+    'cabecera cabecera'
+    'nav contenido'
+    'nav pie';
+  grid-template-columns: var(--shell-nav-width) minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  min-block-size: 100vh;
+}
+
+.cabecera {
+  grid-area: cabecera;
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 10;
+  backdrop-filter: blur(12px);
+  background-color: var(--color-header-bg);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.nav {
+  grid-area: nav;
+  padding: var(--space-5) var(--space-4);
+  border-inline-end: 1px solid var(--color-border);
+}
+
+.contenido {
+  grid-area: contenido;
+  inline-size: 100%;
+  max-inline-size: var(--content-max-width);
+  padding: var(--space-6) var(--space-5) var(--space-7);
+}
+
+.pie {
+  grid-area: pie;
+  padding: var(--space-5);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+  border-block-start: 1px solid var(--color-border);
+}
+
+/* Por debajo de 60rem la navegación lateral pasa a una barra horizontal bajo la
+   cabecera: mismo orden de lectura, sin scroll horizontal de página. */
+@media (width <= 60rem) {
+  .armazon {
+    grid-template-areas:
+      'cabecera'
+      'nav'
+      'contenido'
+      'pie';
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr auto;
+  }
+
+  .nav {
+    padding: var(--space-3) var(--space-4);
+    border-inline-end: none;
+    border-block-end: 1px solid var(--color-border);
+  }
+
+  .contenido {
+    padding: var(--space-5) var(--space-4) var(--space-6);
+  }
+}

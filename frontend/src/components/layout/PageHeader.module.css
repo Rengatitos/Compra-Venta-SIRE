@@ -1,0 +1,34 @@
+.cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-block-end: var(--space-6);
+}
+
+.textos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.titulo {
+  font-size: var(--text-display-md);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-display);
+}
+
+.descripcion {
+  max-inline-size: 70ch;
+  font-size: var(--text-body-md);
+  color: var(--color-text-secondary);
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}

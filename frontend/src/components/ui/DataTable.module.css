@@ -1,0 +1,81 @@
+/* El desbordamiento horizontal se resuelve aquí, no con overflow-x oculto en el
+   body: la región es desplazable y además enfocable con el teclado. */
+.region {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.region:focus-visible {
+  --focus-offset: -2px;
+}
+
+.tabla {
+  inline-size: 100%;
+  font-size: var(--text-body-sm);
+  border-collapse: collapse;
+}
+
+.leyenda {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-label-md);
+  color: var(--color-text-secondary);
+  text-align: start;
+}
+
+.celdaCabecera {
+  position: sticky;
+  inset-block-start: 0;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-label);
+  text-align: start;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  white-space: nowrap;
+  background-color: var(--color-surface-2);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.celda {
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-primary);
+  vertical-align: top;
+  border-block-end: 1px solid var(--color-border);
+}
+
+.fila:last-child .celda {
+  border-block-end: none;
+}
+
+.fila:hover {
+  background-color: var(--color-surface-2);
+}
+
+.numerica {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.monoespaciada {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.pie {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  align-items: center;
+  justify-content: space-between;
+  padding-block-start: var(--space-3);
+}
+
+.recuento {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  color: var(--color-text-secondary);
+}

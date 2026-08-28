@@ -1,0 +1,53 @@
+.barra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+}
+
+.marca {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  text-decoration: none;
+}
+
+.nombre {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  letter-spacing: 0.18em;
+}
+
+.subtitulo {
+  font-size: var(--text-label-md);
+  color: var(--color-text-label);
+}
+
+.sesion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.datos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: end;
+}
+
+.ruc {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+}
+
+.rubro {
+  font-size: var(--text-label-md);
+  color: var(--color-text-secondary);
+}
