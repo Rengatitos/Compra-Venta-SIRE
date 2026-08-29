@@ -1,5 +1,19 @@
 # Endpoints — Jobs
 
+## `GET /api/v1/jobs`
+
+[listar_jobs](../../app/api/v1/routes/jobs.py:11). Historial de trabajos de la empresa, del más reciente al más antiguo. El RUC **sale del token**, nunca de un query param: no hay forma de pedir el historial de otra empresa.
+
+| Query | Tipo | Por defecto |
+|---|---|---|
+| `periodo` | `YYYYMM` | — |
+| `tipo` | `TipoJob` (`extraccion_detalles`) | — |
+| `estado` | `EstadoJob` (`pendiente`, `en_progreso`, `completado`, `fallido`) | — |
+| `limit` | 1–200 | 50 |
+| `skip` | ≥ 0 | 0 |
+
+Responde `list[JobResponse]`, con la misma forma de elemento que la consulta individual de abajo.
+
 ## `GET /api/v1/jobs/{job_id}`
 
 [obtener_job](../../app/api/v1/routes/jobs.py:10). Consulta el estado de cualquier trabajo asíncrono. No cuelga de `/empresas/{ruc}` — la pertenencia se valida comparando `job.ruc` contra el RUC del token del solicitante. `403` si el job pertenece a otra empresa; `404` si no existe.

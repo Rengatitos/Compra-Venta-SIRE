@@ -5,7 +5,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.domain.jobs import EstadoJob, Job, Progreso
+from app.domain.jobs import EstadoJob, Job, Progreso, TipoJob
 from app.repositories._mongo import NOMBRE_COL_JOBS
 
 
@@ -16,6 +16,9 @@ def _col(db: AsyncIOMotorDatabase):
 async def crear_indices(db: AsyncIOMotorDatabase) -> None:
     await _col(db).create_index("job_id", unique=True)
     await _col(db).create_index([("ruc", 1), ("periodo", 1)])
+    # El historial se lee siempre por empresa y de lo mas reciente a lo mas
+    # antiguo: sin este indice el sort se resuelve en memoria.
+    await _col(db).create_index([("ruc", 1), ("creado_en", -1)])
 
 
 def a_documento(job: Job) -> dict[str, Any]:
@@ -58,6 +61,29 @@ async def crear(db: AsyncIOMotorDatabase, job: Job) -> Job:
 async def obtener(db: AsyncIOMotorDatabase, job_id: str) -> Job | None:
     documento = await _col(db).find_one({"job_id": job_id})
     return desde_documento(documento) if documento else None
+
+
+async def listar(
+    db: AsyncIOMotorDatabase,
+    ruc: str,
+    *,
+    periodo: str | None = None,
+    tipo: TipoJob | None = None,
+    estado: EstadoJob | None = None,
+    limit: int = 50,
+    skip: int = 0,
+) -> list[Job]:
+    """Historial de trabajos de una empresa, del mas reciente al mas antiguo."""
+    filtro: dict[str, Any] = {"ruc": ruc}
+    if periodo:
+        filtro["periodo"] = periodo
+    if tipo:
+        filtro["tipo"] = tipo.value
+    if estado:
+        filtro["estado"] = estado.value
+
+    cursor = _col(db).find(filtro).sort("creado_en", -1).skip(skip).limit(limit)
+    return [desde_documento(documento) async for documento in cursor]
 
 
 async def actualizar(

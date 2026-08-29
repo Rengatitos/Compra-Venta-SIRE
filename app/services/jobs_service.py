@@ -33,6 +33,21 @@ async def obtener(db: AsyncIOMotorDatabase, job_id: str) -> Job | None:
     return await repo_jobs.obtener(db, job_id)
 
 
+async def listar(
+    db: AsyncIOMotorDatabase,
+    ruc: str,
+    *,
+    periodo: str | None = None,
+    tipo: TipoJob | None = None,
+    estado: EstadoJob | None = None,
+    limit: int = 50,
+    skip: int = 0,
+) -> list[Job]:
+    return await repo_jobs.listar(
+        db, ruc, periodo=periodo, tipo=tipo, estado=estado, limit=limit, skip=skip
+    )
+
+
 async def ejecutar(db: AsyncIOMotorDatabase, job_id: str, tarea: Tarea) -> None:
     async def reportar(actual: int, total: int, mensaje: str = "") -> None:
         await repo_jobs.actualizar(

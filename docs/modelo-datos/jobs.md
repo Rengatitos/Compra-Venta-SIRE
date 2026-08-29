@@ -13,4 +13,4 @@ Un trabajo asíncrono y su estado observable. Contrato definido en [domain/jobs.
 | `error` | str \| None | Mensaje de la excepción, si el job terminó en `fallido`. |
 | `creado_en`, `actualizado_en` | datetime UTC | |
 
-Índices: único sobre `job_id`; compuesto sobre `(ruc, periodo)` para consultas por contexto de negocio.
+Índices: único sobre `job_id`; compuesto sobre `(ruc, periodo)` para consultas por contexto de negocio; compuesto sobre `(ruc, creado_en desc)` para el historial que lista [`GET /api/v1/jobs`](../endpoints/jobs.md).
