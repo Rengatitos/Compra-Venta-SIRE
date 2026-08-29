@@ -21,7 +21,6 @@ import {
   formatearMontoCompacto,
   formatearPeriodo,
   formatearPorcentaje,
-  periodoPorDefecto,
 } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
@@ -36,7 +35,7 @@ export function DashboardPage() {
   const ruc = useRuc();
   const rucs = useMemo(() => [ruc], [ruc]);
 
-  const [periodo, setPeriodo] = useState(() => periodoPorDefecto());
+  const [elegido, setElegido] = useState<string | null>(null);
 
   // Los endpoints de analytics filtran por `rucs`; sin ese parámetro no
   // devuelven nada, así que siempre se envía el RUC de la sesión.
@@ -46,19 +45,91 @@ export function DashboardPage() {
     staleTime: 60_000,
   });
 
+  const disponibles = useMemo(
+    () => [...(periodos.data ?? [])].sort().reverse(),
+    [periodos.data],
+  );
+
+  /**
+   * El periodo mostrado se deriva de los que existen, no se guarda. Antes se
+   * arrancaba en el mes anterior y se metía a la fuerza en el desplegable,
+   * así que el panel ofrecía un periodo que nadie había creado —o que se
+   * acababa de borrar— y se quedaba en cero. Si el elegido desaparece, la
+   * selección cae sola al más reciente con datos.
+   */
+  const periodo = elegido && disponibles.includes(elegido) ? elegido : (disponibles[0] ?? null);
+
+  const opcionesPeriodo = useMemo(
+    () =>
+      disponibles.map((codigo) => ({
+        valor: codigo,
+        texto: `${formatearPeriodo(codigo)} (${codigo})`,
+      })),
+    [disponibles],
+  );
+
+  return (
+    <>
+      <PageHeader
+        titulo="Panel del periodo"
+        descripcion="Totales, ritmo diario, concentración por proveedor y avance de la clasificación con IA."
+        acciones={
+          periodo !== null ? (
+            <div className={estilos.selector}>
+              <SelectField
+                etiqueta="Periodo"
+                value={periodo}
+                onChange={(evento) => setElegido(evento.target.value)}
+                opciones={opcionesPeriodo}
+                mono
+              />
+            </div>
+          ) : null
+        }
+      />
+
+      {periodos.isPending ? <Skeleton lineas={4} etiqueta="Cargando los periodos" /> : null}
+
+      {periodos.isError ? (
+        <ErrorState
+          titulo="No se pudieron cargar los periodos"
+          texto={
+            periodos.error instanceof ApiError ? periodos.error.message : 'Error inesperado.'
+          }
+          accion={
+            <Button pequeno onClick={() => void periodos.refetch()}>
+              Reintentar
+            </Button>
+          }
+        />
+      ) : null}
+
+      {!periodos.isPending && !periodos.isError && periodo === null ? (
+        <EmptyState
+          titulo="Todavía no hay periodos con datos"
+          texto="Crea un periodo y sincroniza su propuesta de compras; en cuanto tenga comprobantes aparecerá aquí."
+          accion={<Link to="/periodos">Ir a periodos</Link>}
+        />
+      ) : null}
+
+      {periodo !== null ? <PanelDelPeriodo ruc={ruc} rucs={rucs} periodo={periodo} /> : null}
+
+    </>
+  );
+}
+
+interface PropsPanel {
+  ruc: string;
+  rucs: readonly string[];
+  /** Siempre un periodo que existe: la selección la resuelve `DashboardPage`. */
+  periodo: string;
+}
+
+function PanelDelPeriodo({ ruc, rucs, periodo }: PropsPanel) {
   const dashboard = useQuery({
     queryKey: ['dashboard', ruc, periodo],
     queryFn: () => obtenerDashboard(rucs, periodo, 'compras'),
   });
-
-  const opcionesPeriodo = useMemo(() => {
-    const disponibles = periodos.data ?? [];
-    const conjunto = [...new Set([...disponibles, periodo])].sort().reverse();
-    return conjunto.map((codigo) => ({
-      valor: codigo,
-      texto: `${formatearPeriodo(codigo)} (${codigo})`,
-    }));
-  }, [periodos.data, periodo]);
 
   const datos = dashboard.data;
   const resumen = datos?.summary;
@@ -73,7 +144,7 @@ export function DashboardPage() {
       monoespaciada: true,
       render: (fila) => (
         <Link
-          to={`/periodos/${encodeURIComponent(periodo)}/comprobantes/${encodeURIComponent(
+          to={`/periodos/${encodeURIComponent(periodo)}?comprobante=${encodeURIComponent(
             fila.serie_numero,
           )}`}
         >
@@ -114,22 +185,6 @@ export function DashboardPage() {
 
   return (
     <>
-      <PageHeader
-        titulo="Panel del periodo"
-        descripcion="Totales, ritmo diario, concentración por proveedor y avance de la clasificación con IA."
-        acciones={
-          <div className={estilos.selector}>
-            <SelectField
-              etiqueta="Periodo"
-              value={periodo}
-              onChange={(evento) => setPeriodo(evento.target.value)}
-              opciones={opcionesPeriodo}
-              mono
-            />
-          </div>
-        }
-      />
-
       {dashboard.isError ? (
         <ErrorState
           titulo="No se pudo cargar la analítica"
@@ -144,7 +199,9 @@ export function DashboardPage() {
         />
       ) : null}
 
-      {dashboard.isPending ? <Skeleton lineas={5} etiqueta="Cargando el panel" /> : null}
+      {periodo !== null && dashboard.isPending ? (
+        <Skeleton lineas={5} etiqueta="Cargando el panel" />
+      ) : null}
 
       {datos && resumen ? (
         <div className={layout.pilaAmplia}>
@@ -205,7 +262,7 @@ export function DashboardPage() {
                         titulo="Nada analizado todavía"
                         texto="Lanza el análisis con IA para ver la distribución contable."
                         accion={
-                          <Link to={`/periodos/${encodeURIComponent(periodo)}/analisis`}>
+                          <Link to={`/periodos/${encodeURIComponent(periodo)}`}>
                             Analizar el periodo
                           </Link>
                         }

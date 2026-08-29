@@ -1,10 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { DataTable } from '@/components/ui/DataTable';
 import type { Columna } from '@/components/ui/DataTable';
 import { EmptyState, ErrorState, MetricTile } from '@/components/ui/Feedback';
@@ -117,5 +118,70 @@ describe('conmutador de tema', () => {
 
     expect(document.documentElement.dataset.theme).toBe('dark');
     expect(screen.getByRole('button', { name: 'Activar el modo claro' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * `jsdom` no implementa `showModal`/`close`, que es lo único que `Dialog`
+ * delega en el navegador. Se sustituyen por lo mínimo para poder comprobar la
+ * estructura y el árbol accesible; el atrapado de foco y el cierre con Escape
+ * se verifican en el navegador, no aquí.
+ */
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function abrir(this: HTMLDialogElement) {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function cerrar(this: HTMLDialogElement) {
+    this.open = false;
+  };
+});
+
+describe('diálogo modal', () => {
+  it('se nombra por su título y expone encabezado, cuerpo y acciones', () => {
+    render(
+      <Dialog
+        abierto
+        ancho="amplio"
+        titulo="F700-642435"
+        texto="Factura electrónica · TRAHIS"
+        onCerrar={() => undefined}
+        acciones={<Button>Cerrar</Button>}
+      >
+        <p>Detalle del comprobante</p>
+      </Dialog>,
+    );
+
+    const dialogo = screen.getByRole('dialog', { name: 'F700-642435' });
+    expect(dialogo).toHaveTextContent('Factura electrónica · TRAHIS');
+    expect(dialogo).toHaveTextContent('Detalle del comprobante');
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument();
+  });
+
+  it('no tiene violaciones de axe con contenido largo', async () => {
+    const { container } = render(
+      <Dialog
+        abierto
+        titulo="Confirmar"
+        texto="Esta acción no se puede deshacer."
+        onCerrar={() => undefined}
+        acciones={
+          <>
+            <Button variante="fantasma">Cancelar</Button>
+            <Button variante="peligro">Eliminar</Button>
+          </>
+        }
+      >
+        <TextField etiqueta="Motivo" value="" onChange={() => undefined} />
+      </Dialog>,
+    );
+
+    expect(await axe(container, OPCIONES)).toHaveNoViolations();
+  });
+
+  it('cerrado no aparece en el árbol accesible', () => {
+    render(
+      <Dialog abierto={false} titulo="Oculto" onCerrar={() => undefined} acciones={null} />,
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

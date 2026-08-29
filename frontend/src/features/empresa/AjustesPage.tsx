@@ -17,7 +17,6 @@ import { Panel } from '@/components/ui/Panel';
 import { useAuth, useRuc } from '@/features/auth/useAuth';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useToast } from '@/hooks/useToast';
-import { formatearRuc } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
 
@@ -136,7 +135,7 @@ export function AjustesPage() {
             <dl className={layout.definiciones}>
               <div>
                 <dt className={layout.termino}>RUC</dt>
-                <dd className={layout.descripcion}>{formatearRuc(datos.ruc)}</dd>
+                <dd className={layout.descripcion}>{datos.ruc}</dd>
               </div>
               <div>
                 <dt className={layout.termino}>Usuario SOL</dt>

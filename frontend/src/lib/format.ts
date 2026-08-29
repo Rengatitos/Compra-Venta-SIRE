@@ -1,6 +1,7 @@
 /** Formateo para presentación. Funciones puras, sin dependencias de React. */
 
-const MESES = [
+/** Nombres en minúscula: quien los muestre decide si van capitalizados. */
+export const MESES = [
   'enero',
   'febrero',
   'marzo',
@@ -23,6 +24,7 @@ const formateadorFecha = new Intl.DateTimeFormat('es-PE', {
 });
 
 const formateadorEntero = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 0 });
+const formateadorCantidad = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 3 });
 
 const cacheMoneda = new Map<string, Intl.NumberFormat>();
 
@@ -65,6 +67,12 @@ export function formatearEntero(valor: number | null | undefined): string {
   return formateadorEntero.format(valor);
 }
 
+/** Cantidades de los ítems: hasta 3 decimales y sin ceros de relleno. */
+export function formatearCantidad(valor: number | null | undefined): string {
+  if (valor === null || valor === undefined || Number.isNaN(valor)) return '—';
+  return formateadorCantidad.format(valor);
+}
+
 /** `fecha_emision` llega como `YYYY-MM-DD` y puede ser null. */
 export function formatearFecha(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -99,12 +107,27 @@ export function periodoPorDefecto(hoy = new Date()): string {
   return `${fecha.getUTCFullYear()}${mes}`;
 }
 
+/** `202606` → `{ anio: '2026', mes: '06' }`. Para poblar los selectores. */
+export function partirPeriodo(periodo: string): { anio: string; mes: string } {
+  return { anio: periodo.slice(0, 4), mes: periodo.slice(4, 6) };
+}
+
+/** Inversa de `partirPeriodo`. El mes se rellena a dos dígitos. */
+export function componerPeriodo(anio: string, mes: string): string {
+  return `${anio}${mes.padStart(2, '0')}`;
+}
+
+/**
+ * Años que ofrece el selector: el actual y los cinco anteriores, que es el
+ * horizonte con el que trabaja un contador. Todos caen dentro de lo que admite
+ * `PERIODO_RE` (`20xx`).
+ */
+export function aniosDisponibles(hoy = new Date()): string[] {
+  const actual = hoy.getUTCFullYear();
+  return Array.from({ length: 6 }, (_, indice) => String(actual - indice));
+}
+
 export function formatearPorcentaje(valor: number | null | undefined): string {
   if (valor === null || valor === undefined || Number.isNaN(valor)) return '—';
   return `${Math.round(valor)} %`;
-}
-
-/** RUC de 11 dígitos agrupado para lectura: 20608997106 → 20 608997106. */
-export function formatearRuc(ruc: string): string {
-  return /^\d{11}$/.test(ruc) ? `${ruc.slice(0, 2)} ${ruc.slice(2)}` : ruc;
 }

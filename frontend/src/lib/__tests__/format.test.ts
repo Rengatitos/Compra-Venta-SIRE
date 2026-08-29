@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  aniosDisponibles,
+  componerPeriodo,
   formatearFecha,
   formatearMoneda,
   formatearMontoCompacto,
   formatearPeriodo,
   formatearPorcentaje,
-  formatearRuc,
+  partirPeriodo,
   periodoPorDefecto,
 } from '../format';
 
@@ -76,9 +78,32 @@ describe('otros formateadores', () => {
     expect(formatearPorcentaje(66.6)).toBe('67 %');
     expect(formatearPorcentaje(null)).toBe('—');
   });
+});
 
-  it('agrupa el RUC solo si tiene 11 dígitos', () => {
-    expect(formatearRuc('20608997106')).toBe('20 608997106');
-    expect(formatearRuc('123')).toBe('123');
+describe('selectores de periodo', () => {
+  it('parte un periodo en año y mes', () => {
+    expect(partirPeriodo('202606')).toEqual({ anio: '2026', mes: '06' });
+  });
+
+  it('vuelve a componerlo rellenando el mes a dos dígitos', () => {
+    expect(componerPeriodo('2026', '6')).toBe('202606');
+    expect(componerPeriodo('2026', '11')).toBe('202611');
+  });
+
+  it('parte y compone son inversas para el periodo por defecto', () => {
+    const periodo = periodoPorDefecto(new Date('2026-08-29T00:00:00Z'));
+    const { anio, mes } = partirPeriodo(periodo);
+    expect(componerPeriodo(anio, mes)).toBe(periodo);
+  });
+
+  it('ofrece el año actual y los cinco anteriores, del más nuevo al más viejo', () => {
+    expect(aniosDisponibles(new Date('2026-08-29T00:00:00Z'))).toEqual([
+      '2026',
+      '2025',
+      '2024',
+      '2023',
+      '2022',
+      '2021',
+    ]);
   });
 });
