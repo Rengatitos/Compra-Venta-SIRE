@@ -10,6 +10,12 @@ export interface Columna<T> {
   monoespaciada?: boolean;
   /** Convierte la celda en `<th scope="row">`: el identificador de la fila. */
   cabeceraDeFila?: boolean;
+  /**
+   * Ancho mínimo, p. ej. `'16rem'`. La tabla ocupa el 100 %, así que sin esto
+   * una columna de texto largo se estrangula hasta partir cada palabra. Con él
+   * la tabla desborda y usa el desplazamiento de su región.
+   */
+  anchoMinimo?: string;
   render: (fila: T) => ReactNode;
 }
 
@@ -55,6 +61,7 @@ export function DataTable<T>({
                 className={`${estilos.celdaCabecera} ${
                   columna.numerica ? (estilos.numerica ?? '') : ''
                 }`}
+                style={columna.anchoMinimo ? { minInlineSize: columna.anchoMinimo } : undefined}
               >
                 {columna.cabecera}
               </th>

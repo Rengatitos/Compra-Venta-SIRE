@@ -10,15 +10,28 @@ interface Props {
   /** Se dispara al pulsar Escape, al cerrar con el backdrop o desde las acciones. */
   onCerrar: () => void;
   acciones: ReactNode;
+  /** `amplio` para contenido con tablas; el ancho normal es de lectura. */
+  ancho?: 'normal' | 'amplio';
   children?: ReactNode;
 }
 
 /**
- * Diálogo modal sobre `<dialog>` nativo: el navegador aporta el atrapado de
- * foco, el cierre con Escape, `aria-modal` y la devolución del foco al elemento
- * que lo abrió. No hace falta reimplementar nada de eso.
+ * Diálogo modal sobre `<dialog>` nativo: el atrapado de foco, el cierre con
+ * Escape, `aria-modal` y la devolución del foco al elemento que lo abrió los
+ * aporta el navegador. No hace falta reimplementar nada de eso.
+ *
+ * El cuerpo se desplaza por su cuenta y el encabezado y las acciones quedan
+ * fijos, así que un contenido largo no deja el botón de cerrar fuera de vista.
  */
-export function Dialog({ abierto, titulo, texto, onCerrar, acciones, children }: Props) {
+export function Dialog({
+  abierto,
+  titulo,
+  texto,
+  onCerrar,
+  acciones,
+  ancho = 'normal',
+  children,
+}: Props) {
   const referencia = useRef<HTMLDialogElement>(null);
   const idTitulo = useId();
   const idTexto = useId();
@@ -48,11 +61,11 @@ export function Dialog({ abierto, titulo, texto, onCerrar, acciones, children }:
   return (
     <dialog
       ref={referencia}
-      className={estilos.dialogo}
+      className={`${estilos.dialogo} ${ancho === 'amplio' ? (estilos.amplio ?? '') : ''}`}
       aria-labelledby={idTitulo}
       aria-describedby={texto ? idTexto : undefined}
     >
-      <div className={estilos.contenido}>
+      <div className={estilos.cabecera}>
         <h2 className={estilos.titulo} id={idTitulo}>
           {titulo}
         </h2>
@@ -61,9 +74,11 @@ export function Dialog({ abierto, titulo, texto, onCerrar, acciones, children }:
             {texto}
           </p>
         ) : null}
-        {children}
-        <div className={estilos.acciones}>{acciones}</div>
       </div>
+
+      {children ? <div className={estilos.cuerpo}>{children}</div> : null}
+
+      <div className={estilos.acciones}>{acciones}</div>
     </dialog>
   );
 }

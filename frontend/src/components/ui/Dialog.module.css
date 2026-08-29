@@ -1,9 +1,18 @@
 /* Se usa <dialog> nativo con showModal(): el atrapado de foco, el cierre con
    Escape y el aria-modal los aporta el navegador. */
 .dialogo {
+  /* `reset.css` pone `* { margin: 0 }`, que pisa el `margin: auto` con el que el
+     navegador centra un `dialog:modal`. Hay que devolverlo a mano. */
   inline-size: min(34rem, calc(100vw - 2rem));
   max-block-size: calc(100vh - 4rem);
+  margin: auto;
   padding: 0;
+
+  /* El navegador le pone `overflow: auto` a `dialog`. Si por lo que sea el
+     reparto flex de abajo no llega a ceñir el contenido, esa regla saca una
+     segunda barra que recorre el diálogo entero y arrastra el encabezado y las
+     acciones al desplazar. Aquí solo se desplaza el cuerpo. */
+  overflow: hidden;
   color: var(--color-text-primary);
   background-color: var(--color-surface-1);
   border: 1px solid var(--color-border-strong);
@@ -11,14 +20,26 @@
   box-shadow: var(--shadow-dialog);
 }
 
+.amplio {
+  inline-size: min(64rem, calc(100vw - 2rem));
+}
+
+/* Solo al estar abierto: `display` en el estado cerrado lo maneja el navegador
+   con `display: none`, y pisarlo dejaría el diálogo siempre visible. */
+.dialogo[open] {
+  display: flex;
+  flex-direction: column;
+}
+
 .dialogo::backdrop {
   background-color: var(--color-backdrop);
 }
 
-.contenido {
+.cabecera {
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
+  flex-shrink: 0;
+  gap: var(--space-2);
   padding: var(--card-padding);
 }
 
@@ -31,9 +52,32 @@
   color: var(--color-text-secondary);
 }
 
+/* El único que se desplaza: el encabezado y las acciones quedan siempre a la
+   vista por larga que sea la ficha. Las líneas de separación son las que hacen
+   legible ese reparto; sin ellas el contenido parece meterse por debajo del
+   título y se lee como un fallo de pintado. */
+.cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-block-size: 0;
+  padding: var(--space-4) var(--card-padding);
+  overflow-y: auto;
+
+  /* Las líneas van en el cuerpo, no en el encabezado ni en las acciones: un
+     diálogo sin cuerpo (el de confirmar un borrado) las juntaría en una doble. */
+  border-block: 1px solid var(--color-border);
+
+  /* Al llegar al final del cuerpo el desplazamiento no debe seguir en la página
+     de detrás: mover el listado bajo un modal abierto se ve como un error. */
+  overscroll-behavior: contain;
+}
+
 .acciones {
   display: flex;
   flex-wrap: wrap;
+  flex-shrink: 0;
   gap: var(--space-2);
   justify-content: flex-end;
+  padding: var(--card-padding);
 }

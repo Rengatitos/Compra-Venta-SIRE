@@ -40,10 +40,16 @@
   border-block-end: 1px solid var(--color-border);
 }
 
+/* `font-weight` y `text-align` son explícitos porque la columna identificadora
+   se renderiza como `th scope="row"`, y el navegador la pinta centrada y en
+   negrita por defecto: sin esto la fila queda descuadrada respecto a su
+   cabecera. `middle` alinea insignias y botones con el texto de al lado. */
 .celda {
   padding: var(--space-3) var(--space-4);
+  font-weight: inherit;
   color: var(--color-text-primary);
-  vertical-align: top;
+  text-align: start;
+  vertical-align: middle;
   border-block-end: 1px solid var(--color-border);
 }
 
