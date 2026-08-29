@@ -5,6 +5,7 @@ import { Outlet } from 'react-router';
 import { obtenerEmpresa } from '@/api/empresas';
 import { Skeleton } from '@/components/ui/Feedback';
 import { useAuth, useRuc } from '@/features/auth/useAuth';
+import { JobsProvider } from '@/features/jobs/JobsProvider';
 
 import { AmbientBackground } from './AmbientBackground';
 import estilos from './AppShell.module.css';
@@ -14,6 +15,9 @@ import { TopBar } from './TopBar';
 /**
  * Armazón de las rutas autenticadas: landmarks semánticos (`header`, `nav`,
  * `main`, `footer`), enlace de salto al contenido y el fondo ambiental.
+ *
+ * `JobsProvider` se monta aquí y no en `App`: sondea `GET /jobs/{id}`, así que
+ * solo debe existir dentro de la zona ya autenticada.
  */
 export function AppShell() {
   const ruc = useRuc();
@@ -26,7 +30,7 @@ export function AppShell() {
   });
 
   return (
-    <>
+    <JobsProvider>
       <AmbientBackground />
       <a className={estilos.saltar} href="#contenido">
         Saltar al contenido
@@ -54,6 +58,6 @@ export function AppShell() {
           </p>
         </footer>
       </div>
-    </>
+    </JobsProvider>
   );
 }

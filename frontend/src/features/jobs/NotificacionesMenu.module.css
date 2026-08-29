@@ -1,0 +1,127 @@
+.contenedor {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.campana {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+.campana:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-2);
+  border-color: var(--color-border);
+}
+
+.icono {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+.iconoPequeno {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+/* Refuerzo visual: el estado real siempre va escrito en el nombre accesible. */
+.punto {
+  position: absolute;
+  inset-block-start: 0.35rem;
+  inset-inline-end: 0.35rem;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  background-color: var(--color-info);
+  border-radius: var(--radius-pill);
+}
+
+.panel {
+  position: absolute;
+  inset-block-start: calc(100% + var(--space-2));
+  inset-inline-end: 0;
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  inline-size: min(22rem, calc(100vw - var(--space-5) * 2));
+  max-block-size: 26rem;
+  padding: var(--space-4);
+
+  /* El desplazamiento vive en la lista, no aquí: así el enlace al historial
+     nunca queda por debajo del pliegue del panel. */
+  overflow: hidden;
+  text-align: start;
+  background-color: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-dialog);
+}
+
+.titulo {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-label);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.vacio {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+}
+
+.lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-block-size: 0;
+  padding-inline-start: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.cabeceraItem {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.periodo {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+}
+
+.marca {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  color: var(--color-text-secondary);
+}
+
+.pie {
+  flex-shrink: 0;
+  padding-block-start: var(--space-3);
+  border-block-start: 1px solid var(--color-border);
+}

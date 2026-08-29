@@ -2,7 +2,7 @@ import { Link } from 'react-router';
 
 import { Button } from '@/components/ui/Button';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { formatearRuc } from '@/lib/format';
+import { NotificacionesMenu } from '@/features/jobs/NotificacionesMenu';
 
 import estilos from './TopBar.module.css';
 
@@ -24,10 +24,11 @@ export function TopBar({ ruc, rubro, onSalir }: Props) {
         <div className={estilos.datos}>
           <span className={estilos.ruc}>
             <span className="visually-hidden">RUC de la empresa: </span>
-            {formatearRuc(ruc)}
+            {ruc}
           </span>
           <span className={estilos.rubro}>{rubro ?? 'Rubro no determinado'}</span>
         </div>
+        <NotificacionesMenu />
         <ThemeToggle />
         <Button variante="fantasma" pequeno onClick={onSalir}>
           Cerrar sesión

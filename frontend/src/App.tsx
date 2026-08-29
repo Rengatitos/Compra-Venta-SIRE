@@ -26,16 +26,8 @@ const ComprobantesPage = lazy(() =>
     default: m.ComprobantesPage,
   })),
 );
-const ComprobanteDetallePage = lazy(() =>
-  import('@/features/comprobantes/ComprobanteDetallePage').then((m) => ({
-    default: m.ComprobanteDetallePage,
-  })),
-);
-const AnalisisPage = lazy(() =>
-  import('@/features/analisis/AnalisisPage').then((m) => ({ default: m.AnalisisPage })),
-);
-const DetallePage = lazy(() =>
-  import('@/features/detalle/DetallePage').then((m) => ({ default: m.DetallePage })),
+const ProcesosPage = lazy(() =>
+  import('@/features/procesos/ProcesosPage').then((m) => ({ default: m.ProcesosPage })),
 );
 const ReferenciasPage = lazy(() =>
   import('@/features/referencias/ReferenciasPage').then((m) => ({
@@ -60,12 +52,7 @@ export function App() {
                 <Route index element={<DashboardPage />} />
                 <Route path="periodos" element={<PeriodosPage />} />
                 <Route path="periodos/:periodo" element={<ComprobantesPage />} />
-                <Route
-                  path="periodos/:periodo/comprobantes/:serieNumero"
-                  element={<ComprobanteDetallePage />}
-                />
-                <Route path="periodos/:periodo/analisis" element={<AnalisisPage />} />
-                <Route path="periodos/:periodo/detalle" element={<DetallePage />} />
+                <Route path="procesos" element={<ProcesosPage />} />
                 <Route path="referencias" element={<ReferenciasPage />} />
                 <Route path="ajustes" element={<AjustesPage />} />
                 <Route path="*" element={<NoEncontradaPage />} />

@@ -12,6 +12,7 @@ interface Entrada {
 const ENTRADAS: readonly Entrada[] = [
   { a: '/', texto: 'Dashboard', exacto: true },
   { a: '/periodos', texto: 'Periodos' },
+  { a: '/procesos', texto: 'Procesos' },
   { a: '/referencias', texto: 'Referencias' },
   { a: '/ajustes', texto: 'Ajustes' },
 ];
