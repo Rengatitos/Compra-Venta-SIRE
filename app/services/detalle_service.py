@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -28,7 +29,31 @@ async def extraer(
     total = len(pendientes)
     await reportar(0, total, f"Extrayendo detalle de {total} comprobantes")
 
-    resultados = await scraping_sunat.obtener_detalles(empresa, pendientes)
+    # El scraping corre en un hilo aparte (Playwright es síncrono) y avisa desde
+    # ahí. Motor está atado al loop, así que el reporte tiene que volver a él;
+    # no se espera el resultado para no bloquear el navegador contra Mongo.
+    loop = asyncio.get_running_loop()
+
+    def _registrar_fallo(futuro) -> None:
+        if futuro.exception():
+            logger.warning("No se pudo guardar el avance: %s", futuro.exception())
+
+    def avisar(hechos: int, serie_numero: str) -> None:
+        mensaje = f"Extrayendo {serie_numero} ({hechos + 1} de {total})"
+        try:
+            futuro = asyncio.run_coroutine_threadsafe(
+                reportar(hechos, total, mensaje), loop
+            )
+        except RuntimeError:
+            # El loop se cerró: el scraping sigue, pero
+            # ya no hay a quién informarle.
+            logger.debug("No se pudo reportar el avance: el loop está cerrado")
+            return
+        futuro.add_done_callback(_registrar_fallo)
+
+    resultados = await scraping_sunat.obtener_detalles(
+        empresa, pendientes, progreso=avisar
+    )
 
     con_detalle = 0
     for serie_numero, detalle in resultados.items():

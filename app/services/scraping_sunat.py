@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
 
@@ -135,7 +136,14 @@ def _scrape_detalles(
     debug: bool = False,
     headed: bool = False,
     slow_mo_ms: int = 0,
+    progreso: Callable[[int, str], None] | None = None,
 ) -> dict:
+    """`progreso(hechos, serie_numero)` se llama al empezar cada comprobante.
+
+    Recorrer un comprobante toma más de diez segundos, así que sin este aviso el
+    trabajo se pasa minutos enteros sin mover el contador y no hay forma de
+    distinguirlo de uno colgado.
+    """
     debug_logs = []
 
     def log(msg: str):
@@ -180,7 +188,11 @@ def _scrape_detalles(
             
             iframe = page.frame_locator("#iframeApplication")
             
-            for fac in facturas_a_buscar:
+            for hechos, fac in enumerate(facturas_a_buscar):
+                serie_num = fac.get("serie_numero", "")
+                if progreso:
+                    progreso(hechos, serie_num)
+
                 try:
                     page.evaluate("if(typeof ejecuta === 'function'){ ejecuta('MenuInternet.htm?action=iconExecute&code=11.9.5.1.1',false,'Consultar Factura, Boletas y Notas','#nivel1_11','11.9.5.1.1'); }")
                     iframe.locator("input#criterio\\.tipoConsulta").wait_for(state="visible", timeout=15000)
@@ -190,7 +202,6 @@ def _scrape_detalles(
                     page.screenshot(path=_ruta_log("error_iframe_timeout.png"))
                     continue
                 
-                serie_num = fac.get("serie_numero", "")
                 ruc_emisor = fac.get("documento_contraparte", "")
                 fecha_emision = fac.get("fecha_emision")
                 serie = fac.get("serie", "")
@@ -353,11 +364,14 @@ async def obtener_detalles(
     debug: bool = False,
     headed: bool = False,
     slow_mo_ms: int = 0,
+    progreso: Callable[[int, str], None] | None = None,
 ) -> dict:
     password_cifrada = empresa.get("password")
     if not password_cifrada:
         raise ValueError("No hay contraseña SOL guardada para ejecutar el scraping")
 
+    # `progreso` se invoca desde el hilo de Playwright: quien lo pase es
+    # responsable de devolver el aviso a su propio loop.
     return await asyncio.to_thread(
         _scrape_detalles,
         empresa["ruc"],
@@ -367,5 +381,6 @@ async def obtener_detalles(
         debug,
         headed,
         slow_mo_ms,
+        progreso,
     )
 
