@@ -41,6 +41,7 @@ La identidad del recurso es el **RUC**, no el `_id` de Mongo. El sujeto sale del
 | `GET` | `…/comprobantes/export` | Exportar a Excel o PDF |
 | `POST` | `…/periodos/{periodo}/analisis` | Clasificar con IA |
 | `POST` | `…/periodos/{periodo}/detalle` | Extraer detalle del portal SOL → `202` + `job_id` |
+| `GET` | `/jobs` | Historial de operaciones asíncronas de la empresa |
 | `GET` | `/jobs/{job_id}` | Estado y progreso de una operación asíncrona |
 | `GET` | `/analytics/*` | Agregados para el dashboard externo |
 

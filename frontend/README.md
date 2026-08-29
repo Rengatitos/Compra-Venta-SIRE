@@ -45,6 +45,11 @@ src/
   hooks/        useJobPolling, useToast, useDocumentTitle, usePrefersReducedMotion
 ```
 
+Las rutas autenticadas son `/` (dashboard), `/periodos`, `/periodos/:periodo` (comprobantes del
+periodo, desde donde se lanzan la extracción y el análisis), `/procesos`, `/referencias` y
+`/ajustes`. La ficha de un comprobante no es una ruta: es un modal sobre el listado, direccionado
+con `?comprobante=<serie>` para que el enlace se pueda compartir y «atrás» lo cierre.
+
 Nadie llama a `fetch` fuera de `src/lib/http.ts`; hay una regla de ESLint que lo impide. Los hooks de
 React Query viven junto a la pantalla que los usa, y `src/api/` solo contiene funciones puras.
 
@@ -65,8 +70,11 @@ dónde quedaron las boletas.
 **`sin_propuesta` no es un error.** Es el estado que escribe el backend cuando SUNAT no tiene
 propuesta para el periodo, y tiene su propio badge.
 
-**Jobs.** `POST …/detalle` responde `202` con un `job_id`. `useJobPolling` consulta
-`GET /jobs/{job_id}` cada 3 s y **deja de consultar** al llegar a `completado` o `fallido`.
+**Jobs.** `POST …/detalle` responde `202` con un `job_id`. `JobsProvider` (en `features/jobs/`)
+guarda los ids en `sessionStorage` y sondea cada uno con `useJobPolling`: `GET /jobs/{job_id}` cada
+3 s, y **deja de consultar** al llegar a `completado` o `fallido`. El seguimiento es global, así que
+el avance se ve en la campana de la barra superior desde cualquier pantalla y sobrevive a recargar.
+El historial completo sale de `GET /jobs` y vive en `/procesos`.
 
 **Sin pantalla de administración.** `GET /api/v1/empresas` exige el header `X-Admin-Token`. Meter ese
 secreto en un bundle de navegador sería filtrarlo, así que ese endpoint se queda fuera del frontend.
@@ -125,7 +133,7 @@ propia región desplazable, enfocable con el teclado.
 - Animaciones solo de `transform` y `opacity`, dentro de
   `@media (prefers-reduced-motion: no-preference)`: el estado sin movimiento es el predeterminado.
 
-Verificado en el navegador con axe-core: **0 violaciones WCAG 2.1 A/AA en las 8 rutas × los 2
+Verificado en el navegador con axe-core: **0 violaciones WCAG 2.1 A/AA en las rutas × los 2
 temas**. Además:
 
 - Los nodos que axe no puede evaluar (texto sobre el gradiente ambiental) se comprobaron a mano
