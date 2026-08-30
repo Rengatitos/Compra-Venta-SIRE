@@ -17,6 +17,7 @@ import { Panel } from '@/components/ui/Panel';
 import { useAuth, useRuc } from '@/features/auth/useAuth';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useToast } from '@/hooks/useToast';
+import { formatearFechaHora } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
 
@@ -148,8 +149,8 @@ export function AjustesPage() {
                 </dd>
               </div>
               <div>
-                <dt className={layout.termino}>Alta</dt>
-                <dd className={layout.descripcion}>{datos.fecha_creacion ?? '—'}</dd>
+                <dt className={layout.termino}>Cuenta</dt>
+                <dd className={layout.descripcion}>{formatearFechaHora(datos.fecha_creacion)}</dd>
               </div>
             </dl>
           ) : null}

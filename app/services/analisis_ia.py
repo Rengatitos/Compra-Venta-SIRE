@@ -1,10 +1,12 @@
 import asyncio
 import json
 import logging
+import re
 
 import numpy as np
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError
 
 from app.core.config import settings
 from app.domain.comprobante import EstadoProcesamiento
@@ -14,6 +16,37 @@ logger = logging.getLogger(__name__)
 vector_db: list[dict] = []
 
 _client: genai.Client | None = None
+
+# gemini-3.6-flash en el tier gratuito permite 5 requests/minuto por proyecto.
+# Espaciamos las llamadas y reintentamos con backoff para no saturar la cuota
+# cuando se analizan varios comprobantes en el mismo lote.
+GEMINI_MIN_INTERVAL_SECONDS = 13.0
+GEMINI_MAX_REINTENTOS = 3
+
+_gemini_lock = asyncio.Lock()
+_gemini_ultima_llamada = 0.0
+
+
+async def _esperar_turno_gemini() -> None:
+    global _gemini_ultima_llamada
+    async with _gemini_lock:
+        loop = asyncio.get_event_loop()
+        ahora = loop.time()
+        espera = _gemini_ultima_llamada + GEMINI_MIN_INTERVAL_SECONDS - ahora
+        if espera > 0:
+            await asyncio.sleep(espera)
+        _gemini_ultima_llamada = loop.time()
+
+
+def _extraer_retry_delay(exc: APIError) -> float | None:
+    detalles = exc.details if isinstance(exc.details, dict) else {}
+    for item in detalles.get("error", {}).get("details", []):
+        retry_delay = item.get("retryDelay")
+        if retry_delay:
+            match = re.match(r"([\d.]+)", retry_delay)
+            if match:
+                return float(match.group(1))
+    return None
 
 
 def _get_client() -> genai.Client:
@@ -223,7 +256,7 @@ def extraer_datos_factura(texto_factura: str, vector_db_usuario=None, rubro: str
     """
 
     response_json = _get_client().models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.6-flash",
         contents=[prompt, texto_factura],
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -276,25 +309,52 @@ async def procesar_lote(
             )
             return "sin_datos"
 
-        try:
-            datos = await asyncio.to_thread(
-                extraer_datos_factura,
-                texto_para_ia(documento),
-                vector_db_usuario,
-                rubro,
-            )
-            await repo_comprobantes.guardar_analisis(
-                db, documento_id, datos, EstadoProcesamiento.ANALIZADO
-            )
-            return "exito"
-        except Exception:
-            logger.exception(
-                "Error analizando comprobante con Gemini serie_numero=%s", serie_numero
-            )
-            await repo_comprobantes.actualizar_estado(
-                db, documento_id, EstadoProcesamiento.ERROR_ANALISIS
-            )
-            return "error"
+        for intento in range(GEMINI_MAX_REINTENTOS + 1):
+            await _esperar_turno_gemini()
+            try:
+                datos = await asyncio.to_thread(
+                    extraer_datos_factura,
+                    texto_para_ia(documento),
+                    vector_db_usuario,
+                    rubro,
+                )
+                await repo_comprobantes.guardar_analisis(
+                    db, documento_id, datos, EstadoProcesamiento.ANALIZADO
+                )
+                return "exito"
+            except APIError as exc:
+                if exc.code not in (429, 503) or intento == GEMINI_MAX_REINTENTOS:
+                    logger.exception(
+                        "Error analizando comprobante con Gemini serie_numero=%s",
+                        serie_numero,
+                    )
+                    await repo_comprobantes.actualizar_estado(
+                        db, documento_id, EstadoProcesamiento.ERROR_ANALISIS
+                    )
+                    return "error"
+
+                espera = _extraer_retry_delay(exc) or GEMINI_MIN_INTERVAL_SECONDS * (
+                    2**intento
+                )
+                logger.warning(
+                    "Gemini %s (serie_numero=%s), reintentando en %.0fs (%s/%s)",
+                    exc.code,
+                    serie_numero,
+                    espera,
+                    intento + 1,
+                    GEMINI_MAX_REINTENTOS,
+                )
+                await asyncio.sleep(espera)
+            except Exception:
+                logger.exception(
+                    "Error analizando comprobante con Gemini serie_numero=%s", serie_numero
+                )
+                await repo_comprobantes.actualizar_estado(
+                    db, documento_id, EstadoProcesamiento.ERROR_ANALISIS
+                )
+                return "error"
+
+        return "error"
 
     logger.info(
         "Iniciando análisis IA empresa_id=%s periodo=%s comprobantes=%s",

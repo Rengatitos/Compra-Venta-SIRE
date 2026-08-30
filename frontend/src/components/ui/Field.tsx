@@ -1,5 +1,11 @@
 import { useId } from 'react';
-import type { InputHTMLAttributes, Ref, ReactNode, SelectHTMLAttributes } from 'react';
+import type {
+  InputHTMLAttributes,
+  Ref,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from 'react';
 
 import estilos from './Field.module.css';
 
@@ -86,6 +92,50 @@ export function TextField({ etiqueta, ayuda, error, mono, required, ...resto }: 
         id={idControl}
         required={required}
         className={`${estilos.control} ${mono ? (estilos.mono ?? '') : ''}`}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(ayuda, error, idAyuda, idError)}
+      />
+    </Envoltura>
+  );
+}
+
+type PropsTextArea = Comunes &
+  Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'className' | 'id' | 'aria-invalid'>;
+
+/**
+ * Área de texto multilínea. Útil para textos largos que no deben truncarse
+ * en un `<input>` de una sola línea (p. ej. descripciones libres).
+ */
+export function TextAreaField({
+  etiqueta,
+  ayuda,
+  error,
+  mono,
+  required,
+  rows = 4,
+  ...resto
+}: PropsTextArea) {
+  const base = useId();
+  const idControl = `${base}-control`;
+  const idAyuda = `${base}-ayuda`;
+  const idError = `${base}-error`;
+
+  return (
+    <Envoltura
+      etiqueta={etiqueta}
+      ayuda={ayuda}
+      error={error}
+      idControl={idControl}
+      idAyuda={idAyuda}
+      idError={idError}
+      requerido={required}
+    >
+      <textarea
+        {...resto}
+        id={idControl}
+        rows={rows}
+        required={required}
+        className={`${estilos.control} ${estilos.controlArea} ${mono ? (estilos.mono ?? '') : ''}`}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(ayuda, error, idAyuda, idError)}
       />

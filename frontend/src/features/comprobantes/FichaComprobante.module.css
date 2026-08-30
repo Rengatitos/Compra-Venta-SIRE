@@ -30,3 +30,9 @@
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
 }
+
+/* Las observaciones son texto largo: ocupan todo el ancho de la fila en vez
+   de quedar comprimidas en una sola columna de la grilla. */
+.observaciones {
+  grid-column: 1 / -1;
+}

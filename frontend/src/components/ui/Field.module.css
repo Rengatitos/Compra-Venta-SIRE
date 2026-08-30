@@ -42,6 +42,12 @@
   opacity: 0.6;
 }
 
+.controlArea {
+  resize: vertical;
+  line-height: 1.4;
+  font-family: inherit;
+}
+
 .mono {
   font-family: var(--font-mono);
   letter-spacing: 0.04em;

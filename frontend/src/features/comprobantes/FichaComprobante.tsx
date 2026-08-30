@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { DataTable } from '@/components/ui/DataTable';
 import type { Columna } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/Feedback';
-import { TextField } from '@/components/ui/Field';
+import { TextAreaField } from '@/components/ui/Field';
 import { useToast } from '@/hooks/useToast';
 import { formatearFecha, formatearMoneda } from '@/lib/format';
 import { ApiError } from '@/lib/http';
@@ -20,9 +20,17 @@ import { presentarEstadoComprobante, presentarResultadoIA } from './estadoCompro
 import estilos from './FichaComprobante.module.css';
 import { TablaDetalleSunat } from './TablaDetalleSunat';
 
-function Dato({ termino, children }: { termino: string; children: ReactNode }) {
+function Dato({
+  termino,
+  children,
+  className,
+}: {
+  termino: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div>
+    <div className={className}>
       <dt className={layout.termino}>{termino}</dt>
       <dd className={layout.descripcion}>{children}</dd>
     </div>
@@ -76,7 +84,9 @@ function FichaAnalisis({ analisis }: { analisis: AnalisisIA }) {
       <Dato termino="Documentos de respaldo">
         {analisis.documentos === null ? '—' : analisis.documentos ? 'Sí' : 'No'}
       </Dato>
-      <Dato termino="Observaciones">{analisis.observaciones ?? '—'}</Dato>
+      <Dato termino="Observaciones" className={estilos.observaciones}>
+        {analisis.observaciones ?? '—'}
+      </Dato>
     </dl>
   );
 }
@@ -209,12 +219,13 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
 
       <Seccion titulo="Descripción">
         <form className={layout.pila} onSubmit={alGuardar}>
-          <TextField
+          <TextAreaField
             etiqueta="Descripción del comprobante"
             name="descripcion"
             value={descripcion}
             onChange={(evento) => setDescripcion(evento.target.value)}
             maxLength={500}
+            rows={4}
             ayuda="Texto libre para el equipo contable. Se guarda dentro del análisis sin tocar el resto de campos de la IA."
           />
           <div className={layout.filaFin}>
