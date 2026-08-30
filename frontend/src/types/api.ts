@@ -137,10 +137,20 @@ export interface ComprobanteResponse {
   fecha_vencimiento: string | null;
 
   moneda: string;
+  /** `0` cuando SUNAT no lo trajo (operacion en soles). */
+  tipo_cambio: number;
+
   base_imponible: number;
   igv: number;
   exonerado: number;
   inafecto: number;
+  /**
+   * "Valor de las adquisiciones no gravadas" del RCE. SUNAT no separa
+   * exonerado de inafecto en el registro de compras: los agrupa aquí.
+   */
+  no_gravado: number;
+  isc: number;
+  icbper: number;
   otros_tributos: number;
   total: number;
 

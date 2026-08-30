@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 
 import { ContextoAvisosReact } from '@/hooks/toastContext';
 import type { Aviso } from '@/hooks/toastContext';
@@ -63,6 +64,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <div className={estilos.cuerpo}>
               <p className={estilos.titulo}>{aviso.titulo}</p>
               {aviso.detalle ? <p className={estilos.detalle}>{aviso.detalle}</p> : null}
+              {aviso.accion ? (
+                <Link
+                  className={estilos.accion}
+                  to={aviso.accion.a}
+                  onClick={() => descartar(aviso.id)}
+                >
+                  {aviso.accion.texto}
+                </Link>
+              ) : null}
             </div>
             <button
               type="button"

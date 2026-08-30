@@ -187,6 +187,8 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
           <Dato termino="IGV">{formatearMoneda(datos.igv, datos.moneda)}</Dato>
           <Dato termino="Exonerado">{formatearMoneda(datos.exonerado, datos.moneda)}</Dato>
           <Dato termino="Inafecto">{formatearMoneda(datos.inafecto, datos.moneda)}</Dato>
+          <Dato termino="No gravado">{formatearMoneda(datos.no_gravado, datos.moneda)}</Dato>
+          <Dato termino="ICBPER">{formatearMoneda(datos.icbper, datos.moneda)}</Dato>
           <Dato termino="Otros tributos">
             {formatearMoneda(datos.otros_tributos, datos.moneda)}
           </Dato>

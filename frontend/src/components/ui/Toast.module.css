@@ -47,6 +47,16 @@
   overflow-wrap: anywhere;
 }
 
+/* El color, el subrayado y su desplazamiento ya vienen de la regla global de
+   `a`; aquí sólo hace falta separarlo del detalle y darle peso. */
+.accion {
+  align-self: flex-start;
+  margin-block-start: var(--space-1);
+  font-size: var(--text-body-sm);
+  font-weight: var(--weight-medium);
+  border-radius: var(--radius-sm);
+}
+
 .cerrar {
   flex-shrink: 0;
   padding: var(--space-1) var(--space-2);

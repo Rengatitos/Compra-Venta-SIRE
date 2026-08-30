@@ -71,7 +71,6 @@ export function PeriodosPage() {
   const [seleccion, setSeleccion] = useState(() => partirPeriodo(periodoPorDefecto()));
   const [errorPeriodo, setErrorPeriodo] = useState<string | null>(null);
   const [aEliminar, setAEliminar] = useState<PeriodoResponse | null>(null);
-  const [sincronizando, setSincronizando] = useState<string | null>(null);
 
   const periodos = useQuery({
     queryKey: ['periodos', ruc],
@@ -124,9 +123,10 @@ export function PeriodosPage() {
       mostrar({
         tono: 'exito',
         titulo: `Periodo ${formatearPeriodo(creado.periodo)} creado`,
-        detalle: 'Ya puedes sincronizar su propuesta de compras.',
+        detalle: 'Sincronizando su propuesta de compras…',
       });
       await invalidarPeriodos();
+      sincronizar.mutate(creado.periodo);
     },
     onError: (fallo) => {
       setErrorPeriodo(
@@ -142,8 +142,6 @@ export function PeriodosPage() {
   const sincronizar = useMutation({
     // Solo compras: `libro=ventas` responde 501 porque el RVIE no tiene cliente.
     mutationFn: (periodo: string) => sincronizarPropuesta(ruc, periodo, 'compras'),
-    onMutate: (periodo) => setSincronizando(periodo),
-    onSettled: () => setSincronizando(null),
     onSuccess: async (respuesta) => {
       const datos = respuesta.datos;
       const detalle = datos
@@ -244,13 +242,6 @@ export function PeriodosPage() {
           >
             Ver comprobantes
           </ButtonLink>
-          <Button
-            pequeno
-            onClick={() => sincronizar.mutate(fila.periodo)}
-            cargando={sincronizando === fila.periodo}
-          >
-            Sincronizar
-          </Button>
           <Button pequeno variante="fantasma" onClick={() => setAEliminar(fila)}>
             Eliminar
           </Button>
@@ -305,7 +296,7 @@ export function PeriodosPage() {
 
         <Panel
           titulo="Periodos registrados"
-          descripcion="Sincronizar descarga la propuesta del SIRE y guarda los comprobantes del periodo."
+          descripcion="Al crear un periodo se sincroniza automáticamente su propuesta del SIRE."
         >
           {periodos.isPending ? <Skeleton lineas={4} etiqueta="Cargando periodos" /> : null}
 

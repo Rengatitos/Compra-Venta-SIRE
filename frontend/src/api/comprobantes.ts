@@ -49,17 +49,25 @@ export function actualizarDescripcion(
   });
 }
 
-/** Hasta 5000 comprobantes del periodo. `404` si el periodo está vacío. */
+/**
+ * Hasta 5000 comprobantes del periodo. `404` si el periodo está vacío.
+ *
+ * `libro` es obligatorio para `excel`: ese archivo sigue la plantilla oficial de
+ * Contasis, que tiene una hoja distinta por libro (el backend responde `400` si
+ * falta). Para el PDF es un filtro opcional; sin él se exporta todo.
+ */
 export function exportarLote(
   ruc: string,
   periodo: string,
   formato: FormatoExport,
+  libro?: Libro,
 ): Promise<void> {
-  return descargar(
-    `${base(ruc, periodo)}/export`,
-    `comprobantes_${periodo}.${EXTENSION[formato]}`,
-    { formato },
-  );
+  const nombre =
+    formato === 'excel' && libro
+      ? `registro_${libro}_${periodo}.xlsx`
+      : `comprobantes_${periodo}.${EXTENSION[formato]}`;
+
+  return descargar(`${base(ruc, periodo)}/export`, nombre, { formato, libro });
 }
 
 export function exportarComprobante(

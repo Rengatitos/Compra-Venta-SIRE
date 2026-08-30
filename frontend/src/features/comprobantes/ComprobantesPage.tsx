@@ -40,6 +40,12 @@ import { presentarEstadoComprobante, presentarResultadoIA } from './estadoCompro
 
 const POR_PAGINA = 100;
 
+/**
+ * El Excel sigue la plantilla de Contasis, que tiene una hoja por libro: hay una
+ * descarga por libro, más el PDF (el único que lleva el análisis IA).
+ */
+type Descarga = 'excel:compras' | 'excel:ventas' | 'pdf';
+
 export function ComprobantesPage() {
   const { periodo = '' } = useParams();
   const [parametros, setParametros] = useSearchParams();
@@ -55,7 +61,7 @@ export function ComprobantesPage() {
 
   const [libro, setLibro] = useState<Libro>('compras');
   const [pagina, setPagina] = useState(1);
-  const [exportando, setExportando] = useState<FormatoExport | null>(null);
+  const [exportando, setExportando] = useState<Descarga | null>(null);
   const [dialogoAnalisis, setDialogoAnalisis] = useState(false);
   const [archivos, setArchivos] = useState<File[]>([]);
   const [errorArchivos, setErrorArchivos] = useState<string | null>(null);
@@ -89,7 +95,15 @@ export function ComprobantesPage() {
     mutationFn: () => iniciarExtraccionDetalle(ruc, periodo),
     onSuccess: (aceptado) => {
       seguir(aceptado.job_id);
-      mostrar({ tono: 'exito', titulo: 'Extracción iniciada', detalle: aceptado.mensaje });
+      // `aceptado.mensaje` apunta al endpoint de la API, que no le sirve a
+      // nadie mirando la pantalla. El avance sale en la barra de aquí abajo y
+      // queda registrado en Procesos.
+      mostrar({
+        tono: 'exito',
+        titulo: 'Extracción iniciada',
+        detalle: 'El avance aparece en esta misma página mientras corre.',
+        accion: { texto: 'Ver en Procesos', a: '/procesos' },
+      });
     },
     onError: (fallo) => {
       mostrar({
@@ -135,17 +149,19 @@ export function ComprobantesPage() {
 
   if (!esPeriodoValido(periodo)) return <NoEncontradaPage />;
 
-  async function exportar(formato: FormatoExport) {
-    setExportando(formato);
+  async function exportar(descarga: Descarga, formato: FormatoExport, libroPedido?: Libro) {
+    setExportando(descarga);
     try {
-      await exportarLote(ruc, periodo, formato);
+      await exportarLote(ruc, periodo, formato, libroPedido);
     } catch (fallo) {
       mostrar({
         tono: 'error',
         titulo: 'No se pudo exportar',
         detalle:
           fallo instanceof ApiError && fallo.esNoEncontrado
-            ? 'El periodo no tiene comprobantes que exportar.'
+            ? libroPedido
+              ? `El periodo no tiene comprobantes de ${libroPedido} que exportar.`
+              : 'El periodo no tiene comprobantes que exportar.'
             : fallo instanceof ApiError
               ? fallo.message
               : 'Error inesperado.',
@@ -236,14 +252,21 @@ export function ComprobantesPage() {
         acciones={
           <>
             <Button
-              onClick={() => void exportar('excel')}
-              cargando={exportando === 'excel'}
+              onClick={() => void exportar('excel:compras', 'excel', 'compras')}
+              cargando={exportando === 'excel:compras'}
               disabled={exportando !== null}
             >
-              Exportar Excel
+              Registro de compras
             </Button>
             <Button
-              onClick={() => void exportar('pdf')}
+              onClick={() => void exportar('excel:ventas', 'excel', 'ventas')}
+              cargando={exportando === 'excel:ventas'}
+              disabled={exportando !== null}
+            >
+              Registro de ventas
+            </Button>
+            <Button
+              onClick={() => void exportar('pdf', 'pdf')}
               cargando={exportando === 'pdf'}
               disabled={exportando !== null}
             >
