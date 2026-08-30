@@ -48,6 +48,22 @@ async def listar(
     )
 
 
+async def activo(
+    db: AsyncIOMotorDatabase, ruc: str, tipo: TipoJob
+) -> Job | None:
+    """Devuelve el trabajo de ese tipo que siga vivo para la empresa, si lo hay.
+
+    El scraping abre un Chromium por trabajo y la API corre con un solo worker,
+    así que dos extracciones a la vez se pelean por la RAM y por la sesión SOL,
+    que es única por usuario.
+    """
+    for estado in (EstadoJob.EN_PROGRESO, EstadoJob.PENDIENTE):
+        vivos = await repo_jobs.listar(db, ruc, tipo=tipo, estado=estado, limit=1)
+        if vivos:
+            return vivos[0]
+    return None
+
+
 async def ejecutar(db: AsyncIOMotorDatabase, job_id: str, tarea: Tarea) -> None:
     async def reportar(actual: int, total: int, mensaje: str = "") -> None:
         await repo_jobs.actualizar(

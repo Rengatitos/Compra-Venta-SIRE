@@ -9,7 +9,7 @@ from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import periodos as repo_periodos
 from app.schemas.comprobante import ComprobanteResponse, ComprobanteUpdate
 from app.schemas.generic import MessageResponse
-from app.services import export_service
+from app.services import export_service, plantilla_excel
 from app.services.comprobante_service import serializar, serializar_lote
 
 router = APIRouter()
@@ -47,21 +47,34 @@ async def exportar_lote(
     periodo: str = Depends(periodo_valido),
     empresa: str = Depends(empresa_id),
     formato: str = Query("excel", pattern="^(excel|pdf)$"),
+    libro: Libro | None = Query(
+        None, description="Obligatorio para `formato=excel`; filtro opcional para el PDF"
+    ),
     db=Depends(get_db),
 ):
     await _asegurar_periodo(db, empresa, periodo)
 
-    filas = await repo_comprobantes.listar(db, empresa, periodo, limit=5000)
+    # Un archivo de la plantilla oficial es de un solo libro: sin `libro` no hay
+    # forma de saber qué hoja del formato Contasis generar.
+    if formato == "excel" and libro is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Indica el libro (compras o ventas) para exportar en Excel",
+        )
+
+    todas = await repo_comprobantes.listar(db, empresa, periodo, limit=5000)
+    filas = _filtrar_por_libro(todas, libro)
     if not filas:
         raise HTTPException(status_code=404, detail="No hay comprobantes en el periodo indicado")
 
     datos = serializar_lote(filas)
 
     if formato == "excel":
+        nombre = f"registro_{libro.value}_{periodo}.xlsx"
         return StreamingResponse(
-            export_service.excel_de_lote(datos),
+            plantilla_excel.excel_plantilla(datos, libro),
             media_type=MEDIA_EXCEL,
-            headers={"Content-Disposition": f"attachment; filename=comprobantes_{periodo}.xlsx"},
+            headers={"Content-Disposition": f"attachment; filename={nombre}"},
         )
 
     return StreamingResponse(

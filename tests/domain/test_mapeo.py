@@ -2,10 +2,11 @@ from datetime import date
 from decimal import Decimal
 
 from bson.decimal128 import Decimal128
+from openpyxl import load_workbook
 
 from app.domain.comprobante import Comprobante, Libro, Origen
 from app.repositories.comprobantes import a_documento, desde_documento
-from app.services import export_service
+from app.services import export_service, plantilla_excel
 from app.services.comprobante_service import serializar, texto_para_ia
 from app.services.sunat.propuesta import (
     a_comprobante,
@@ -22,10 +23,25 @@ PAYLOAD_SIRE = {
     "desRazonSocialProveedor": "ELECTROCENTRO S.A.",
     "fecEmision": "2026-06-15",
     "codMoneda": "PEN",
+    # Forma real del bloque `montos` del RCE, capturada de una respuesta de
+    # SUNAT. El fixture anterior usaba `mtoBIGravada`/`mtoIGV`, nombres que el
+    # SIRE no envía nunca: los tests pasaban mientras en producción la base y
+    # el IGV llegaban siempre en cero.
     "montos": {
-        "mtoBIGravada": 100.0,
-        "mtoIGV": 18.0,
+        "mtoBIGravadaDG": 100.0,
+        "mtoIgvIpmDG": 18.0,
+        "mtoBIGravadaDGNG": 0.0,
+        "mtoIgvIpmDGNG": 0.0,
+        "mtoBIGravadaDNG": 0.0,
+        "mtoIgvIpmDNG": 0.0,
+        "mtoValorAdqNG": 0.0,
+        "mtoIcbp": 0.0,
+        "mtoOtrosTrib": 0.0,
+        "mtoISC": 0.0,
+        "mtoIMB": 0.0,
         "mtoTotalCp": 118.0,
+        "mtoBIGravadaDGOriginal": None,
+        "mtoIgvIpmDGOriginal": None,
     },
 }
 
@@ -45,6 +61,42 @@ class TestMapeoDesdeSire:
         assert c.base_imponible == Decimal("100.00")
         assert c.igv == Decimal("18.00")
         assert c.total == Decimal("118.00")
+
+    def test_suma_los_tres_destinos_de_la_base_y_del_igv(self):
+        # El RCE reparte la base y el IGV entre gravadas (DG), gravadas y no
+        # gravadas (DGNG) y no gravadas (DNG). Quedarse con el primero que no
+        # sea cero perdería los otros dos.
+        payload = {
+            **PAYLOAD_SIRE,
+            "montos": {
+                **PAYLOAD_SIRE["montos"],
+                "mtoBIGravadaDG": 100.0,
+                "mtoBIGravadaDGNG": 30.0,
+                "mtoBIGravadaDNG": 20.0,
+                "mtoIgvIpmDG": 18.0,
+                "mtoIgvIpmDGNG": 5.4,
+                "mtoIgvIpmDNG": 3.6,
+            },
+        }
+        c = a_comprobante(payload, Libro.COMPRAS)
+        assert c.base_imponible == Decimal("150.00")
+        assert c.igv == Decimal("27.00")
+
+    def test_ignora_los_montos_originales(self):
+        # `...Original` guarda el valor previo a una modificación; sumarlo
+        # duplicaría la base.
+        payload = {
+            **PAYLOAD_SIRE,
+            "montos": {**PAYLOAD_SIRE["montos"], "mtoBIGravadaDGOriginal": 999.0},
+        }
+        assert a_comprobante(payload, Libro.COMPRAS).base_imponible == Decimal("100.00")
+
+    def test_otros_tributos_usa_el_nombre_del_rce(self):
+        payload = {
+            **PAYLOAD_SIRE,
+            "montos": {**PAYLOAD_SIRE["montos"], "mtoOtrosTrib": 7.5},
+        }
+        assert a_comprobante(payload, Libro.COMPRAS).otros_tributos == Decimal("7.50")
 
     def test_conserva_el_json_crudo(self):
         c = a_comprobante(PAYLOAD_SIRE, Libro.COMPRAS)
@@ -154,15 +206,103 @@ class TestExportacion:
         salida = export_service.pdf_de_comprobante(serializar(_documento_completo()))
         assert salida.getvalue().startswith(b"%PDF")
 
-    def test_excel_de_lote(self):
-        salida = export_service.excel_de_lote([serializar(_documento_completo())] * 3)
-        assert salida.getbuffer().nbytes > 0
-
     def test_pdf_de_lote(self):
         salida = export_service.pdf_de_lote([serializar(_documento_completo())] * 3)
         assert salida.getvalue().startswith(b"%PDF")
 
-    def test_consistencia_detecta_detalle_completo(self):
-        # La suma del detalle de la IA (118.00) cuadra con el total.
-        salida = export_service.excel_de_lote([serializar(_documento_completo())])
-        assert salida.getbuffer().nbytes > 0
+
+def _documento_ventas() -> dict:
+    return a_documento(a_comprobante(PAYLOAD_SIRE, Libro.VENTAS), "empresa1", "202606")
+
+
+def _hoja(comprobantes: list[dict], libro: Libro):
+    salida = plantilla_excel.excel_plantilla(comprobantes, libro)
+    wb = load_workbook(salida)
+    assert wb.sheetnames == [plantilla_excel.HOJAS[libro]]
+    return wb[plantilla_excel.HOJAS[libro]]
+
+
+class TestPlantillaContasis:
+    def test_conserva_los_encabezados_de_la_plantilla(self):
+        hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
+        assert hoja["A8"].value == "FORMATO REGISTRO DE COMPRAS  - SISTEMA EXPERTO CONTABLE 14.00"
+        assert hoja["A10"].value == "FECHA DE EMISION DEL COMPROBANTE DE PAGO O DOCUMENTO"
+        assert hoja["C12"].value == "TIPO"
+        assert hoja["A13"].value == "dd/mm/yyyy"
+
+    def test_mapeo_de_compras(self):
+        hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
+        assert hoja["A14"].value.date() == date(2026, 6, 15)
+        assert hoja["C14"].value == "01"
+        assert hoja["D14"].value == "F001"
+        assert hoja["F14"].value == 123
+        assert hoja["G14"].value == 6
+        assert hoja["H14"].value == 20129646099
+        assert hoja["I14"].value == "ELECTROCENTRO S.A."
+        assert hoja["J14"].value == 100.0
+        assert hoja["K14"].value == 18.0
+        assert hoja["S14"].value == 118.0
+        assert hoja["AB14"].value == "S"
+        assert hoja["AR14"].value == 18
+
+    def test_las_adquisiciones_no_gravadas_llegan_a_la_columna_p(self):
+        # El SIRE no separa exonerado de inafecto en compras: manda un único
+        # "valor de las adquisiciones no gravadas". La columna P los agrega, y
+        # sin contar `no_gravado` salía en cero para toda compra exonerada.
+        documento = {**_documento_completo(), "no_gravado": Decimal("59.78")}
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["P14"].value == 59.78
+
+    def test_la_columna_p_suma_los_tres_conceptos(self):
+        documento = {
+            **_documento_completo(),
+            "exonerado": Decimal("10.00"),
+            "inafecto": Decimal("5.00"),
+            "no_gravado": Decimal("20.00"),
+        }
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["P14"].value == 35.0
+
+    def test_mapeo_de_ventas(self):
+        hoja = _hoja([serializar(_documento_ventas())], Libro.VENTAS)
+        assert hoja["C14"].value == "01"
+        assert hoja["D14"].value == "F001"
+        assert hoja["E14"].value == 123
+        assert hoja["H14"].value == "ELECTROCENTRO S.A."
+        assert hoja["J14"].value == 100.0
+        assert hoja["N14"].value == 18.0
+        assert hoja["P14"].value == 118.0
+        assert hoja["V14"].value == "S"
+        assert hoja["AL14"].value == 18
+
+    def test_las_columnas_del_analisis_quedan_vacias(self):
+        hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
+        # Cuenta contable base imponible / otros tributos / total, y glosa.
+        assert [hoja[c + "14"].value for c in ("AF", "AG", "AH", "AS")] == [None] * 4
+
+    def test_el_analisis_no_aparece_en_ninguna_celda(self):
+        hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
+        textos = [str(c.value) for fila in hoja.iter_rows() for c in fila if c.value is not None]
+        for rastro in ("GASTO", "95%", "6361", "Servicio", "Energ"):
+            assert not any(rastro in texto for texto in textos), rastro
+
+    def test_pie_de_totales_suma_el_rango_de_datos(self):
+        hoja = _hoja([serializar(_documento_completo())] * 3, Libro.COMPRAS)
+        assert hoja["A17"].value == "TOTAL"
+        assert hoja["S17"].value == "=SUM(S14:S16)"
+
+    def test_sin_comprobantes_salen_solo_los_encabezados(self):
+        hoja = _hoja([], Libro.VENTAS)
+        assert hoja.max_row == 13
+        assert hoja["A10"].value == "FECHA DE EMISION DEL COMPROBANTE DE PAGO O DOCUMENTO"
+
+    def test_las_filas_de_ejemplo_de_la_plantilla_no_sobreviven(self):
+        # La plantilla trae `=+A14`, `=+S14/1.18` y una fila TOTAL precargada.
+        hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
+        formulas = [
+            str(c.value)
+            for fila in hoja.iter_rows(min_row=14)
+            for c in fila
+            if isinstance(c.value, str) and c.value.startswith("=")
+        ]
+        assert all(f.startswith("=SUM(") for f in formulas)

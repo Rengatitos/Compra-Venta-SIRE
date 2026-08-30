@@ -4,6 +4,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.core.config import settings
 from app.domain.comprobante import (
     Comprobante,
     EstadoProcesamiento,
@@ -23,7 +24,9 @@ _CAMPOS_MONTO = (
     "igv",
     "exonerado",
     "inafecto",
+    "no_gravado",
     "isc",
+    "icbper",
     "otros_tributos",
     "total",
 )
@@ -165,17 +168,31 @@ async def listar_pendientes_analisis(
     return await cursor.to_list(length=limit)
 
 
+def _filtro_sin_detalle(empresa_id: str, periodo: str) -> dict[str, Any]:
+    return {
+        "empresa_id": empresa_id,
+        "periodo": periodo,
+        "detalle_sunat": {"$exists": False},
+    }
+
+
 async def listar_sin_detalle(
-    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, limit: int = 100
+    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, limit: int | None = None
 ) -> list[dict[str, Any]]:
-    cursor = _col(db).find(
-        {
-            "empresa_id": empresa_id,
-            "periodo": periodo,
-            "detalle_sunat": {"$exists": False},
-        }
-    )
-    return await cursor.to_list(length=limit)
+    cursor = _col(db).find(_filtro_sin_detalle(empresa_id, periodo))
+    return await cursor.to_list(length=limit or settings.SUNAT_MAX_COMPROBANTES)
+
+
+async def contar_sin_detalle(
+    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str
+) -> int:
+    """Cuántos quedan pendientes en total, con o sin tope.
+
+    `listar_sin_detalle` corta en `SUNAT_MAX_COMPROBANTES`, y hasta ahora ese
+    recorte era invisible: un periodo con más comprobantes que el tope
+    terminaba el job como si los hubiera hecho todos.
+    """
+    return await _col(db).count_documents(_filtro_sin_detalle(empresa_id, periodo))
 
 
 async def guardar_analisis(

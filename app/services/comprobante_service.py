@@ -10,6 +10,9 @@ _CAMPOS_MONTO = (
     "igv",
     "exonerado",
     "inafecto",
+    "no_gravado",
+    "isc",
+    "icbper",
     "otros_tributos",
     "total",
 )
@@ -48,6 +51,7 @@ def serializar(documento: dict[str, Any]) -> dict[str, Any]:
         "fecha_emision": fecha_desde_bson(documento.get("fecha_emision")),
         "fecha_vencimiento": fecha_desde_bson(documento.get("fecha_vencimiento")),
         "moneda": documento.get("moneda", "PEN"),
+        "tipo_cambio": monto_a_float(documento.get("tipo_cambio")),
         "estado_procesamiento": documento.get("estado_procesamiento", "pendiente"),
         "analisis": serializar_analisis(documento.get("metadata_procesada")),
         "detalle_sunat": documento.get("detalle_sunat", []) or [],
@@ -74,6 +78,8 @@ def texto_para_ia(documento: dict[str, Any]) -> str:
         f"IGV: {monto_a_float(documento.get('igv'))}",
         f"Exonerado: {monto_a_float(documento.get('exonerado'))}",
         f"Inafecto: {monto_a_float(documento.get('inafecto'))}",
+        f"No gravado: {monto_a_float(documento.get('no_gravado'))}",
+        f"ICBPER: {monto_a_float(documento.get('icbper'))}",
         f"Total: {monto_a_float(documento.get('total'))}",
     ]
 

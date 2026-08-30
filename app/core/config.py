@@ -27,6 +27,21 @@ class Settings(BaseSettings):
     SUNAT_CLIENT_SECRET: str | None = None
     URL_SIRE_PROPUESTA: str | None = None
 
+    # Scraping del portal SOL. Hasta ahora todos estos valores estaban
+    # incrustados en el código, así que ajustar el scraper obligaba a tocarlo.
+    SUNAT_SCRAPER_HEADLESS: bool = True
+    # Techo de espera de cada paso de Playwright. Subirlo sólo si SUNAT va
+    # lento: multiplica el coste de cada comprobante que falla.
+    SUNAT_SCRAPER_TIMEOUT_MS: int = 15000
+    # Techo aparte para decidir que SUNAT no tiene el comprobante. Cuando sí
+    # lo tiene, el enlace aparece en menos de un segundo, así que esperar el
+    # timeout general sólo alargaba los que faltan.
+    SUNAT_TIMEOUT_BUSQUEDA_MS: int = 8000
+    # Comprobantes que se piden como máximo en una extracción. Antes era un
+    # `limit=100` escondido en el repositorio que recortaba el trabajo sin
+    # decir nada.
+    SUNAT_MAX_COMPROBANTES: int = 100
+
     GEMINI_API_KEY: str | None = None
 
     # Orígenes permitidos por CORS. Se acepta tanto la lista separada por comas

@@ -202,7 +202,12 @@ class Comprobante(BaseModel):
     igv: Decimal = CERO
     exonerado: Decimal = CERO
     inafecto: Decimal = CERO
+    # El RCE no separa exonerado de inafecto en compras: lo agrupa todo en
+    # "valor de las adquisiciones no gravadas". Repartirlo entre los dos
+    # campos de arriba sería inventar una distinción que el dato no trae.
+    no_gravado: Decimal = CERO
     isc: Decimal = CERO
+    icbper: Decimal = CERO
     otros_tributos: Decimal = CERO
     total: Decimal = CERO
 
@@ -245,7 +250,9 @@ class Comprobante(BaseModel):
         "igv",
         "exonerado",
         "inafecto",
+        "no_gravado",
         "isc",
+        "icbper",
         "otros_tributos",
         "total",
         mode="before",

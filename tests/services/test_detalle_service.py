@@ -16,9 +16,10 @@ PENDIENTES = [
 ]
 
 
-def _correr(monkeypatch, pendientes):
+def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None):
     """Ejecuta `extraer` con el repositorio y el scraping simulados."""
     reportes: list[tuple[int, int, str]] = []
+    guardados: list[str] = []
 
     async def reportar(actual: int, total: int, mensaje: str = "") -> None:
         reportes.append((actual, total, mensaje))
@@ -26,21 +27,35 @@ def _correr(monkeypatch, pendientes):
     async def listar_sin_detalle(db, empresa_id, periodo):
         return pendientes
 
-    async def guardar_detalle_sunat(db, empresa_id, periodo, serie_numero, detalle):
-        return None
+    async def contar_sin_detalle(db, empresa_id, periodo):
+        return len(pendientes) if total_en_bd is None else total_en_bd
 
-    async def obtener_detalles(empresa, comprobantes, progreso=None, **resto):
+    async def guardar_detalle_sunat(db, empresa_id, periodo, serie_numero, detalle):
+        guardados.append(serie_numero)
+
+    async def obtener_detalles(empresa, comprobantes, progreso=None, al_extraer=None, **resto):
         # Igual que Playwright: el recorrido ocurre fuera del loop.
         def en_otro_hilo():
+            hechos_ok = {}
             for hechos, comprobante in enumerate(comprobantes):
+                serie = comprobante["serie_numero"]
                 if progreso:
-                    progreso(hechos, comprobante["serie_numero"])
-            return {c["serie_numero"]: [{"descripcion": "un ítem"}] for c in comprobantes}
+                    progreso(hechos, serie)
+                if serie == corta_en:
+                    # El portal se cae a media lista.
+                    break
+                hechos_ok[serie] = [{"descripcion": "un ítem"}]
+                if al_extraer:
+                    al_extraer(serie, hechos_ok[serie])
+            return hechos_ok
 
         return await asyncio.to_thread(en_otro_hilo)
 
     monkeypatch.setattr(
         detalle_service.repo_comprobantes, "listar_sin_detalle", listar_sin_detalle
+    )
+    monkeypatch.setattr(
+        detalle_service.repo_comprobantes, "contar_sin_detalle", contar_sin_detalle
     )
     monkeypatch.setattr(
         detalle_service.repo_comprobantes, "guardar_detalle_sunat", guardar_detalle_sunat
@@ -54,13 +69,13 @@ def _correr(monkeypatch, pendientes):
         await asyncio.sleep(0)
         return resultado
 
-    return asyncio.run(principal()), reportes
+    return asyncio.run(principal()), reportes, guardados
 
 
 def test_reporta_el_avance_de_cada_comprobante(monkeypatch):
-    resultado, reportes = _correr(monkeypatch, PENDIENTES)
+    resultado, reportes, guardados = _correr(monkeypatch, PENDIENTES)
 
-    assert resultado == {"procesados": 3, "con_detalle": 3}
+    assert resultado == {"procesados": 3, "con_detalle": 3, "sin_detalle": 0, "pendientes": 0}
 
     # Uno por comprobante, además del inicial y el final.
     intermedios = [r for r in reportes if r[2].startswith("Extrayendo F001-")]
@@ -72,7 +87,35 @@ def test_reporta_el_avance_de_cada_comprobante(monkeypatch):
 
 
 def test_sin_pendientes_no_abre_el_navegador(monkeypatch):
-    resultado, reportes = _correr(monkeypatch, [])
+    resultado, reportes, guardados = _correr(monkeypatch, [])
 
     assert resultado == {"procesados": 0, "con_detalle": 0}
     assert reportes == [(0, 0, "No hay comprobantes pendientes de detalle")]
+
+
+def test_avisa_cuando_el_tope_recorta_el_trabajo(monkeypatch):
+    # `listar_sin_detalle` corta en SUNAT_MAX_COMPROBANTES. Si el periodo tiene
+    # más, el job debe decirlo: antes terminaba igual que si los hubiera hecho
+    # todos y no había manera de saber que faltaba otra vuelta.
+    resultado, reportes, guardados = _correr(monkeypatch, PENDIENTES, total_en_bd=10)
+
+    assert resultado == {"procesados": 3, "con_detalle": 3, "sin_detalle": 0, "pendientes": 7}
+    assert reportes[0] == (0, 3, "Extrayendo 3 comprobantes; quedarán 7 para otra vuelta")
+
+
+def test_guarda_lo_ya_extraido_aunque_el_portal_se_caiga(monkeypatch):
+    # El caso real: el portal dejó de responder en el tercer comprobante. Los
+    # dos anteriores tienen que estar en la base. Antes el guardado ocurría al
+    # final, así que un tropiezo se llevaba por delante todo lo ya recorrido.
+    resultado, _, guardados = _correr(monkeypatch, PENDIENTES, corta_en="F001-3")
+
+    assert guardados == ["F001-1", "F001-2"]
+    assert resultado["con_detalle"] == 2
+    assert resultado["sin_detalle"] == 1
+
+
+def test_no_guarda_dos_veces_el_mismo_comprobante(monkeypatch):
+    # El repaso final es una red de seguridad, no una segunda escritura.
+    _, _, guardados = _correr(monkeypatch, PENDIENTES)
+
+    assert guardados == ["F001-1", "F001-2", "F001-3"]

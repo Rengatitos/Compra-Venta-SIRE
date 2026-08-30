@@ -43,10 +43,15 @@ class ComprobanteResponse(BaseModel):
     fecha_vencimiento: date | None = None
 
     moneda: str = "PEN"
+    tipo_cambio: float = 0.0
+
     base_imponible: float = 0.0
     igv: float = 0.0
     exonerado: float = 0.0
     inafecto: float = 0.0
+    no_gravado: float = 0.0
+    isc: float = 0.0
+    icbper: float = 0.0
     otros_tributos: float = 0.0
     total: float = 0.0
 

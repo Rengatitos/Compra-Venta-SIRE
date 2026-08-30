@@ -27,7 +27,16 @@ async def extraer(
         return {"procesados": 0, "con_detalle": 0}
 
     total = len(pendientes)
-    await reportar(0, total, f"Extrayendo detalle de {total} comprobantes")
+
+    # El listado corta en `SUNAT_MAX_COMPROBANTES`. Decirlo aquí evita que un
+    # periodo grande parezca terminado cuando sólo se hizo la primera tanda.
+    faltan = await repo_comprobantes.contar_sin_detalle(db, empresa_id, periodo) - total
+    if faltan > 0:
+        await reportar(
+            0, total, f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta"
+        )
+    else:
+        await reportar(0, total, f"Extrayendo detalle de {total} comprobantes")
 
     # El scraping corre en un hilo aparte (Playwright es síncrono) y avisa desde
     # ahí. Motor está atado al loop, así que el reporte tiene que volver a él;
@@ -51,25 +60,56 @@ async def extraer(
             return
         futuro.add_done_callback(_registrar_fallo)
 
+    # Guardar sobre la marcha, no al final: si el portal se cae a mitad de la
+    # lista, lo ya recorrido queda en la base en vez de perderse con el resto.
+    guardados: set[str] = set()
+
+    def guardar(serie_numero: str, detalle: list) -> None:
+        if not detalle:
+            return
+        try:
+            futuro = asyncio.run_coroutine_threadsafe(
+                repo_comprobantes.guardar_detalle_sunat(
+                    db, empresa_id, periodo, serie_numero, detalle
+                ),
+                loop,
+            )
+        except RuntimeError:
+            logger.debug("No se pudo guardar el detalle: el loop está cerrado")
+            return
+        guardados.add(serie_numero)
+        futuro.add_done_callback(_registrar_fallo)
+
     resultados = await scraping_sunat.obtener_detalles(
-        empresa, pendientes, progreso=avisar
+        empresa, pendientes, progreso=avisar, al_extraer=guardar
     )
 
-    con_detalle = 0
+    # Red de seguridad por si algún aviso se perdió: reintenta sólo lo que no
+    # se llegó a agendar.
+    con_detalle = len(guardados)
     for serie_numero, detalle in resultados.items():
-        if not detalle:
+        if not detalle or serie_numero in guardados:
             continue
         await repo_comprobantes.guardar_detalle_sunat(
             db, empresa_id, periodo, serie_numero, detalle
         )
         con_detalle += 1
 
+    sin_detalle = total - con_detalle
+
     await reportar(total, total, "Extracción finalizada")
     logger.info(
-        "Detalle extraído ruc=%s periodo=%s procesados=%s con_detalle=%s",
+        "Detalle extraído ruc=%s periodo=%s procesados=%s con_detalle=%s sin_detalle=%s faltan=%s",
         empresa.get("ruc"),
         periodo,
         total,
         con_detalle,
+        sin_detalle,
+        max(faltan, 0),
     )
-    return {"procesados": total, "con_detalle": con_detalle}
+    return {
+        "procesados": total,
+        "con_detalle": con_detalle,
+        "sin_detalle": sin_detalle,
+        "pendientes": max(faltan, 0),
+    }

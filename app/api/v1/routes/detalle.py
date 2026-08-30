@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -29,6 +29,20 @@ async def iniciar_extraccion(
     empresa: dict = Depends(empresa_actual),
     db=Depends(get_db),
 ):
+    # El límite de slowapi es por IP y no impide encolar cinco extracciones
+    # seguidas: cada una abriría su propio Chromium contra la misma sesión SOL.
+    en_curso = await jobs_service.activo(
+        db, empresa["ruc"], TipoJob.EXTRACCION_DETALLES
+    )
+    if en_curso:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Ya hay una extracción en curso para el periodo {en_curso.periodo}. "
+                f"Espera a que termine (job {en_curso.job_id})."
+            ),
+        )
+
     job = await jobs_service.crear(
         db, TipoJob.EXTRACCION_DETALLES, empresa["ruc"], periodo
     )
@@ -48,5 +62,9 @@ async def iniciar_extraccion(
     return {
         "job_id": job.job_id,
         "estado": job.estado.value,
-        "mensaje": "Extracción iniciada. Consulta su avance en /api/v1/jobs/{job_id}",
+        # La plantilla se quedaba sin interpolar y el cliente recibía
+        # "{job_id}" tal cual, que era lo que acababa mostrándose en el aviso.
+        "mensaje": (
+            f"Extracción iniciada. Consulta su avance en /api/v1/jobs/{job.job_id}"
+        ),
     }
