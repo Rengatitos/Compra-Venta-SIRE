@@ -14,6 +14,22 @@
 
 5. **Mapeo al modelo canónico**, en [a_comprobante](../../app/services/sunat/propuesta.py:64). Cada registro crudo de SUNAT se convierte a un `Comprobante` normalizado (ver [modelo de datos de comprobantes](../modelo-datos/comprobantes.md)). Los nombres de campo se resuelven probando una lista de candidatos por cada destino (serie, número, tipo, montos, etc.) — la respuesta real de SUNAT no está confirmada al 100% contra la documentación oficial, así que el mapeo tolera variaciones de nombre. El JSON crudo completo se conserva en `extra.raw_sire`.
 
+   Los montos llegan en un bloque anidado `montos` con los nombres del RCE, que no son los que sugiere la documentación:
+
+   | Campo del modelo | Campo del SIRE |
+   |---|---|
+   | `base_imponible` | suma de `mtoBIGravadaDG` + `mtoBIGravadaDGNG` + `mtoBIGravadaDNG` |
+   | `igv` | suma de `mtoIgvIpmDG` + `mtoIgvIpmDGNG` + `mtoIgvIpmDNG` |
+   | `no_gravado` | `mtoValorAdqNG` |
+   | `icbper` | `mtoIcbp` |
+   | `isc` | `mtoISC` |
+   | `otros_tributos` | `mtoOtrosTrib` |
+   | `total` | `mtoTotalCp` |
+
+   La base y el IGV **se suman** entre los tres destinos (gravadas, gravadas y no gravadas, no gravadas) porque un comprobante puede traer importe en más de uno. Los campos `...Original` guardan el valor previo a una modificación y no entran en la suma.
+
+   Este mapeo estuvo equivocado: se buscaban `mtoBIGravada` y `mtoIGV`, nombres que el SIRE no envía nunca, así que la base imponible y el IGV llegaban siempre en cero y sólo el total era correcto. Los tests usaban un payload inventado con esos mismos nombres, así que pasaban en verde. El fixture de `tests/domain/test_mapeo.py` es ahora una respuesta real. Para recalcular comprobantes ya guardados sin volver a llamar a SUNAT existe [scripts/recalcular_importes.py](../../scripts/recalcular_importes.py), que rehace los montos desde `extra.raw_sire`.
+
 6. **Tres filtros**, aplicados en [propuesta_service.sincronizar](../../app/services/propuesta_service.py:16):
    - `comprobante.es_valido`: descarta filas sin serie, número o fecha de emisión.
    - [serie_aceptada](../../app/services/sunat/propuesta.py:91): solo se aceptan series que empiecen con `F` o `E` (facturas y recibos por honorarios); boletas y otros tipos se descartan.

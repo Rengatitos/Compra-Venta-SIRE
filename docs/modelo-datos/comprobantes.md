@@ -16,7 +16,9 @@ Un comprobante (factura, boleta, nota de crédito/débito, etc.), normalizado al
 | `fecha_emision`, `fecha_vencimiento` | `datetime` (medianoche UTC) | Guardadas como fecha real, no como texto — permite agregaciones de Mongo como `$dayOfMonth`. |
 | `moneda` | str | `"PEN"` por defecto. |
 | `tipo_cambio` | `Decimal128` \| None | |
-| `base_imponible`, `igv`, `exonerado`, `inafecto`, `isc`, `otros_tributos`, `total` | `Decimal128` | Cuantizados a 2 decimales con redondeo half-up. Ver [normalizar_monto](../../app/domain/comprobante.py). |
+| `base_imponible`, `igv`, `exonerado`, `inafecto`, `no_gravado`, `isc`, `icbper`, `otros_tributos`, `total` | `Decimal128` | Cuantizados a 2 decimales con redondeo half-up. Ver [normalizar_monto](../../app/domain/comprobante.py). |
+
+`no_gravado` corresponde al "valor de las adquisiciones no gravadas" del RCE. SUNAT **no** separa exonerado de inafecto en el registro de compras: los agrupa en ese único importe, así que repartirlo entre `exonerado` e `inafecto` sería inventar una distinción que el dato no trae. Esos dos campos quedan para orígenes que sí la hagan.
 | `extra` | dict | Campos propios del origen que no entran al modelo común. Para `origen="sire"`, contiene `raw_sire` (el JSON crudo de la respuesta de SUNAT, como texto). |
 | `estado_procesamiento` | str | `sire_recibido` → `analizado` \| `error_analisis` \| `sin_datos`. Ver [domain/comprobante.py — EstadoProcesamiento](../../app/domain/comprobante.py). Solo se establece al insertar (`$setOnInsert`); no se pisa en una resincronización. |
 | `metadata_procesada` | dict \| None | Salida completa del análisis IA (ver [flujo de análisis](../flujo/05-analisis-ia.md)). |

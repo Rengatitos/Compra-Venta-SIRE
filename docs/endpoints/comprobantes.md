@@ -8,7 +8,12 @@ Todos bajo `/api/v1/empresas/{ruc}/periodos/{periodo}/comprobantes`.
 
 ## `GET /api/v1/empresas/{ruc}/periodos/{periodo}/comprobantes/export`
 
-[exportar_lote](../../app/api/v1/routes/comprobantes.py:44). Query param `formato` (`excel` por defecto, o `pdf`). Exporta hasta 5000 comprobantes del periodo con [export_service](../../app/services/export_service.py). `404` si no hay comprobantes.
+[exportar_lote](../../app/api/v1/routes/comprobantes.py:45). Exporta hasta 5000 comprobantes del periodo. Query params:
+
+- `formato`: `excel` (por defecto) o `pdf`.
+- `libro`: `compras` o `ventas`. **Obligatorio para `formato=excel`** — ese archivo sigue la plantilla oficial de Contasis, que tiene una hoja distinta por libro, así que no hay forma de saber cuál generar; sin él responde `400`. Para `formato=pdf` es un filtro opcional: sin él se exportan los dos libros.
+
+El Excel lo genera [plantilla_excel](../../app/services/plantilla_excel.py) y se llama `registro_{libro}_{periodo}.xlsx`; el PDF lo genera [export_service](../../app/services/export_service.py). `404` si el periodo no tiene comprobantes del libro pedido.
 
 ## `GET /api/v1/empresas/{ruc}/periodos/{periodo}/comprobantes/{serie_numero}`
 
