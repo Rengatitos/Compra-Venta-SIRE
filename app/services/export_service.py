@@ -33,36 +33,6 @@ def _analisis(comprobante: dict[str, Any]) -> dict[str, Any]:
     return comprobante.get("analisis") or {}
 
 
-def _consistencia(comprobante: dict[str, Any]) -> str:
-    analisis = _analisis(comprobante)
-    detalle = analisis.get("detalle") if isinstance(analisis.get("detalle"), list) else []
-
-    try:
-        total = float(comprobante.get("total"))
-    except (TypeError, ValueError):
-        total = None
-
-    if not detalle:
-        return "Detalle inferido"
-    if total is None:
-        return "Revision recomendada"
-
-    suma = 0.0
-    for item in detalle:
-        if not isinstance(item, dict):
-            continue
-        try:
-            suma += float(item.get("importe", 0) or 0)
-        except (TypeError, ValueError):
-            continue
-
-    if abs(suma - total) <= 0.01:
-        return "Detalle completo"
-    if 0 < suma < total:
-        return "Detalle inferido"
-    return "Revision recomendada"
-
-
 def excel_de_comprobante(comprobante: dict[str, Any]) -> io.BytesIO:
     wb = Workbook()
     ws = wb.active
@@ -233,59 +203,6 @@ def pdf_de_comprobante(comprobante: dict[str, Any]) -> io.BytesIO:
         elementos.append(Paragraph("No hay detalle analizado.", normal))
 
     doc.build(elementos)
-    salida.seek(0)
-    return salida
-
-
-def excel_de_lote(comprobantes: list[dict[str, Any]]) -> io.BytesIO:
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Comprobantes"
-
-    ws.append([
-        "SERIE_NUMERO",
-        "TIPO",
-        "DOCUMENTO",
-        "RAZON_SOCIAL",
-        "FECHA_EMISION",
-        "BASE_IMPONIBLE",
-        "IGV",
-        "TOTAL",
-        "RESULTADO",
-        "CONSISTENCIA",
-        "ESTADO",
-    ])
-
-    negrita = Font(bold=True)
-    for celda in ws[1]:
-        celda.font = negrita
-        celda.alignment = Alignment(horizontal="center")
-
-    for comprobante in comprobantes:
-        analisis = _analisis(comprobante)
-        ws.append([
-            _texto(comprobante.get("serie_numero")),
-            _texto(comprobante.get("tipo_cp_descripcion")),
-            _texto(comprobante.get("documento_contraparte")),
-            _texto(comprobante.get("razon_social")),
-            _texto(comprobante.get("fecha_emision")),
-            _texto(comprobante.get("base_imponible")),
-            _texto(comprobante.get("igv")),
-            _texto(comprobante.get("total")),
-            _resultado(analisis.get("resultado")),
-            _consistencia(comprobante),
-            _texto(comprobante.get("estado_procesamiento")),
-        ])
-
-    anchos = {
-        "A": 20, "B": 30, "C": 16, "D": 38, "E": 16, "F": 16,
-        "G": 14, "H": 14, "I": 18, "J": 22, "K": 18,
-    }
-    for columna, ancho in anchos.items():
-        ws.column_dimensions[columna].width = ancho
-
-    salida = io.BytesIO()
-    wb.save(salida)
     salida.seek(0)
     return salida
 

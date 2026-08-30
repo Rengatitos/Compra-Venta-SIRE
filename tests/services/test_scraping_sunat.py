@@ -1,6 +1,9 @@
-"""`obtener_detalles` pasa sus argumentos a `_scrape_detalles` por posición a
-través de `asyncio.to_thread`. Reordenar la firma no da error: el callback de
-avance acabaría en otro parámetro y el contador volvería a quedarse quieto."""
+"""`obtener_detalles` pasa sus argumentos a `_scrape_detalles` por nombre.
+
+Antes iban por posición y reordenar la firma no daba error: el callback de
+avance acababa en otro parámetro y el contador se quedaba quieto sin que nada
+lo delatara. Estos tests fijan que el nombre es el contrato.
+"""
 
 from __future__ import annotations
 
@@ -11,21 +14,26 @@ from app.services import scraping_sunat
 EMPRESA = {"ruc": "20608997106", "usuario": "USUARIO", "password": "cifrada"}
 
 
-def test_obtener_detalles_entrega_el_callback_de_avance(monkeypatch):
-    recibido = {}
+def _capturar(monkeypatch) -> dict:
+    recibido: dict = {}
 
-    def falso_scrape(ruc, usuario, password, comprobantes, debug, headed, slow_mo_ms, progreso):
+    def falso_scrape(ruc, usuario, password, comprobantes, **opciones):
         recibido.update(
             ruc=ruc,
             usuario=usuario,
             password=password,
             comprobantes=comprobantes,
-            progreso=progreso,
+            **opciones,
         )
         return {}
 
     monkeypatch.setattr(scraping_sunat, "_scrape_detalles", falso_scrape)
     monkeypatch.setattr(scraping_sunat, "decrypt_password", lambda _: "clave-en-claro")
+    return recibido
+
+
+def test_obtener_detalles_entrega_el_callback_de_avance(monkeypatch):
+    recibido = _capturar(monkeypatch)
 
     def avisar(hechos: int, serie_numero: str) -> None:
         return None
@@ -40,8 +48,29 @@ def test_obtener_detalles_entrega_el_callback_de_avance(monkeypatch):
     assert recibido["comprobantes"] is comprobantes
 
 
+def test_toma_headless_y_timeout_de_la_configuracion(monkeypatch):
+    monkeypatch.setattr(scraping_sunat.settings, "SUNAT_SCRAPER_HEADLESS", True)
+    monkeypatch.setattr(scraping_sunat.settings, "SUNAT_SCRAPER_TIMEOUT_MS", 4321)
+    recibido = _capturar(monkeypatch)
+
+    asyncio.run(scraping_sunat.obtener_detalles(EMPRESA, []))
+
+    assert recibido["headed"] is False
+    assert recibido["timeout_ms"] == 4321
+
+
+def test_la_llamada_gana_a_la_configuracion(monkeypatch):
+    monkeypatch.setattr(scraping_sunat.settings, "SUNAT_SCRAPER_HEADLESS", True)
+    recibido = _capturar(monkeypatch)
+
+    asyncio.run(scraping_sunat.obtener_detalles(EMPRESA, [], headed=True, timeout_ms=999))
+
+    assert recibido["headed"] is True
+    assert recibido["timeout_ms"] == 999
+
+
 def test_obtener_detalles_exige_clave_sol(monkeypatch):
-    monkeypatch.setattr(scraping_sunat, "_scrape_detalles", lambda *a: {})
+    monkeypatch.setattr(scraping_sunat, "_scrape_detalles", lambda *a, **k: {})
 
     try:
         asyncio.run(scraping_sunat.obtener_detalles({"ruc": "1", "usuario": "u"}, []))

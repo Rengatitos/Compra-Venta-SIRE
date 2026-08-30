@@ -1,18 +1,70 @@
 import asyncio
+import logging
 from collections.abc import Callable
 from datetime import date, datetime
+from functools import partial
 from pathlib import Path
 
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 
+from app.core.config import settings
 from app.core.encryption import decrypt_password
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 URL_MENU = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm"
 
 LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
+
+# El menú de SOL expone `ejecuta()` sólo cuando la sesión está abierta. Es la
+# señal más barata para distinguir "estoy dentro" de "SUNAT me devolvió al
+# formulario de login", que es como fallaba antes: sin sesión, `ejecuta` no
+# existe, la llamada queda en nada y cada comprobante se comía los 15 s de
+# timeout del iframe hasta terminar el job con cero detalles.
+_JS_MENU_LISTO = (
+    "typeof ejecuta === 'function'"
+    " || !!document.querySelector('#divMenu, #nivel1, #btnEmpresas, #iframeApplication')"
+)
+
+
+# Los ids del formulario llevan un punto literal, que en CSS va escapado.
+SEL_TIPO_CONSULTA = "input#criterio\\.tipoConsulta"
+SEL_RUC = "input#criterio\\.ruc"
+SEL_SERIE = "input#criterio\\.serie"
+SEL_NUMERO = "input#criterio\\.numero"
+SEL_FEC_DESDE = "input#criterio\\.fecDesde"
+SEL_FEC_HASTA = "input#criterio\\.fecHasta"
+SEL_BUSCAR = (
+    "#criterio\\.btnContinuar, #btnBuscar, "
+    "button:has-text('Buscar'), input[value='Buscar']"
+)
+SEL_VISUALIZAR = (
+    "a:has(img[src*='viewdoc.gif']), a[onclick*='consultaFactura.view'], "
+    "a[title*='Visualizar'], button[title*='Visualizar'], "
+    "img[title*='Visualizar'], img[alt*='Visualizar'], "
+    "a:has(img[src*='impresora']), a:has(img[src*='pdf'])"
+)
+
+
+class SesionSolError(Exception):
+    """El portal no dejó abrir (o mantener) la sesión SOL.
+
+    Se distingue del resto de fallos porque no tiene arreglo reintentando: sin
+    sesión no hay nada que raspar, y el trabajo tiene que terminar en `fallido`
+    en vez de en `completado` con cero detalles.
+    """
+
+
+class ComprobanteNoEncontrado(Exception):
+    """La búsqueda no devolvió resultados.
+
+    No es un fallo del portal: reintentarlo devuelve lo mismo. Separarlo del
+    resto evita gastar una segunda ronda de timeout en cada comprobante que
+    SUNAT no tiene entre las FE recibidas.
+    """
 
 
 def _ruta_log(nombre: str) -> str:
@@ -22,6 +74,13 @@ def _ruta_log(nombre: str) -> str:
 
 def _hacer_login(page, ruc: str, usuario: str, password: str) -> None:
     page.goto(URL_MENU, wait_until="domcontentloaded", timeout=60000)
+
+    # Si la sesión seguía viva, SUNAT deja el menú directamente y no hay
+    # formulario que rellenar. Sin esta salida, un re-login preventivo se
+    # quedaba 20 s esperando un `#txtRuc` que nunca iba a aparecer y terminaba
+    # matando el trabajo.
+    if _menu_abierto(page):
+        return
 
     iframes = page.frames
     login_frame = page
@@ -61,7 +120,7 @@ def _hacer_login(page, ruc: str, usuario: str, password: str) -> None:
             ruc_found = True
 
     if not ruc_found:
-        raise Exception("No se encontró el formulario de login SOL después de 20 segundos")
+        raise SesionSolError("No se encontró el formulario de login SOL después de 20 segundos")
 
     if login_frame.locator("#btnPorRuc").count() > 0:
         login_frame.click("#btnPorRuc")
@@ -95,7 +154,12 @@ def _hacer_login(page, ruc: str, usuario: str, password: str) -> None:
         except Exception:
             pass
 
-    page.wait_for_timeout(2000)
+    # Antes eran 2 s a ciegas; esperar el fin de la navegación cuesta lo que
+    # realmente tarde el redirect.
+    try:
+        page.wait_for_load_state("domcontentloaded", timeout=15000)
+    except Exception:
+        pass
 
     posibles_errores = [".msgError", ".alert-danger", "#errorMsg", ".error-message"]
     for selector in posibles_errores:
@@ -103,29 +167,255 @@ def _hacer_login(page, ruc: str, usuario: str, password: str) -> None:
             if page.locator(selector).count() > 0:
                 error_text = page.locator(selector).first.text_content() or ""
                 if any(kw in error_text.lower() for kw in ["incorrecto", "inválido", "vuelva a intentar", "no se encontró", "por favor"]):
-                    raise ValueError(f"Credenciales SOL incorrectas: {error_text.strip()}")
-        except ValueError:
+                    raise SesionSolError(f"Credenciales SOL incorrectas: {error_text.strip()}")
+        except SesionSolError:
             raise
         except Exception:
             continue
 
     body_text = page.locator("body").text_content() or ""
     if "Usuario o Clave Incorrectos" in body_text or "el RUC es incorrecto" in body_text.lower():
-        raise ValueError("Credenciales SOL incorrectas (detectado por texto en página)")
+        raise SesionSolError("Credenciales SOL incorrectas (detectado por texto en página)")
 
     if "api-seguridad.sunat.gob.pe" in page.url:
         page.goto(URL_MENU, wait_until="domcontentloaded", timeout=30000)
-        page.wait_for_timeout(1000)
+
+    _verificar_sesion(page)
+
+
+def _verificar_sesion(page) -> None:
+    """Confirma que el login dejó abierto el menú de SOL.
+
+    SUNAT rechaza credenciales devolviendo el formulario, no un mensaje de
+    error, así que los controles de arriba no lo detectan. Sin esta verificación
+    el scraping seguía contra una página anónima donde `ejecuta` no existe: la
+    llamada quedaba en nada y cada comprobante agotaba los 15 s de timeout del
+    iframe, terminando el job en `completado` con cero detalles.
+    """
+    try:
+        page.wait_for_function(_JS_MENU_LISTO, timeout=20000)
+        return
+    except Exception:
+        pass
+
+    if page.locator("#txtRuc, input[name='ruc']").count() > 0:
+        raise SesionSolError(
+            "SUNAT devolvió el formulario de login: revisa el RUC, el usuario y la clave SOL"
+        )
+    raise SesionSolError(f"No se pudo abrir el menú de SOL tras el login (url={page.url})")
+
+
+def _hay_formulario_login(page) -> bool:
+    try:
+        return page.locator("#txtRuc, input[name='ruc']").count() > 0
+    except Exception:
+        return False
+
+
+def _menu_abierto(page) -> bool:
+    """La sesión sigue viva y el menú de SOL está delante."""
+    try:
+        return not _hay_formulario_login(page) and bool(page.evaluate(_JS_MENU_LISTO))
+    except Exception:
+        return False
 
 
 def _es_sesion_expirada(page) -> bool:
+    """Sólo cuenta como sesión caída si SUNAT nos devolvió al login.
+
+    Antes bastaba con encontrar `#bntVolver` o las cadenas "sesi" y "expir" en
+    el cuerpo, y el propio menú trae "Cerrar Sesión" y avisos de expiración: el
+    heurístico daba positivo casi siempre. Un comprobante que simplemente no
+    aparecía en SUNAT desencadenaba un re-login innecesario que, con la sesión
+    aún viva, no encontraba formulario y tumbaba el trabajo entero.
+    """
+    return _hay_formulario_login(page)
+
+
+def _llenar(campo, valor: str) -> None:
+    """Escribe un criterio de búsqueda en un campo Dojo.
+
+    `fill` emite el evento `input` que Dojo necesita para validar y `Tab`
+    dispara el blur, así que no hace falta teclear letra por letra. Los cinco
+    campos de texto costaban unos 4,8 s por comprobante entre el retardo de
+    50 ms por tecla y el medio segundo de cortesía que venía detrás de cada uno.
+    """
+    if campo.count() == 0:
+        return
+    campo.fill(valor)
+    campo.press("Tab")
+
+
+# Cabeceras y totales del comprobante. Comparten forma con las líneas de ítem,
+# así que el único modo de descartarlos es mirar la descripción.
+PALABRAS_EXCLUIR = {
+    "cant.(a)", "u.m.", "código", "descripción", "valor unit.(b)",
+    "precio unit.", "valor v.(a)*(b)", "icbper",
+    "descuento", "total", "sumatoria", "importe",
+    "tipo de comprobante", "número", "fecha de emisión", "moneda",
+    "ruc", "razón social", "domicilio", "tipo de documento",
+    "numero de documento",
+}
+
+# Orden de las columnas en la tabla de ítems del popup de SUNAT.
+_COLUMNAS = (
+    "cantidad",
+    "unidad_medida",
+    "codigo",
+    "descripcion",
+    "valor_unitario",
+    "precio_unitario",
+    "valor_venta",
+    "icbper",
+)
+
+
+def _parsear_filas(filas: list[list[str]]) -> list[dict]:
+    """Convierte las celdas crudas del popup en líneas de detalle.
+
+    Se separa del scraping porque es la única parte con reglas de negocio y
+    porque así se puede probar sin levantar un navegador. Una fila cuenta como
+    ítem si trae al menos 6 celdas, la primera es un número (la cantidad) y la
+    descripción no es una cabecera.
+    """
+    detalles = []
+    for fila in filas:
+        celdas = [c.strip() for c in fila]
+        if len(celdas) < 6:
+            continue
+
+        try:
+            float(celdas[0].replace(",", "").replace(" ", ""))
+        except ValueError:
+            continue
+
+        descripcion = celdas[3]
+        if any(p in descripcion.lower() for p in PALABRAS_EXCLUIR):
+            continue
+
+        detalles.append(
+            {
+                nombre: celdas[i] if i < len(celdas) else ""
+                for i, nombre in enumerate(_COLUMNAS)
+            }
+        )
+    return detalles
+
+
+# Una sola llamada al navegador en vez de un round-trip por fila: leer la tabla
+# celda a celda con `locator.nth(i)` costaba cientos de milisegundos en
+# comprobantes largos.
+_JS_LEER_TABLA = """() => Array.from(document.querySelectorAll('table tr'))
+    .map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent))
+    .filter(celdas => celdas.length > 0)"""
+
+
+
+_JS_ABRIR_CONSULTA = (
+    "if(typeof ejecuta === 'function'){ ejecuta("
+    "'MenuInternet.htm?action=iconExecute&code=11.9.5.1.1',false,"
+    "'Consultar Factura, Boletas y Notas','#nivel1_11','11.9.5.1.1'); }"
+)
+
+
+def _abrir_modulo_empresas(page, log) -> None:
     try:
-        if page.locator("#bntVolver").count() > 0:
-            return True
-        body = (page.text_content("body") or "").lower()
-        return "sesi" in body and "expir" in body
-    except Exception:
-        return False
+        tab_empresas = page.locator("#btnEmpresas, a:has-text('Empresas')").first
+        if tab_empresas.count() > 0:
+            tab_empresas.click()
+            # `#nivel1_11` es la rama de Empresas que cuelga del menú y la que
+            # `ejecuta(...)` referencia al abrir la consulta.
+            try:
+                page.locator("#nivel1_11").wait_for(state="attached", timeout=10000)
+            except Exception:
+                page.wait_for_timeout(1000)
+    except Exception as e:
+        log(f"Error navegando menú principal: {e}")
+
+
+def _abrir_consulta(page, iframe, timeout_ms: int) -> None:
+    """Deja el formulario de consulta listo dentro del iframe."""
+    page.evaluate(_JS_ABRIR_CONSULTA)
+    iframe.locator(SEL_TIPO_CONSULTA).wait_for(state="visible", timeout=timeout_ms)
+
+
+def _consultar_uno(
+    page, context, iframe, fac: dict, timeout_ms: int, log, timeout_busqueda_ms: int = 8000
+) -> list[dict]:
+    """Busca un comprobante y devuelve sus líneas. Lanza si algo falla."""
+    serie_num = fac.get("serie_numero", "")
+    ruc_emisor = fac.get("documento_contraparte", "")
+    fecha_emision = fac.get("fecha_emision")
+    serie = fac.get("serie", "")
+    numero = fac.get("numero", "")
+
+    # El portal espera dd/mm/aaaa.
+    fecha_emision_str = ""
+    if isinstance(fecha_emision, (datetime, date)):
+        fecha_emision_str = fecha_emision.strftime("%d/%m/%Y")
+
+    # El combo es un dijit.FilteringSelect: filtra mientras se teclea, así que
+    # aquí sí hacen falta los eventos de tecla. Lo que sobra es el retardo entre
+    # ellas y la espera fija a que aparezca la lista.
+    combo = iframe.locator(SEL_TIPO_CONSULTA).first
+    if combo.count() > 0:
+        combo.click()
+        combo.fill("")
+        combo.press_sequentially("FE Recibidas", delay=0)
+
+        opcion_popup = iframe.locator(
+            "li.dijitMenuItem:has-text('FE Recibidas'), li.dijitMenuItem:has-text('Recibidas')"
+        ).first
+        try:
+            opcion_popup.wait_for(state="visible", timeout=5000)
+            opcion_popup.click()
+        except Exception:
+            # Sin lista desplegada queda confirmar lo tecleado.
+            combo.press("ArrowDown")
+            combo.press("Enter")
+
+    _llenar(iframe.locator(SEL_RUC).first, ruc_emisor)
+    _llenar(iframe.locator(SEL_SERIE).first, serie)
+    _llenar(iframe.locator(SEL_NUMERO).first, str(int(numero)))
+
+    if fecha_emision_str:
+        _llenar(iframe.locator(SEL_FEC_DESDE).first, fecha_emision_str)
+        _llenar(iframe.locator(SEL_FEC_HASTA).first, fecha_emision_str)
+
+    iframe.locator(SEL_BUSCAR).first.click(force=True)
+
+    btn_visualizar = iframe.locator(SEL_VISUALIZAR).first
+    # Cuando el comprobante existe, el enlace aparece en menos de un segundo.
+    # Esperar aquí el timeout general sólo alargaba los que SUNAT no tiene.
+    try:
+        btn_visualizar.wait_for(state="attached", timeout=timeout_busqueda_ms)
+    except Exception as sin_resultados:
+        raise ComprobanteNoEncontrado(serie_num) from sin_resultados
+
+    log(f"Abriendo popup para {serie_num}")
+    with context.expect_page(timeout=timeout_ms) as popup_info:
+        btn_visualizar.click()
+    popup = popup_info.value
+    try:
+        popup.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+
+        # Esperar la tabla en vez de un segundo a ciegas.
+        try:
+            popup.locator("table tr:has(td)").first.wait_for(
+                state="attached", timeout=timeout_ms
+            )
+        except Exception:
+            log(f"{serie_num}: el popup no mostro ninguna tabla")
+
+        return _parsear_filas(popup.evaluate(_JS_LEER_TABLA))
+    finally:
+        # Sin esto un fallo a media lectura deja la pestaña abierta y las va
+        # acumulando durante todo el job.
+        try:
+            popup.close()
+        except Exception:
+            pass
+
 
 
 def _scrape_detalles(
@@ -137,19 +427,21 @@ def _scrape_detalles(
     headed: bool = False,
     slow_mo_ms: int = 0,
     progreso: Callable[[int, str], None] | None = None,
+    timeout_ms: int = 15000,
+    al_extraer: Callable[[str, list[dict]], None] | None = None,
+    timeout_busqueda_ms: int = 8000,
 ) -> dict:
     """`progreso(hechos, serie_numero)` se llama al empezar cada comprobante.
 
-    Recorrer un comprobante toma más de diez segundos, así que sin este aviso el
-    trabajo se pasa minutos enteros sin mover el contador y no hay forma de
-    distinguirlo de uno colgado.
+    `al_extraer(serie_numero, detalles)` se llama en cuanto cada comprobante
+    termina bien. Guardar sobre la marcha es lo que evita que un tropiezo a
+    mitad de la lista se lleve por delante todo lo ya recorrido.
     """
-    debug_logs = []
-
-    def log(msg: str):
-        line = f"{datetime.now().isoformat(timespec='seconds')} | {msg}"
-        debug_logs.append(line)
-        print(line)
+    # `print` no llegaba a logs/automat_api.log (ese handler sólo recoge el
+    # módulo `logging`), así que el rastro por comprobante se perdía justo
+    # cuando hacía falta para saber si un job se quedó colgado.
+    def log(msg: str) -> None:
+        logger.info("%s", msg)
 
     browser = None
     resultados = {}
@@ -172,185 +464,71 @@ def _scrape_detalles(
             )
             page = context.new_page()
 
+            # `_hacer_login` ya deja confirmado que el menú está arriba, así que
+            # aquí sobran los 3 s de cortesía que había antes y después.
             _hacer_login(page, ruc, usuario, password)
-            page.wait_for_timeout(3000)
+            _abrir_modulo_empresas(page, log)
 
-            try:
-                tab_empresas = page.locator("#btnEmpresas, a:has-text('Empresas')").first
-                if tab_empresas.count() > 0:
-                    tab_empresas.click()
-                    page.wait_for_timeout(2000)
-                    
-            except Exception as e:
-                log(f"Error navegando menú principal: {e}")
-
-            page.wait_for_timeout(3000)
-            
             iframe = page.frame_locator("#iframeApplication")
-            
+
             for hechos, fac in enumerate(facturas_a_buscar):
                 serie_num = fac.get("serie_numero", "")
                 if progreso:
                     progreso(hechos, serie_num)
 
-                try:
-                    page.evaluate("if(typeof ejecuta === 'function'){ ejecuta('MenuInternet.htm?action=iconExecute&code=11.9.5.1.1',false,'Consultar Factura, Boletas y Notas','#nivel1_11','11.9.5.1.1'); }")
-                    iframe.locator("input#criterio\\.tipoConsulta").wait_for(state="visible", timeout=15000)
-                    page.wait_for_timeout(500)
-                except Exception as e:
-                    log(f"Error cargando iframe: {e}")
-                    page.screenshot(path=_ruta_log("error_iframe_timeout.png"))
-                    continue
-                
-                ruc_emisor = fac.get("documento_contraparte", "")
-                fecha_emision = fac.get("fecha_emision")
-                serie = fac.get("serie", "")
-                numero = fac.get("numero", "")
-
-                if not serie or not numero:
+                if not fac.get("serie") or not fac.get("numero"):
                     continue
 
                 log(f"Buscando comprobante: {serie_num}")
 
-                try:
-                    # El portal espera dd/mm/aaaa.
-                    fecha_emision_str = ""
-                    if isinstance(fecha_emision, (datetime, date)):
-                        fecha_emision_str = fecha_emision.strftime("%d/%m/%Y")
-
-                    combo = iframe.locator("input#criterio\\.tipoConsulta").first
-                    if combo.count() > 0:
-                        combo.click()
-                        combo.fill("")
-                        page.wait_for_timeout(500)
-                        combo.press_sequentially("FE Recibidas", delay=100)
-                        page.wait_for_timeout(1500)
-                        
-                        opcion_popup = iframe.locator("li.dijitMenuItem:has-text('FE Recibidas'), li.dijitMenuItem:has-text('Recibidas')").first
-                        if opcion_popup.count() > 0:
-                            opcion_popup.click()
-                        else:
-                            combo.press("ArrowDown")
-                            page.wait_for_timeout(300)
-                            combo.press("Enter")
-                        page.wait_for_timeout(1000)
-
-                    ruc_input = iframe.locator("input#criterio\\.ruc").first
-                    if ruc_input.count() > 0:
-                        ruc_input.click()
-                        ruc_input.fill("")
-                        ruc_input.press_sequentially(ruc_emisor, delay=50)
-                        ruc_input.press("Tab")
-                        page.wait_for_timeout(500)
-
-                    serie_input = iframe.locator("input#criterio\\.serie").first
-                    if serie_input.count() > 0:
-                        serie_input.click()
-                        serie_input.fill("")
-                        serie_input.press_sequentially(serie, delay=50)
-                        serie_input.press("Tab")
-                        page.wait_for_timeout(500)
-
-                    numero_input = iframe.locator("input#criterio\\.numero").first
-                    if numero_input.count() > 0:
-                        numero_input.click()
-                        numero_input.fill("")
-                        numero_input.press_sequentially(str(int(numero)), delay=50)
-                        numero_input.press("Tab")
-                        page.wait_for_timeout(500)
-
-                    if fecha_emision_str:
-                        fec_desde = iframe.locator("input#criterio\\.fecDesde").first
-                        if fec_desde.count() > 0:
-                            fec_desde.click()
-                            fec_desde.fill("")
-                            fec_desde.press_sequentially(fecha_emision_str, delay=50)
-                            fec_desde.press("Tab")
-                            page.wait_for_timeout(500)
-                            
-                        fec_hasta = iframe.locator("input#criterio\\.fecHasta").first
-                        if fec_hasta.count() > 0:
-                            fec_hasta.click()
-                            fec_hasta.fill("")
-                            fec_hasta.press_sequentially(fecha_emision_str, delay=50)
-                            fec_hasta.press("Tab")
-                            page.wait_for_timeout(500)
-                    
-                    btn_buscar = iframe.locator("#criterio\\.btnContinuar, #btnBuscar, button:has-text('Buscar'), input[value='Buscar']").first
-                    btn_buscar.click(force=True)
-                    
-                    btn_visualizar = iframe.locator("a:has(img[src*='viewdoc.gif']), a[onclick*='consultaFactura.view'], a[title*='Visualizar'], button[title*='Visualizar'], img[title*='Visualizar'], img[alt*='Visualizar'], a:has(img[src*='impresora']), a:has(img[src*='pdf'])").first
-                    
+                # Dos vueltas: la primera recarga el formulario y consulta; si
+                # algo falla se recupera la sesión (si es lo que se rompió) y se
+                # vuelve a intentar una sola vez. Antes cualquier tropiezo daba
+                # el comprobante por perdido.
+                for intento in (1, 2):
                     try:
-                        btn_visualizar.wait_for(state="attached", timeout=10000)
-                    except Exception:
-                        pass
-                    
-                    if btn_visualizar.count() > 0:
-                        log(f"Abriendo popup para {serie_num}")
-                        with context.expect_page(timeout=15000) as popup_info:
-                            btn_visualizar.click()
-                        popup = popup_info.value
-                        popup.wait_for_load_state("domcontentloaded", timeout=15000)
-                        page.wait_for_timeout(1000)
-
-                        PALABRAS_EXCLUIR = {
-                            "cant.(a)", "u.m.", "código", "descripción", "valor unit.(b)",
-                            "precio unit.", "valor v.(a)*(b)", "icbper",
-                            "descuento", "total", "sumatoria", "importe",
-                            "tipo de comprobante", "número", "fecha de emisión", "moneda",
-                            "ruc", "razón social", "domicilio", "tipo de documento",
-                            "numero de documento",
-                        }
-                        detalles = []
-                        filas = popup.locator("table tr:has(td)")
-                        count_filas = filas.count()
-                        for i in range(count_filas):
-                            celdas = filas.nth(i).locator("td").all_text_contents()
-                            celdas = [c.strip() for c in celdas]
-                            if len(celdas) >= 6:
-                                primera = celdas[0].strip()
-                                try:
-                                    float(primera.replace(",", "").replace(" ", ""))
-                                    desc = celdas[3] if len(celdas) > 3 else ""
-                                    if any(p in desc.lower() for p in PALABRAS_EXCLUIR):
-                                        continue
-                                    detalles.append({
-                                        "cantidad": primera,
-                                        "unidad_medida": celdas[1] if len(celdas) > 1 else "",
-                                        "codigo": celdas[2] if len(celdas) > 2 else "",
-                                        "descripcion": desc,
-                                        "valor_unitario": celdas[4] if len(celdas) > 4 else "",
-                                        "precio_unitario": celdas[5] if len(celdas) > 5 else "",
-                                        "valor_venta": celdas[6] if len(celdas) > 6 else "",
-                                        "icbper": celdas[7] if len(celdas) > 7 else "",
-                                    })
-                                except ValueError:
-                                    pass
-
+                        _abrir_consulta(page, iframe, timeout_ms)
+                        detalles = _consultar_uno(
+                            page, context, iframe, fac, timeout_ms, log, timeout_busqueda_ms
+                        )
                         resultados[serie_num] = detalles
-                        popup.close()
                         log(f"{serie_num}: {len(detalles)} items extraidos")
-                            
-                    else:
-                        log(f"No se encontro boton visualizar para {serie_num}")
-                        page.screenshot(path=_ruta_log(f"no_visualizar_{serie_num.replace('-', '_')}.png"))
-                        try:
-                            html = iframe.locator("body").inner_html()
-                            with open(_ruta_log(f"no_visualizar_{serie_num.replace('-', '_')}.html"), "w", encoding="utf-8") as f:
-                                f.write(html)
-                        except Exception:
-                            pass
-                        
-                except Exception as e:
-                    log(f"Error procesando {serie_num}: {str(e)}")
-                    page.screenshot(path=_ruta_log(f"error_{serie_num.replace('-', '_')}.png"))
+                        if al_extraer:
+                            al_extraer(serie_num, detalles)
+                        break
+                    except ComprobanteNoEncontrado:
+                        log(f"{serie_num}: SUNAT no lo tiene entre las FE recibidas")
+                        break
+                    except Exception as e:
+                        if intento == 2:
+                            log(f"Error procesando {serie_num}: {e}")
+                            if debug:
+                                page.screenshot(
+                                    path=_ruta_log(f"error_{serie_num.replace('-', '_')}.png")
+                                )
+                            break
+
+                        if _es_sesion_expirada(page):
+                            log("Sesión SOL expirada: reintentando login")
+                            try:
+                                _hacer_login(page, ruc, usuario, password)
+                                _abrir_modulo_empresas(page, log)
+                            except Exception as fallo_login:
+                                # Que no se pueda recuperar la sesión no puede
+                                # costar los comprobantes ya recorridos: se
+                                # corta la vuelta y se devuelve lo que haya.
+                                log(f"No se pudo recuperar la sesión: {fallo_login}")
+                                return resultados
+                        else:
+                            log(f"Reintentando {serie_num}: {e}")
 
             return resultados
 
+        except SesionSolError:
+            # Sin sesión no hay nada que devolver: que el job muera y lo diga.
+            raise
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logger.exception("Fallo general del scraping de detalle")
             log(f"Fallo general: {str(e)}")
             return resultados
         finally:
@@ -362,25 +540,45 @@ async def obtener_detalles(
     empresa: dict,
     comprobantes: list[dict],
     debug: bool = False,
-    headed: bool = False,
+    headed: bool | None = None,
     slow_mo_ms: int = 0,
     progreso: Callable[[int, str], None] | None = None,
+    timeout_ms: int | None = None,
+    al_extraer: Callable[[str, list[dict]], None] | None = None,
+    timeout_busqueda_ms: int | None = None,
 ) -> dict:
     password_cifrada = empresa.get("password")
     if not password_cifrada:
         raise ValueError("No hay contraseña SOL guardada para ejecutar el scraping")
 
-    # `progreso` se invoca desde el hilo de Playwright: quien lo pase es
-    # responsable de devolver el aviso a su propio loop.
+    if headed is None:
+        headed = not settings.SUNAT_SCRAPER_HEADLESS
+    if timeout_ms is None:
+        timeout_ms = settings.SUNAT_SCRAPER_TIMEOUT_MS
+    if timeout_busqueda_ms is None:
+        timeout_busqueda_ms = settings.SUNAT_TIMEOUT_BUSQUEDA_MS
+
+    # Playwright es síncrono, así que el scraping vive en un hilo aparte.
+    # `progreso` se invoca desde ahí: quien lo pase es responsable de devolver
+    # el aviso a su propio loop.
+    #
+    # Los argumentos van por nombre a propósito. Antes iban por posición y
+    # reordenar la firma no daba error: el callback de avance acababa en otro
+    # parámetro y el contador se quedaba quieto sin que nada lo delatara.
     return await asyncio.to_thread(
-        _scrape_detalles,
-        empresa["ruc"],
-        empresa["usuario"],
-        decrypt_password(password_cifrada),
-        comprobantes,
-        debug,
-        headed,
-        slow_mo_ms,
-        progreso,
+        partial(
+            _scrape_detalles,
+            empresa["ruc"],
+            empresa["usuario"],
+            decrypt_password(password_cifrada),
+            comprobantes,
+            debug=debug,
+            headed=headed,
+            slow_mo_ms=slow_mo_ms,
+            progreso=progreso,
+            timeout_ms=timeout_ms,
+            al_extraer=al_extraer,
+            timeout_busqueda_ms=timeout_busqueda_ms,
+        )
     )
 

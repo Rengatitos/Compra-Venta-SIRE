@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import requests
@@ -33,13 +34,26 @@ _CAMPOS_FECHA_VENCIMIENTO = ("fecVencimiento", "fecVcto")
 _CAMPOS_MONEDA = ("codMoneda", "desMoneda")
 _CAMPOS_TIPO_CAMBIO = ("mtoTipoCambio", "valTipoCambio")
 
+# El RCE reparte la base imponible y el IGV en tres destinos —gravadas (DG),
+# gravadas y no gravadas (DGNG) y no gravadas (DNG)— y hay que sumarlos: un
+# comprobante puede traer importe en más de uno, así que quedarse con el
+# primero perdería el resto. Los `...Original` guardan el valor previo a una
+# modificación y no entran en la suma.
+_MONTOS_SUMA = {
+    "base_imponible": ("mtoBIGravadaDG", "mtoBIGravadaDGNG", "mtoBIGravadaDNG"),
+    "igv": ("mtoIgvIpmDG", "mtoIgvIpmDGNG", "mtoIgvIpmDNG"),
+}
+
+# Los que vienen en un único campo. Se dejan alternativas por si otro endpoint
+# del SIRE usa otro nombre, pero el primero de cada tupla es el que manda el
+# RCE de verdad.
 _MONTOS = {
-    "base_imponible": ("mtoBIGravada", "mtoBaseImponible", "mtoBaseImponibleGravada"),
-    "igv": ("mtoIGV", "mtoIgvIpm"),
-    "exonerado": ("mtoExonerado", "mtoOperExonerada"),
-    "inafecto": ("mtoInafecto", "mtoOperInafecta"),
-    "isc": ("mtoISC",),
-    "otros_tributos": ("mtoOtrosTributos", "mtoOtrosCargos"),
+    # "Valor de las adquisiciones no gravadas": el RCE mete aquí lo exonerado
+    # y lo inafecto sin distinguirlos.
+    "no_gravado": ("mtoValorAdqNG",),
+    "icbper": ("mtoIcbp", "mtoICBPER"),
+    "isc": ("mtoISC", "mtoIsc"),
+    "otros_tributos": ("mtoOtrosTrib", "mtoOtrosTributos", "mtoOtrosCargos"),
     "total": ("mtoTotalCp", "mtoImporteTotal"),
 }
 
@@ -50,6 +64,19 @@ def _primero(datos: dict[str, Any], campos: tuple[str, ...], defecto: Any = "") 
         if valor not in (None, "", "0"):
             return valor
     return defecto
+
+
+def _sumar(datos: dict[str, Any], campos: tuple[str, ...]) -> Decimal:
+    total = Decimal("0")
+    for campo in campos:
+        valor = datos.get(campo)
+        if valor in (None, ""):
+            continue
+        try:
+            total += Decimal(str(valor))
+        except (InvalidOperation, ValueError):
+            continue
+    return total
 
 
 def _url_propuesta(periodo: str) -> str:
@@ -67,6 +94,12 @@ def a_comprobante(registro: dict[str, Any], libro: Libro) -> Comprobante:
         destino: _primero(fuente_montos, candidatos, 0)
         for destino, candidatos in _MONTOS.items()
     }
+    montos.update(
+        {
+            destino: _sumar(fuente_montos, campos)
+            for destino, campos in _MONTOS_SUMA.items()
+        }
+    )
 
     return Comprobante(
         libro=libro,

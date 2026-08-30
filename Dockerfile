@@ -29,8 +29,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     MALLOC_ARENA_MAX=2 \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    SUNAT_NUM_WORKERS=1
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # Instalar navegadores de Playwright y sus dependencias de sistema
 RUN python -m playwright install --with-deps chromium \
