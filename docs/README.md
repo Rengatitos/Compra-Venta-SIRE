@@ -69,6 +69,5 @@ Todas las colecciones viven en una sola base lógica de MongoDB. No hay un ODM: 
 
 ## Fuera de alcance hoy
 
-- **Libro de ventas (RVIE).** `libro=ventas` responde `501` en los endpoints que lo aceptan como parámetro.
 - **Aceptar / reemplazar la propuesta del SIRE.** El cliente hacia SUNAT hoy solo lee (descarga la propuesta).
 - **Conciliación contra Contasis** y **plan de cuentas**. Ver [PLAN.md](../PLAN.md) para el diseño de esta fase.

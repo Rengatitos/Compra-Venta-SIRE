@@ -12,7 +12,7 @@ Dentro de esa carpeta hay seis subcarpetas:
 - **`core`** contiene la configuración y los mecanismos transversales: [config.py](../../app/core/config.py) (variables de entorno), [auth.py](../../app/core/auth.py) (JWT y dependencias de autorización, ver [autenticación](autenticacion.md)) y [encryption.py](../../app/core/encryption.py) (cifrado de contraseñas SOL, ver [cifrado](cifrado.md)).
 - **`db`** tiene un único archivo, [database.py](../../app/db/database.py), con la conexión a Mongo vía Motor y un único accesor de base — [get_db](../../app/db/database.py:31).
 - **`schemas`** reúne los modelos Pydantic de request/response: `empresa.py`, `periodo.py`, `comprobante.py`, `job.py` y `generic.py` (respuestas genéricas reutilizadas entre rutas).
-- **`services`** contiene la lógica de negocio: `propuesta_service.py` (orquesta la sincronización con el SIRE), `comprobante_service.py` (serialización hacia la API y armado del texto para la IA), `jobs_service.py` (ejecución de trabajos asíncronos con seguimiento de progreso), `detalle_service.py` (extracción de detalle vía scraping, como job), `analisis_ia.py` (integración con Gemini y RAG), `analytics_service.py` (agregaciones para el dashboard), `export_service.py` (PDF de revisión y Excel de un comprobante), `plantilla_excel.py` (el registro de compras/ventas sobre la plantilla oficial de Contasis), `scraping_sunat.py` (automatización del portal SOL con Playwright) y el paquete `sunat/` (cliente HTTP hacia la API oficial: `auth.py` para OAuth, `propuesta.py` para la descarga y el mapeo de la propuesta).
+- **`services`** contiene la lógica de negocio: `propuesta_service.py` (orquesta la sincronización con el SIRE), `comprobante_service.py` (serialización hacia la API y armado del texto para la IA), `jobs_service.py` (ejecución de trabajos asíncronos con seguimiento de progreso), `detalle_service.py` (extracción de detalle vía scraping, como job), `analisis_ia.py` (integración con Gemini y RAG), `analytics_service.py` (agregaciones para el dashboard), `export_service.py` (PDF de revisión y Excel de un comprobante), `plantilla_excel.py` (el registro de compras/ventas sobre la plantilla oficial de Contasis), `scraping_sunat.py` (automatización del portal SOL con Playwright) y el paquete `sunat/` (cliente HTTP hacia la API oficial: `auth.py` para OAuth, `propuesta.py` para la descarga —URL, credenciales y paginación— y `rce.py` / `rvie.py` para el mapeo de campos de cada libro, sobre los helpers comunes de `campos.py`).
 
 Todos los archivos de inicialización de paquete están vacíos; solo marcan paquetes de Python.
 
@@ -36,7 +36,7 @@ Toda request HTTP atraviesa las mismas capas, en el mismo orden:
 
 La identidad del recurso es el **RUC**, no el `_id` de Mongo. El sujeto de la request sale siempre del **JWT**, nunca del path: la dependencia [empresa_actual](../../app/api/v1/deps.py:9) resuelve la empresa desde el token y verifica que su RUC coincida con el del path, devolviendo `403` si no.
 
-`libro` (`ventas` \| `compras`) es un path param, no dos árboles de rutas separados — hoy solo `compras` está implementado (ver [propuesta](../endpoints/propuesta.md)).
+`libro` (`ventas` \| `compras`) es un path param, no dos árboles de rutas separados: ventas y compras comparten el grueso de la lógica y duplicar rutas garantizaría que divergieran. Lo llevan `propuesta`, `analisis` y `detalle`.
 
 ## Otros temas de arquitectura
 
