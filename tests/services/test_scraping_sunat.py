@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
+from app.domain.comprobante import Libro
 from app.services import scraping_sunat
 
 EMPRESA = {"ruc": "20608997106", "usuario": "USUARIO", "password": "cifrada"}
@@ -78,3 +79,35 @@ def test_obtener_detalles_exige_clave_sol(monkeypatch):
         assert "contraseña SOL" in str(fallo)
     else:
         raise AssertionError("se esperaba un ValueError sin contraseña guardada")
+
+
+def test_el_libro_llega_al_scraper_por_nombre(monkeypatch):
+    # Decide en qué bandeja del portal se busca: "FE Recibidas" para compras y
+    # "FE Emitidas" para ventas. Si se perdiera por el camino, la extracción de
+    # ventas consultaría las compras y no encontraría nada.
+    recibido = _capturar(monkeypatch)
+
+    asyncio.run(scraping_sunat.obtener_detalles(EMPRESA, [], libro=Libro.VENTAS))
+
+    assert recibido["libro"] is Libro.VENTAS
+
+
+def test_por_defecto_sigue_siendo_compras(monkeypatch):
+    recibido = _capturar(monkeypatch)
+
+    asyncio.run(scraping_sunat.obtener_detalles(EMPRESA, []))
+
+    assert recibido["libro"] is Libro.COMPRAS
+
+
+def test_el_ruc_del_cliente_solo_se_usa_si_es_un_ruc():
+    # En ventas la contraparte es el receptor: en boletas suele ser un DNI o no
+    # venir. Meterlo en un campo que espera once dígitos deja la búsqueda sin
+    # resultados, y serie + número + fecha ya identifican el comprobante.
+    con_ruc = {"documento_contraparte": "20608997106"}
+    con_dni = {"documento_contraparte": "46169303"}
+
+    assert scraping_sunat._criterio_ruc(con_ruc, Libro.VENTAS) == "20608997106"
+    assert scraping_sunat._criterio_ruc(con_dni, Libro.VENTAS) == ""
+    # En compras el emisor siempre tiene RUC, así que se manda tal cual.
+    assert scraping_sunat._criterio_ruc(con_dni, Libro.COMPRAS) == "46169303"

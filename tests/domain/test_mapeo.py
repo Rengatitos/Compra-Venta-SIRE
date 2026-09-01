@@ -8,11 +8,7 @@ from app.domain.comprobante import Comprobante, Libro, Origen
 from app.repositories.comprobantes import a_documento, desde_documento
 from app.services import export_service, plantilla_excel
 from app.services.comprobante_service import serializar, texto_para_ia
-from app.services.sunat.propuesta import (
-    a_comprobante,
-    pertenece_al_periodo,
-    serie_aceptada,
-)
+from app.services.sunat.propuesta import a_comprobante, pertenece_al_periodo
 
 PAYLOAD_SIRE = {
     "numSerieCDP": "F001",
@@ -43,6 +39,44 @@ PAYLOAD_SIRE = {
         "mtoBIGravadaDGOriginal": None,
         "mtoIgvIpmDGOriginal": None,
     },
+}
+
+
+# Forma real del RVIE, con los nombres tomados de una respuesta de
+# `/rvie/propuesta/web/propuesta/{periodo}/comprobantes`. Ventas separa
+# exonerado de inafecto, manda los descuentos aparte y —a diferencia del RCE—
+# no trae vencimiento ni tasa de IGV. Los datos del cliente van anonimizados.
+PAYLOAD_RVIE = {
+    "numSerieCDP": "F001",
+    "numCDP": "123",
+    "codTipoCDP": "01",
+    "codTipoDocIdentidad": "6",
+    "numDocIdentidad": "20129646099",
+    "nomRazonSocialCliente": "ELECTROCENTRO S.A.",
+    # `nomRazonSocial` es la razón social de la propia empresa emisora, no la
+    # del cliente. Va en el fixture justo para que se note si alguien vuelve a
+    # tomarla por contraparte.
+    "nomRazonSocial": "EMPRESA QUE EMITE S.R.L.",
+    "fecEmision": "15/06/2026",
+    "codMoneda": "PEN",
+    "mtoTipoCambio": 1,
+    "mtoValFactExpo": 0.0,
+    "mtoBIGravada": 100.0,
+    "mtoDsctoBI": 0.0,
+    "mtoIGV": 18.0,
+    "mtoDsctoIGV": 0.0,
+    "mtoExonerado": 0.0,
+    "mtoInafecto": 0.0,
+    "mtoISC": 0.0,
+    "mtoBIIvap": 0.0,
+    "mtoIvap": 0.0,
+    "mtoIcbp": 0.0,
+    "mtoOtrosTrib": 0.0,
+    "mtoTotalCP": 118.0,
+    "codCar": "2012964609901F0010000000123",
+    "codEstadoComprobante": "1",
+    "indTipoOperacion": "0101",
+    "documentoMod": [],
 }
 
 
@@ -98,6 +132,58 @@ class TestMapeoDesdeSire:
         }
         assert a_comprobante(payload, Libro.COMPRAS).otros_tributos == Decimal("7.50")
 
+    def test_la_fecha_de_vencimiento_llega_en_fec_venc_pag(self):
+        # El RCE la manda en `fecVencPag`. Buscándola sólo en `fecVencimiento`
+        # o `fecVcto` salía siempre vacía, y el Excel acababa repitiendo la
+        # fecha de emisión como si fuera el vencimiento.
+        payload = {**PAYLOAD_SIRE, "fecVencPag": "2026-07-31"}
+        assert a_comprobante(payload, Libro.COMPRAS).fecha_vencimiento == date(2026, 7, 31)
+
+    def test_sin_vencimiento_el_campo_queda_vacio(self):
+        assert a_comprobante(PAYLOAD_SIRE, Libro.COMPRAS).fecha_vencimiento is None
+
+    def test_el_tipo_de_cambio_viene_anidado_en_su_bloque(self):
+        # `mtoTipoCambio` no está en la raíz del registro sino dentro de
+        # `tipoCambio`; sin aplanar ese bloque las compras en dólares salían
+        # sin tipo de cambio.
+        payload = {**PAYLOAD_SIRE, "tipoCambio": {"mtoTipoCambio": 3.35}}
+        assert a_comprobante(payload, Libro.COMPRAS).tipo_cambio == Decimal("3.35")
+
+    def test_la_tasa_de_igv_se_convierte_a_puntos_porcentuales(self):
+        # SUNAT la manda como fracción; el registro la pide como 18 o 10.5.
+        payload = {**PAYLOAD_SIRE, "porTasaIGV": 0.105}
+        assert a_comprobante(payload, Libro.COMPRAS).porcentaje_igv == Decimal("10.50")
+
+    def test_una_tasa_en_cero_no_es_una_tasa(self):
+        # Los comprobantes no gravados llegan con la tasa en cero: dejarla en
+        # `None` es lo que permite no escribir un 18 % que no corresponde.
+        payload = {**PAYLOAD_SIRE, "porTasaIGV": 0}
+        assert a_comprobante(payload, Libro.COMPRAS).porcentaje_igv is None
+
+    def test_desglosa_los_tres_destinos_ademas_de_sumarlos(self):
+        payload = {
+            **PAYLOAD_SIRE,
+            "montos": {
+                **PAYLOAD_SIRE["montos"],
+                "mtoBIGravadaDG": 100.0,
+                "mtoIgvIpmDG": 18.0,
+                "mtoBIGravadaDGNG": 50.0,
+                "mtoIgvIpmDGNG": 9.0,
+                "mtoBIGravadaDNG": 25.0,
+                "mtoIgvIpmDNG": 4.5,
+            },
+        }
+        c = a_comprobante(payload, Libro.COMPRAS)
+        assert c.base_imponible_dg == Decimal("100.00")
+        assert c.base_imponible_dgng == Decimal("50.00")
+        assert c.base_imponible_dng == Decimal("25.00")
+        assert c.igv_dg == Decimal("18.00")
+        assert c.igv_dgng == Decimal("9.00")
+        assert c.igv_dng == Decimal("4.50")
+        # El total sigue siendo la suma de los tres.
+        assert c.base_imponible == Decimal("175.00")
+        assert c.igv == Decimal("31.50")
+
     def test_conserva_el_json_crudo(self):
         c = a_comprobante(PAYLOAD_SIRE, Libro.COMPRAS)
         assert "ELECTROCENTRO" in c.extra["raw_sire"]
@@ -117,10 +203,13 @@ class TestMapeoDesdeSire:
         assert pertenece_al_periodo(c, "202606")
         assert not pertenece_al_periodo(c, "202605")
 
-    def test_filtro_de_serie_heredado(self):
-        assert serie_aceptada(a_comprobante(PAYLOAD_SIRE, Libro.COMPRAS))
+    def test_las_boletas_ya_no_se_descartan(self):
+        # Antes `serie_aceptada` tiraba todo lo que no empezara con F o E. En
+        # ventas eso se llevaba por delante el grueso del libro, así que el
+        # filtro desapareció de los dos libros.
         boleta = a_comprobante({**PAYLOAD_SIRE, "numSerieCDP": "B001"}, Libro.COMPRAS)
-        assert not serie_aceptada(boleta)
+        assert boleta.serie == "B001"
+        assert boleta.es_valido
 
 
 class TestRoundTripBson:
@@ -212,7 +301,9 @@ class TestExportacion:
 
 
 def _documento_ventas() -> dict:
-    return a_documento(a_comprobante(PAYLOAD_SIRE, Libro.VENTAS), "empresa1", "202606")
+    # Un payload del RVIE, no el del RCE: los dos libros ya no comparten
+    # nombres de campo, así que reutilizar el de compras daría todo en cero.
+    return a_documento(a_comprobante(PAYLOAD_RVIE, Libro.VENTAS), "empresa1", "202606")
 
 
 def _hoja(comprobantes: list[dict], libro: Libro):
@@ -263,6 +354,54 @@ class TestPlantillaContasis:
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
         assert hoja["P14"].value == 35.0
 
+    def test_los_tres_destinos_van_a_columnas_distintas(self):
+        # J/K son sólo las gravadas; DGNG y DNG tienen sus propias columnas.
+        # Mandando la suma a J/K se declaraba como gravado lo destinado a
+        # operaciones no gravadas: el total cuadraba, el destino no.
+        documento = {
+            **_documento_completo(),
+            "base_imponible_dg": Decimal("100.00"),
+            "igv_dg": Decimal("18.00"),
+            "base_imponible_dgng": Decimal("50.00"),
+            "igv_dgng": Decimal("9.00"),
+            "base_imponible_dng": Decimal("25.00"),
+            "igv_dng": Decimal("4.50"),
+        }
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["J14"].value == 100.0
+        assert hoja["K14"].value == 18.0
+        assert hoja["L14"].value == 50.0
+        assert hoja["M14"].value == 9.0
+        assert hoja["N14"].value == 25.0
+        assert hoja["O14"].value == 4.5
+
+    def test_el_tipo_de_cambio_llega_a_la_columna_w(self):
+        documento = {**_documento_completo(), "tipo_cambio": Decimal("3.387")}
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["W14"].value == 3.387
+
+    def test_la_tasa_declarada_gana_a_la_general(self):
+        documento = {**_documento_completo(), "porcentaje_igv": Decimal("10.50")}
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AR14"].value == 10.5
+
+    def test_sin_igv_no_se_inventa_una_tasa(self):
+        # Un comprobante no gravado no tiene tasa; escribir la general lo
+        # declaraba al 18 %.
+        documento = {
+            **_documento_completo(),
+            "igv": Decimal("0.00"),
+            "igv_dg": Decimal("0.00"),
+            "porcentaje_igv": None,
+        }
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AR14"].value is None
+
+    def test_con_igv_y_sin_tasa_declarada_cae_en_la_general(self):
+        documento = {**_documento_completo(), "porcentaje_igv": None}
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AR14"].value == plantilla_excel.TASA_IGV
+
     def test_mapeo_de_ventas(self):
         hoja = _hoja([serializar(_documento_ventas())], Libro.VENTAS)
         assert hoja["C14"].value == "01"
@@ -275,20 +414,83 @@ class TestPlantillaContasis:
         assert hoja["V14"].value == "S"
         assert hoja["AL14"].value == 18
 
-    def test_las_columnas_del_analisis_quedan_vacias(self):
+    def test_el_analisis_llena_cuenta_contable_y_glosa(self):
         hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
-        # Cuenta contable base imponible / otros tributos / total, y glosa.
-        assert [hoja[c + "14"].value for c in ("AF", "AG", "AH", "AS")] == [None] * 4
+        assert hoja["AF14"].value == "6361"
+        assert hoja["AS14"].value == "Energía eléctrica"
 
-    def test_el_analisis_no_aparece_en_ninguna_celda(self):
+    def test_el_analisis_tambien_viaja_en_la_hoja_de_ventas(self):
+        # La hoja de ventas coloca las mismas columnas en otras letras: la
+        # moneda es la V, así que AB es la cuenta contable.
+        documento = _documento_ventas()
+        documento["metadata_procesada"] = {
+            "cuenta_contable": "7011",
+            "detalle": [{"producto": "Venta de mercadería"}],
+        }
+        hoja = _hoja([serializar(documento)], Libro.VENTAS)
+        assert hoja["AB14"].value == "7011"
+        assert hoja["AM14"].value == "Venta de mercadería"
+
+    def test_el_centro_de_costos_no_se_escribe(self):
+        # La plantilla pide el código del catálogo de Contasis (9 caracteres) y
+        # la IA devuelve un nombre: recortarlo inventaría códigos que además
+        # colisionan entre sí ("Administración" y "Administración y Finanzas"
+        # darían el mismo).
+        documento = _documento_completo()
+        documento["metadata_procesada"]["centro_costos"] = "Operaciones - Flota Vehicular"
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AI14"].value is None
+        assert hoja["AJ14"].value is None
+
+    def test_las_cuentas_que_la_ia_no_deduce_siguen_vacias(self):
+        # Cuenta contable de otros tributos y del total: el análisis no las da.
         hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
-        textos = [str(c.value) for fila in hoja.iter_rows() for c in fila if c.value is not None]
-        for rastro in ("GASTO", "95%", "6361", "Servicio", "Energ"):
-            assert not any(rastro in texto for texto in textos), rastro
+        assert [hoja[c + "14"].value for c in ("AG", "AH")] == [None, None]
+
+    def test_la_glosa_se_recorta_al_ancho_de_la_columna(self):
+        documento = _documento_completo()
+        documento["metadata_procesada"]["detalle"] = [
+            {"producto": "Servicio de mantenimiento preventivo y correctivo de la flota"},
+            {"producto": "Repuestos varios"},
+        ]
+        documento["metadata_procesada"]["descripcion"] = (
+            "Adquisición de servicios de mantenimiento preventivo y correctivo "
+            "para la flota vehicular de la empresa durante el periodo"
+        )
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        glosa = hoja["AS14"].value
+        assert len(glosa) <= plantilla_excel.MAX_GLOSA
+        # Cortada por palabra, no a mitad de una.
+        assert glosa == "Adquisición de servicios de mantenimiento preventivo y"
+
+    def test_con_un_solo_item_la_glosa_es_el_producto(self):
+        documento = _documento_completo()
+        documento["metadata_procesada"]["descripcion"] = "Resumen largo del comprobante"
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AS14"].value == "Energía eléctrica"
+
+    def test_con_varios_items_la_glosa_es_el_resumen(self):
+        # El nombre del primer ítem describiría sólo una parte de la compra.
+        documento = _documento_completo()
+        documento["metadata_procesada"]["detalle"] = [
+            {"producto": "Aceite de motor"},
+            {"producto": "Filtro de aire"},
+        ]
+        documento["metadata_procesada"]["descripcion"] = "Insumos de mantenimiento"
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AS14"].value == "Insumos de mantenimiento"
+
+    def test_sin_analisis_las_columnas_de_la_ia_quedan_vacias(self):
+        documento = _documento_completo()
+        documento["metadata_procesada"] = None
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AF14"].value is None
+        assert hoja["AS14"].value is None
 
     def test_pie_de_totales_suma_el_rango_de_datos(self):
+        # Con una sola moneda el pie es una suma simple y el rótulo dice cuál.
         hoja = _hoja([serializar(_documento_completo())] * 3, Libro.COMPRAS)
-        assert hoja["A17"].value == "TOTAL"
+        assert hoja["A17"].value == "TOTAL S/"
         assert hoja["S17"].value == "=SUM(S14:S16)"
 
     def test_sin_comprobantes_salen_solo_los_encabezados(self):
