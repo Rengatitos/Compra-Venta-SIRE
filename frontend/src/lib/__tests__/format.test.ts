@@ -57,6 +57,21 @@ describe('formatearMoneda', () => {
   it('no revienta con un código de moneda inválido', () => {
     expect(formatearMoneda(10, 'XX?')).toContain('10.00');
   });
+
+  it('distingue soles de dólares con símbolos simétricos', () => {
+    // En es-PE, Intl daba «S/ 1,234.50» para soles pero «USD 1,234.50» para
+    // dólares: en un listado que mezcla las dos, esa asimetría cuesta de leer.
+    expect(formatearMoneda(1234.5, 'PEN')).toBe('S/ 1,234.50');
+    expect(formatearMoneda(1234.5, 'USD')).toBe('US$ 1,234.50');
+  });
+
+  it('marca la moneda incluso cuando no la conoce', () => {
+    expect(formatearMoneda(10, 'EUR')).toBe('EUR 10.00');
+  });
+
+  it('sin moneda asume soles, que es lo que manda SUNAT por defecto', () => {
+    expect(formatearMoneda(10)).toBe('S/ 10.00');
+  });
 });
 
 describe('formatearMontoCompacto', () => {

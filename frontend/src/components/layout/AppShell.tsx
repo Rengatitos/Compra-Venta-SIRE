@@ -53,8 +53,8 @@ export function AppShell() {
 
         <footer className={estilos.pie}>
           <p>
-            Solo se sincroniza el libro de compras (RCE). El registro de ventas (RVIE) todavía no
-            está disponible en la API.
+            Se sincronizan los dos libros: compras (RCE) y ventas (RVIE). Cada uno se descarga,
+            se extrae y se analiza por separado.
           </p>
         </footer>
       </div>

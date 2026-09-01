@@ -24,10 +24,23 @@ import {
 } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
-import type { ComprobanteResponse } from '@/types/api';
+import type { AnalyticsSummary, ComprobanteResponse } from '@/types/api';
 
 import estilos from './Dashboard.module.css';
 import { DistribucionIA, SerieDiaria, TopContrapartes } from './graficos';
+
+/**
+ * Los totales van siempre en soles: lo que viene en moneda extranjera se
+ * convierte con el tipo de cambio del propio comprobante. Decirlo importa
+ * porque el número no coincide con la suma de la columna del listado, donde
+ * cada comprobante conserva su moneda.
+ */
+function notaMoneda(base: string, resumen: AnalyticsSummary): string {
+  const enSoles = `${base}, convertido a soles`;
+  return resumen.sin_tipo_cambio > 0
+    ? `${enSoles}. ${resumen.sin_tipo_cambio} sin tipo de cambio: el total se queda corto.`
+    : enSoles;
+}
 
 export function DashboardPage() {
   useDocumentTitle('Dashboard');
@@ -213,13 +226,13 @@ function PanelDelPeriodo({ ruc, rucs, periodo }: PropsPanel) {
             />
             <MetricTile
               etiqueta="Monto total"
-              valor={formatearMontoCompacto(resumen.total_monto)}
-              nota="Suma del importe total"
+              valor={formatearMontoCompacto(resumen.total_monto, resumen.moneda)}
+              nota={notaMoneda('Suma del importe total', resumen)}
             />
             <MetricTile
               etiqueta="IGV acumulado"
-              valor={formatearMontoCompacto(resumen.total_igv)}
-              nota="Crédito fiscal potencial"
+              valor={formatearMontoCompacto(resumen.total_igv, resumen.moneda)}
+              nota={notaMoneda('Crédito fiscal potencial', resumen)}
             />
             <MetricTile
               etiqueta="Clasificados"

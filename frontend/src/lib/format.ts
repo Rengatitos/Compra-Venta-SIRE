@@ -26,36 +26,35 @@ const formateadorFecha = new Intl.DateTimeFormat('es-PE', {
 const formateadorEntero = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 0 });
 const formateadorCantidad = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 3 });
 
-const cacheMoneda = new Map<string, Intl.NumberFormat>();
+/**
+ * Símbolo de cada moneda. Se ponen a mano en vez de dejárselo a `Intl` porque
+ * en `es-PE` los soles salen como «S/» pero los dólares como «USD», y en un
+ * listado que mezcla las dos —cosa habitual: SUNAT devuelve el comprobante en
+ * la moneda en que se emitió— esa asimetría cuesta de leer. «US$» además evita
+ * el «$» a secas, que en Perú se confunde con soles.
+ */
+const SIMBOLOS: Record<string, string> = { PEN: 'S/', USD: 'US$' };
 
-function formateadorMoneda(moneda: string): Intl.NumberFormat {
-  const clave = moneda || 'PEN';
-  let formateador = cacheMoneda.get(clave);
-  if (!formateador) {
-    try {
-      formateador = new Intl.NumberFormat('es-PE', {
-        style: 'currency',
-        currency: clave,
-        minimumFractionDigits: 2,
-      });
-    } catch {
-      // Código de moneda que SUNAT trajo con basura: se cae a decimal simple.
-      formateador = new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2 });
-    }
-    cacheMoneda.set(clave, formateador);
-  }
-  return formateador;
+/** Una moneda que no conocemos se muestra con su código: nunca sin marcar. */
+function simboloMoneda(moneda: string | null | undefined): string {
+  const codigo = (moneda || 'PEN').toUpperCase();
+  return SIMBOLOS[codigo] ?? codigo;
 }
+
+const formateadorDecimal = new Intl.NumberFormat('es-PE', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 export function formatearMoneda(valor: number | null | undefined, moneda = 'PEN'): string {
   if (valor === null || valor === undefined || Number.isNaN(valor)) return '—';
-  return formateadorMoneda(moneda).format(valor);
+  return `${simboloMoneda(moneda)} ${formateadorDecimal.format(valor)}`;
 }
 
 /** Montos grandes en las métricas del dashboard: 1 250 000 → "S/ 1.25 M". */
 export function formatearMontoCompacto(valor: number | null | undefined, moneda = 'PEN'): string {
   if (valor === null || valor === undefined || Number.isNaN(valor)) return '—';
-  const simbolo = moneda === 'PEN' ? 'S/' : moneda;
+  const simbolo = simboloMoneda(moneda);
   const absoluto = Math.abs(valor);
   if (absoluto >= 1_000_000) return `${simbolo} ${(valor / 1_000_000).toFixed(2)} M`;
   if (absoluto >= 10_000) return `${simbolo} ${(valor / 1000).toFixed(1)} K`;

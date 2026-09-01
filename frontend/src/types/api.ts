@@ -139,9 +139,27 @@ export interface ComprobanteResponse {
   moneda: string;
   /** `0` cuando SUNAT no lo trajo (operacion en soles). */
   tipo_cambio: number;
+  /**
+   * Tasa de IGV en puntos porcentuales (18, 10.5 en la selva). `null` cuando
+   * el comprobante no la trae — que no es lo mismo que una tasa de cero.
+   */
+  porcentaje_igv: number | null;
 
+  /** Suma de los tres destinos de abajo. */
   base_imponible: number;
   igv: number;
+  /**
+   * El RCE reparte la base y el IGV segun el destino de la adquisicion:
+   * gravadas (DG), gravadas y no gravadas (DGNG) y no gravadas (DNG). El
+   * registro de compras los pide en columnas separadas. En ventas el RVIE no
+   * hace ese reparto, asi que estos campos van en cero.
+   */
+  base_imponible_dg: number;
+  igv_dg: number;
+  base_imponible_dgng: number;
+  igv_dgng: number;
+  base_imponible_dng: number;
+  igv_dng: number;
   exonerado: number;
   inafecto: number;
   /**
@@ -221,8 +239,20 @@ export interface ResultadoReferencia {
 
 export interface AnalyticsSummary {
   total_comprobantes: number;
+  /**
+   * Moneda de `total_monto` y `total_igv`. Siempre `PEN`: los comprobantes en
+   * moneda extranjera se convierten con su propio tipo de cambio antes de
+   * sumarlos, porque el registro se lleva en moneda nacional.
+   */
+  moneda: string;
   total_monto: number;
   total_igv: number;
+  /**
+   * Comprobantes en moneda extranjera que no traían tipo de cambio. Se suman
+   * por su valor nominal, así que los totales se quedan cortos: si esto no es
+   * cero, hay que decirlo.
+   */
+  sin_tipo_cambio: number;
   procesadas: number;
   pendientes: number;
 }
