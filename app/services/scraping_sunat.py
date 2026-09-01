@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from collections.abc import Callable
 from datetime import date, datetime
 from functools import partial
@@ -10,6 +11,7 @@ from playwright.sync_api import sync_playwright
 
 from app.core.config import settings
 from app.core.encryption import decrypt_password
+from app.domain.comprobante import Libro, normalizar_tipo_cp
 
 load_dotenv()
 
@@ -41,6 +43,54 @@ SEL_BUSCAR = (
     "#criterio\\.btnContinuar, #btnBuscar, "
     "button:has-text('Buscar'), input[value='Buscar']"
 )
+# El combo "Tipo de consulta" decide en qué bandeja busca el portal, y el
+# portal separa una bandeja **por tipo de documento**, no una por libro. Las
+# opciones reales del combo son:
+#
+#   FE Emitidas · FE Recibidas · NC Emitidas · NC Recibidas · ND Emitidas
+#   ND Recibidas · BVE Emitidas - OSE · NC-BVE Emitidas - OSE
+#   ND-BVE Emitidas - OSE
+#
+# Elegirla sólo por el libro daba "FE Emitidas" para todas las ventas, y el
+# registro de ventas es casi todo boletas: buscarlas entre las facturas no
+# encuentra nada. Es el `tipo_cp` el que manda.
+TIPO_FACTURA = "01"
+TIPO_BOLETA = "03"
+TIPO_NOTA_CREDITO = "07"
+TIPO_NOTA_DEBITO = "08"
+
+BANDEJAS = {
+    Libro.COMPRAS: {
+        TIPO_FACTURA: "FE Recibidas",
+        TIPO_NOTA_CREDITO: "NC Recibidas",
+        TIPO_NOTA_DEBITO: "ND Recibidas",
+    },
+    Libro.VENTAS: {
+        TIPO_FACTURA: "FE Emitidas",
+        TIPO_BOLETA: "BVE Emitidas - OSE",
+        TIPO_NOTA_CREDITO: "NC Emitidas",
+        TIPO_NOTA_DEBITO: "ND Emitidas",
+    },
+}
+
+# Una nota que corrige una boleta va en su propia bandeja. No se deduce del
+# `tipo_cp` de la nota —es 07 u 08 igual que cualquier otra—, sino del tipo del
+# documento que modifica, que el RVIE manda en `documentoMod` y el mapeo
+# guarda en `extra.documentos_modificados`.
+BANDEJAS_SOBRE_BOLETA = {
+    TIPO_NOTA_CREDITO: "NC-BVE Emitidas - OSE",
+    TIPO_NOTA_DEBITO: "ND-BVE Emitidas - OSE",
+}
+
+# Con un tipo que no está en la tabla se prueba la bandeja de facturas, que es
+# la que cubre el grueso de cada libro.
+BANDEJA_POR_DEFECTO = {Libro.COMPRAS: "FE Recibidas", Libro.VENTAS: "FE Emitidas"}
+
+# Techo corto para escribir un criterio. En las bandejas de emitidas algunos
+# campos llegan deshabilitados, y `fill` espera a que sean editables: con el
+# timeout general eso costaba medio minuto por comprobante antes de rendirse.
+TIMEOUT_CRITERIO_MS = 5000
+
 SEL_VISUALIZAR = (
     "a:has(img[src*='viewdoc.gif']), a[onclick*='consultaFactura.view'], "
     "a[title*='Visualizar'], button[title*='Visualizar'], "
@@ -63,7 +113,7 @@ class ComprobanteNoEncontrado(Exception):
 
     No es un fallo del portal: reintentarlo devuelve lo mismo. Separarlo del
     resto evita gastar una segunda ronda de timeout en cada comprobante que
-    SUNAT no tiene entre las FE recibidas.
+    SUNAT no tiene en la bandeja consultada.
     """
 
 
@@ -239,10 +289,22 @@ def _llenar(campo, valor: str) -> None:
     dispara el blur, así que no hace falta teclear letra por letra. Los cinco
     campos de texto costaban unos 4,8 s por comprobante entre el retardo de
     50 ms por tecla y el medio segundo de cortesía que venía detrás de cada uno.
+
+    Un criterio vacío no se escribe: no hay nada que poner —el formulario se
+    recarga entero entre comprobantes, así que no queda residuo del anterior— y
+    además `fill` espera a que el campo sea *editable*. En las bandejas de
+    emitidas algunos criterios llegan deshabilitados, y ahí esa espera se
+    tragaba el timeout completo del paso por cada comprobante.
     """
-    if campo.count() == 0:
+    if not valor or campo.count() == 0:
         return
-    campo.fill(valor)
+    try:
+        campo.fill(valor, timeout=TIMEOUT_CRITERIO_MS)
+    except Exception:
+        # Un criterio que el portal no acepta se omite: serie, número y fecha
+        # bastan para identificar el comprobante.
+        logger.info("El portal no aceptó un criterio de búsqueda; se omite")
+        return
     campo.press("Tab")
 
 
@@ -339,15 +401,59 @@ def _abrir_consulta(page, iframe, timeout_ms: int) -> None:
     iframe.locator(SEL_TIPO_CONSULTA).wait_for(state="visible", timeout=timeout_ms)
 
 
+def _modifica_una_boleta(fac: dict) -> bool:
+    """Si la nota corrige una boleta y no una factura."""
+    documentos = (fac.get("extra") or {}).get("documentos_modificados") or []
+    return any(
+        isinstance(doc, dict)
+        and normalizar_tipo_cp(doc.get("codTipoCDP") or doc.get("tipo_cp")) == TIPO_BOLETA
+        for doc in documentos
+    )
+
+
+def bandeja(fac: dict, libro: Libro) -> str:
+    """Opción del combo en la que el portal tiene ese comprobante."""
+    tipo = normalizar_tipo_cp(fac.get("tipo_cp"))
+    if (
+        libro is Libro.VENTAS
+        and tipo in BANDEJAS_SOBRE_BOLETA
+        and _modifica_una_boleta(fac)
+    ):
+        return BANDEJAS_SOBRE_BOLETA[tipo]
+    return BANDEJAS[libro].get(tipo) or BANDEJA_POR_DEFECTO[libro]
+
+
+def _criterio_ruc(fac: dict, libro: Libro) -> str:
+    """RUC de la contraparte que acepta el formulario, o cadena vacía.
+
+    En compras es el emisor y siempre es un RUC. En ventas es el receptor, que
+    en las boletas suele ser un DNI o directamente no venir ("VARIOS
+    CLIENTES"): meterlo en un campo que espera once dígitos deja la búsqueda
+    sin resultados. Sin él, serie + número + fecha ya identifican de forma
+    única el comprobante.
+    """
+    documento = fac.get("documento_contraparte", "") or ""
+    if libro is Libro.VENTAS and len(documento) != 11:
+        return ""
+    return documento
+
+
 def _consultar_uno(
-    page, context, iframe, fac: dict, timeout_ms: int, log, timeout_busqueda_ms: int = 8000
+    page,
+    context,
+    iframe,
+    fac: dict,
+    libro: Libro,
+    timeout_ms: int,
+    log,
+    timeout_busqueda_ms: int = 8000,
 ) -> list[dict]:
     """Busca un comprobante y devuelve sus líneas. Lanza si algo falla."""
     serie_num = fac.get("serie_numero", "")
-    ruc_emisor = fac.get("documento_contraparte", "")
     fecha_emision = fac.get("fecha_emision")
     serie = fac.get("serie", "")
     numero = fac.get("numero", "")
+    tipo_consulta = bandeja(fac, libro)
 
     # El portal espera dd/mm/aaaa.
     fecha_emision_str = ""
@@ -361,10 +467,14 @@ def _consultar_uno(
     if combo.count() > 0:
         combo.click()
         combo.fill("")
-        combo.press_sequentially("FE Recibidas", delay=0)
+        combo.press_sequentially(tipo_consulta, delay=0)
 
+        # El rótulo tiene que casar entero: "BVE Emitidas - OSE" es subcadena
+        # de "NC-BVE Emitidas - OSE" y de "ND-BVE Emitidas - OSE", así que un
+        # `has-text` acabaría eligiendo la bandeja de las notas.
         opcion_popup = iframe.locator(
-            "li.dijitMenuItem:has-text('FE Recibidas'), li.dijitMenuItem:has-text('Recibidas')"
+            "li.dijitMenuItem",
+            has_text=re.compile(rf"^\s*{re.escape(tipo_consulta)}\s*$"),
         ).first
         try:
             opcion_popup.wait_for(state="visible", timeout=5000)
@@ -374,9 +484,17 @@ def _consultar_uno(
             combo.press("ArrowDown")
             combo.press("Enter")
 
-    _llenar(iframe.locator(SEL_RUC).first, ruc_emisor)
+    # El formulario pide el correlativo sin ceros a la izquierda. Al dejar de
+    # filtrar series entran números que no son puramente numéricos, y esos van
+    # tal cual en vez de reventar la consulta entera.
+    try:
+        correlativo = str(int(numero))
+    except (TypeError, ValueError):
+        correlativo = str(numero)
+
+    _llenar(iframe.locator(SEL_RUC).first, _criterio_ruc(fac, libro))
     _llenar(iframe.locator(SEL_SERIE).first, serie)
-    _llenar(iframe.locator(SEL_NUMERO).first, str(int(numero)))
+    _llenar(iframe.locator(SEL_NUMERO).first, correlativo)
 
     if fecha_emision_str:
         _llenar(iframe.locator(SEL_FEC_DESDE).first, fecha_emision_str)
@@ -423,6 +541,7 @@ def _scrape_detalles(
     usuario: str,
     password: str,
     facturas_a_buscar: list[dict],
+    libro: Libro = Libro.COMPRAS,
     debug: bool = False,
     headed: bool = False,
     slow_mo_ms: int = 0,
@@ -448,7 +567,10 @@ def _scrape_detalles(
 
     with sync_playwright() as p:
         try:
-            log(f"Iniciando navegador scraping detalles. headed={headed}")
+            log(
+                f"Iniciando navegador scraping detalles. "
+                f"libro={libro.value} headed={headed}"
+            )
             browser = p.chromium.launch(
                 headless=not headed,
                 slow_mo=slow_mo_ms,
@@ -489,7 +611,14 @@ def _scrape_detalles(
                     try:
                         _abrir_consulta(page, iframe, timeout_ms)
                         detalles = _consultar_uno(
-                            page, context, iframe, fac, timeout_ms, log, timeout_busqueda_ms
+                            page,
+                            context,
+                            iframe,
+                            fac,
+                            libro,
+                            timeout_ms,
+                            log,
+                            timeout_busqueda_ms,
                         )
                         resultados[serie_num] = detalles
                         log(f"{serie_num}: {len(detalles)} items extraidos")
@@ -497,7 +626,10 @@ def _scrape_detalles(
                             al_extraer(serie_num, detalles)
                         break
                     except ComprobanteNoEncontrado:
-                        log(f"{serie_num}: SUNAT no lo tiene entre las FE recibidas")
+                        log(
+                            f"{serie_num}: SUNAT no lo tiene en "
+                            f"{bandeja(fac, libro)}"
+                        )
                         break
                     except Exception as e:
                         if intento == 2:
@@ -539,6 +671,7 @@ def _scrape_detalles(
 async def obtener_detalles(
     empresa: dict,
     comprobantes: list[dict],
+    libro: Libro = Libro.COMPRAS,
     debug: bool = False,
     headed: bool | None = None,
     slow_mo_ms: int = 0,
@@ -572,6 +705,7 @@ async def obtener_detalles(
             empresa["usuario"],
             decrypt_password(password_cifrada),
             comprobantes,
+            libro=libro,
             debug=debug,
             headed=headed,
             slow_mo_ms=slow_mo_ms,

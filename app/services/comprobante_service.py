@@ -1,13 +1,22 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.domain.catalogos import describe_comprobante
 from app.repositories._mongo import fecha_desde_bson, monto_a_float
 
+logger = logging.getLogger(__name__)
+
 _CAMPOS_MONTO = (
     "base_imponible",
     "igv",
+    "base_imponible_dg",
+    "igv_dg",
+    "base_imponible_dgng",
+    "igv_dgng",
+    "base_imponible_dng",
+    "igv_dng",
     "exonerado",
     "inafecto",
     "no_gravado",
@@ -18,9 +27,24 @@ _CAMPOS_MONTO = (
 )
 
 
-def serializar_analisis(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
+def serializar_analisis(metadata: Any) -> dict[str, Any] | None:
     if not metadata:
         return None
+
+    # El análisis lo escribe el modelo, así que su forma no está garantizada.
+    # Antes un único documento con una lista en vez de un objeto reventaba la
+    # serialización de todo el lote y el listado devolvía un 500.
+    if isinstance(metadata, list):
+        metadata = next((item for item in metadata if isinstance(item, dict)), None)
+        if metadata is None:
+            return None
+    elif not isinstance(metadata, dict):
+        logger.warning(
+            "metadata_procesada con tipo inesperado (%s); se ignora el análisis",
+            type(metadata).__name__,
+        )
+        return None
+
     return {
         "detalle": metadata.get("detalle", []),
         "cuenta_contable": metadata.get("cuenta_contable"),
@@ -52,6 +76,8 @@ def serializar(documento: dict[str, Any]) -> dict[str, Any]:
         "fecha_vencimiento": fecha_desde_bson(documento.get("fecha_vencimiento")),
         "moneda": documento.get("moneda", "PEN"),
         "tipo_cambio": monto_a_float(documento.get("tipo_cambio")),
+        # Sin `or None` un comprobante sin tasa saldría al Excel como 0 %.
+        "porcentaje_igv": monto_a_float(documento.get("porcentaje_igv")) or None,
         "estado_procesamiento": documento.get("estado_procesamiento", "pendiente"),
         "analisis": serializar_analisis(documento.get("metadata_procesada")),
         "detalle_sunat": documento.get("detalle_sunat", []) or [],
@@ -82,6 +108,27 @@ def texto_para_ia(documento: dict[str, Any]) -> str:
         f"ICBPER: {monto_a_float(documento.get('icbper'))}",
         f"Total: {monto_a_float(documento.get('total'))}",
     ]
+
+    # La tasa y el reparto por destino son justamente la señal de la que sale
+    # `condicion_igv` en la respuesta del modelo. Hasta ahora sólo los veía
+    # enterrados en el JSON crudo, donde compiten con cuarenta campos más.
+    tasa = monto_a_float(documento.get("porcentaje_igv"))
+    if tasa:
+        lineas.append(f"Tasa de IGV declarada: {tasa}%")
+
+    desglose = [
+        (etiqueta, monto_a_float(documento.get(f"base_imponible_{sufijo}")),
+         monto_a_float(documento.get(f"igv_{sufijo}")))
+        for etiqueta, sufijo in (
+            ("gravadas", "dg"),
+            ("gravadas y no gravadas", "dgng"),
+            ("no gravadas", "dng"),
+        )
+    ]
+    # Sólo si hay algo que desglosar: cuando todo es DG, repetirlo es ruido.
+    if any(base or igv for _, base, igv in desglose[1:]):
+        lineas.append("Destino de la adquisición (base / IGV):")
+        lineas.extend(f"  - {etiqueta}: {base} / {igv}" for etiqueta, base, igv in desglose)
 
     extra = documento.get("extra") or {}
     crudo = extra.get("raw_sire")

@@ -1,129 +1,92 @@
+"""Descarga de la propuesta del SIRE y despacho del mapeo por libro.
+
+Este módulo se queda con el transporte —URL, credenciales, paginación— y delega
+la traducción de cada registro a `rce.py` (compras) o `rvie.py` (ventas), que
+son los que conocen los nombres de campo de cada libro.
+"""
+
 from __future__ import annotations
 
-import json
 import logging
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import requests
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import settings
-from app.domain.comprobante import Comprobante, Libro, Origen
+from app.domain.comprobante import Comprobante, Libro
+from app.services.sunat import rce, rvie
 from app.services.sunat.auth import ErrorSunat, peticion_autenticada
 
 logger = logging.getLogger(__name__)
 
-# Solo facturas y recibos por honorarios; las boletas del RCE se descartan.
-PREFIJOS_SERIE_ACEPTADOS = ("F", "E")
+_MAPEOS = {Libro.COMPRAS: rce.a_comprobante, Libro.VENTAS: rvie.a_comprobante}
 
-_CAMPOS_SERIE = ("numSerieCDP", "numSerie", "desSerieCDP")
-_CAMPOS_NUMERO = ("numCDP", "numComprobante", "numCorrelativo")
-_CAMPOS_TIPO_CP = ("codTipoCDP", "codTipoComprobante", "codTipoDocumento")
-_CAMPOS_DOC_CONTRAPARTE = ("numDocIdentidadProveedor", "numRucProveedor", "numRuc")
-_CAMPOS_TIPO_DOC = ("codTipoDocIdentidadProveedor", "codTipoDocIdentidad")
-_CAMPOS_RAZON_SOCIAL = (
-    "desRazonSocialProveedor",
-    "nomRazonSocialProveedor",
-    "desProveedor",
-    "desRazonSocialEmisor",
-    "nomRazonSocialEmisor",
-)
-_CAMPOS_FECHA_EMISION = ("fecEmision", "fecEmisionCDP")
-_CAMPOS_FECHA_VENCIMIENTO = ("fecVencimiento", "fecVcto")
-_CAMPOS_MONEDA = ("codMoneda", "desMoneda")
-_CAMPOS_TIPO_CAMBIO = ("mtoTipoCambio", "valTipoCambio")
+# El SIRE rechaza con 422 cualquier `perPage` por encima de 100, en los dos
+# libros. Se recorta en vez de dejar que la configuración tumbe la descarga
+# entera con un error de validación que no dice de dónde sale el número.
+MAX_PER_PAGE = 100
 
-# El RCE reparte la base imponible y el IGV en tres destinos —gravadas (DG),
-# gravadas y no gravadas (DGNG) y no gravadas (DNG)— y hay que sumarlos: un
-# comprobante puede traer importe en más de uno, así que quedarse con el
-# primero perdería el resto. Los `...Original` guardan el valor previo a una
-# modificación y no entran en la suma.
-_MONTOS_SUMA = {
-    "base_imponible": ("mtoBIGravadaDG", "mtoBIGravadaDGNG", "mtoBIGravadaDNG"),
-    "igv": ("mtoIgvIpmDG", "mtoIgvIpmDGNG", "mtoIgvIpmDNG"),
-}
-
-# Los que vienen en un único campo. Se dejan alternativas por si otro endpoint
-# del SIRE usa otro nombre, pero el primero de cada tupla es el que manda el
-# RCE de verdad.
-_MONTOS = {
-    # "Valor de las adquisiciones no gravadas": el RCE mete aquí lo exonerado
-    # y lo inafecto sin distinguirlos.
-    "no_gravado": ("mtoValorAdqNG",),
-    "icbper": ("mtoIcbp", "mtoICBPER"),
-    "isc": ("mtoISC", "mtoIsc"),
-    "otros_tributos": ("mtoOtrosTrib", "mtoOtrosTributos", "mtoOtrosCargos"),
-    "total": ("mtoTotalCp", "mtoImporteTotal"),
-}
+# `codTipoOpe` es propio del RCE (distingue adquisiciones de importaciones); el
+# RVIE no lo acepta.
+_PARAMS = {Libro.COMPRAS: {"codTipoOpe": "1"}, Libro.VENTAS: {}}
 
 
-def _primero(datos: dict[str, Any], campos: tuple[str, ...], defecto: Any = "") -> Any:
-    for campo in campos:
-        valor = datos.get(campo)
-        if valor not in (None, "", "0"):
-            return valor
-    return defecto
-
-
-def _sumar(datos: dict[str, Any], campos: tuple[str, ...]) -> Decimal:
-    total = Decimal("0")
-    for campo in campos:
-        valor = datos.get(campo)
-        if valor in (None, ""):
-            continue
-        try:
-            total += Decimal(str(valor))
-        except (InvalidOperation, ValueError):
-            continue
-    return total
-
-
-def _url_propuesta(periodo: str) -> str:
-    plantilla = (settings.URL_SIRE_PROPUESTA or "").strip()
+def _url(libro: Libro, periodo: str) -> str:
+    plantilla = (
+        settings.URL_SIRE_PROPUESTA
+        if libro is Libro.COMPRAS
+        else settings.URL_SIRE_PROPUESTA_VENTAS
+    )
+    plantilla = (plantilla or "").strip()
     if not plantilla:
-        raise ErrorSunat("URL_SIRE_PROPUESTA no está configurada en el entorno")
+        variable = (
+            "URL_SIRE_PROPUESTA"
+            if libro is Libro.COMPRAS
+            else "URL_SIRE_PROPUESTA_VENTAS"
+        )
+        raise ErrorSunat(f"{variable} no está configurada en el entorno")
     return plantilla.replace("{PERIODO}", periodo)
 
 
+def _pagina(datos: Any) -> tuple[list[dict[str, Any]], int | None]:
+    """Registros de la página y cuántos hay en total, si SUNAT lo dice.
+
+    Los dos libros responden `{paginacion: {page, perPage, totalRegistros},
+    registros: [...], totales: {...}}`. El total es lo que permite cerrar el
+    recorrido sin pedir una página de más y, sobre todo, detectar un endpoint
+    que ignore `page` y devuelva siempre lo mismo.
+    """
+    if isinstance(datos, list):
+        return datos, None
+    if not isinstance(datos, dict):
+        return [], None
+
+    registros = datos.get("registros") or []
+    paginacion = datos.get("paginacion")
+    total = paginacion.get("totalRegistros") if isinstance(paginacion, dict) else None
+    return registros, total if isinstance(total, int) else None
+
+
 def a_comprobante(registro: dict[str, Any], libro: Libro) -> Comprobante:
-    montos_crudos = registro.get("montos") or {}
-    fuente_montos = {**registro, **montos_crudos}
-
-    montos = {
-        destino: _primero(fuente_montos, candidatos, 0)
-        for destino, candidatos in _MONTOS.items()
-    }
-    montos.update(
-        {
-            destino: _sumar(fuente_montos, campos)
-            for destino, campos in _MONTOS_SUMA.items()
-        }
-    )
-
-    return Comprobante(
-        libro=libro,
-        origen=Origen.SIRE,
-        tipo_cp=_primero(registro, _CAMPOS_TIPO_CP),
-        serie=_primero(registro, _CAMPOS_SERIE),
-        numero=_primero(registro, _CAMPOS_NUMERO),
-        tipo_doc_identidad=_primero(registro, _CAMPOS_TIPO_DOC),
-        documento_contraparte=_primero(registro, _CAMPOS_DOC_CONTRAPARTE),
-        razon_social=_primero(registro, _CAMPOS_RAZON_SOCIAL),
-        fecha_emision=_primero(registro, _CAMPOS_FECHA_EMISION, None),
-        fecha_vencimiento=_primero(registro, _CAMPOS_FECHA_VENCIMIENTO, None),
-        moneda=_primero(registro, _CAMPOS_MONEDA, "PEN"),
-        tipo_cambio=_primero(registro, _CAMPOS_TIPO_CAMBIO, None),
-        extra={"raw_sire": json.dumps(registro, ensure_ascii=False)},
-        **montos,
-    )
-
-
-def serie_aceptada(comprobante: Comprobante) -> bool:
-    return comprobante.serie.upper().startswith(PREFIJOS_SERIE_ACEPTADOS)
+    return _MAPEOS[libro](registro)
 
 
 def pertenece_al_periodo(comprobante: Comprobante, periodo: str) -> bool:
+    """Si el comprobante entra en el registro de ese periodo.
+
+    Manda el periodo tributario que asigna SUNAT (`perTributario`), no el mes
+    de emisión. Comparar por emisión descartaba las facturas de un mes anotadas
+    en el siguiente, que son legales —el crédito fiscal del IGV puede tomarse
+    después— y que SUNAT devuelve precisamente porque pertenecen al periodo
+    pedido. En un caso real eso tiraba 27 de 87 compras, S/ 3.101,89 con su
+    crédito, sin que nada lo dijera salvo el contador de `descartados`.
+
+    Sin ese dato se cae al mes de emisión, que es lo único que queda.
+    """
+    periodo_sunat = str(comprobante.extra.get("periodo_sunat") or "").strip()
+    if periodo_sunat:
+        return periodo_sunat == periodo
     if comprobante.fecha_emision is None:
         return False
     return comprobante.fecha_emision.strftime("%Y%m") == periodo
@@ -135,43 +98,73 @@ async def descargar(
     periodo: str,
     libro: Libro,
 ) -> list[dict[str, Any]] | None:
-    if libro is not Libro.COMPRAS:
-        raise ErrorSunat(
-            "La descarga de propuesta solo está implementada para el libro de compras (RCE)"
+    """Todos los registros de la propuesta, o `None` si SUNAT no tiene ninguna.
+
+    Recorre las páginas hasta que una venga incompleta. Antes se pedía
+    `page=1&perPage=100` fijo y cualquier periodo con más de cien comprobantes
+    se truncaba sin decir nada; en ventas eso es la norma, no la excepción.
+    """
+    url = _url(libro, periodo)
+    por_pagina = min(settings.SIRE_PER_PAGE, MAX_PER_PAGE)
+    if settings.SIRE_PER_PAGE > MAX_PER_PAGE:
+        logger.warning(
+            "SIRE_PER_PAGE=%s excede el máximo del SIRE; se piden %s por página",
+            settings.SIRE_PER_PAGE,
+            MAX_PER_PAGE,
         )
+    registros: list[dict[str, Any]] = []
 
-    url = _url_propuesta(periodo)
-    params = {"page": 1, "perPage": 100, "codTipoOpe": "1"}
+    for pagina in range(1, settings.SIRE_MAX_PAGINAS + 1):
+        params = {**_PARAMS[libro], "page": pagina, "perPage": por_pagina}
 
-    def peticion(token: str) -> requests.Response:
-        return requests.get(
-            url,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            params=params,
-            timeout=60,
-        )
+        def peticion(token: str, params: dict[str, Any] = params) -> requests.Response:
+            return requests.get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                params=params,
+                timeout=60,
+            )
 
-    respuesta = await peticion_autenticada(db, empresa, peticion)
+        respuesta = await peticion_autenticada(db, empresa, peticion)
 
-    # 422 significa "no hay propuesta para ese periodo", no es un error.
-    if respuesta.status_code == 422:
-        return None
+        # 422 significa "no hay propuesta para ese periodo", no es un error.
+        # Pasada la primera página sólo quiere decir que ya no quedan más.
+        if respuesta.status_code == 422:
+            return None if pagina == 1 else registros
 
-    if respuesta.status_code != 200:
-        logger.error(
-            "Error no controlado del SIRE ruc=%s periodo=%s status=%s body=%s",
-            empresa.get("ruc"),
-            periodo,
-            respuesta.status_code,
-            respuesta.text[:1000],
-        )
-        raise ErrorSunat(f"Error {respuesta.status_code} del SIRE: {respuesta.text[:500]}")
+        if respuesta.status_code != 200:
+            logger.error(
+                "Error no controlado del SIRE ruc=%s periodo=%s libro=%s página=%s "
+                "status=%s body=%s",
+                empresa.get("ruc"),
+                periodo,
+                libro.value,
+                pagina,
+                respuesta.status_code,
+                respuesta.text[:1000],
+            )
+            raise ErrorSunat(f"Error {respuesta.status_code} del SIRE: {respuesta.text[:500]}")
 
-    datos = respuesta.json()
-    if isinstance(datos, list):
-        return datos
-    return datos.get("registros", [])
+        lote, total = _pagina(respuesta.json())
+        registros.extend(lote)
+
+        if not lote or len(lote) < por_pagina:
+            return registros
+        if total is not None and len(registros) >= total:
+            return registros
+
+    # Salir por el tope no es normal: o el periodo es enorme o el endpoint
+    # ignora `page` y devuelve siempre lo mismo. En cualquiera de los dos casos
+    # el registro queda incompleto y hay que saberlo.
+    logger.warning(
+        "Paginación cortada por SIRE_MAX_PAGINAS ruc=%s periodo=%s libro=%s registros=%s",
+        empresa.get("ruc"),
+        periodo,
+        libro.value,
+        len(registros),
+    )
+    return registros

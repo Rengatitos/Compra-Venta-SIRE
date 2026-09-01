@@ -38,10 +38,11 @@ async def sincronizar(
     for registro in registros:
         comprobante = api_propuesta.a_comprobante(registro, libro)
 
+        # Ya no se filtra por serie: el registro de ventas es en su mayoría
+        # boletas (B, EB) y descartarlas dejaba fuera el grueso del libro. Se
+        # guardan todos los comprobantes; sólo caen los que no se pueden
+        # identificar y los de periodos vecinos.
         if not comprobante.es_valido:
-            descartados += 1
-            continue
-        if not api_propuesta.serie_aceptada(comprobante):
             descartados += 1
             continue
         if not api_propuesta.pertenece_al_periodo(comprobante, periodo):

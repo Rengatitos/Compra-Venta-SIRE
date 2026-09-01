@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from bson.decimal128 import Decimal128
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.domain.comprobante import Libro
@@ -12,6 +13,40 @@ from app.repositories._mongo import NOMBRE_COL_COMPROBANTES, monto_a_float
 
 def _col(db: AsyncIOMotorDatabase):
     return db[NOMBRE_COL_COMPROBANTES]
+
+
+# Un comprobante en dólares no se puede sumar con uno en soles: hasta ahora los
+# totales del dashboard hacían justo eso y devolvían un número que no era ni
+# una cosa ni la otra. El registro se lleva en moneda nacional, así que los
+# importes se convierten con el tipo de cambio del propio comprobante —el que
+# SUNAT declaró para esa operación— antes de agregarlos.
+_UNO = Decimal128("1")
+
+# Un comprobante ya está en soles si su moneda es PEN o si no trae ninguna.
+_ES_MONEDA_NACIONAL = {"$in": [{"$ifNull": ["$moneda", "PEN"]}, ["PEN", ""]]}
+
+# Un tipo de cambio ausente o en cero no sirve para convertir.
+_TIENE_TIPO_CAMBIO = {"$gt": [{"$ifNull": ["$tipo_cambio", 0]}, 0]}
+
+_FACTOR_A_SOLES = {
+    "$cond": [
+        _ES_MONEDA_NACIONAL,
+        _UNO,
+        {"$cond": [_TIENE_TIPO_CAMBIO, "$tipo_cambio", _UNO]},
+    ]
+}
+
+# En moneda extranjera y sin tipo de cambio no hay conversión posible. El
+# importe se suma tal cual —dejarlo fuera descuadraría el total contra el
+# número de comprobantes—, pero se cuenta aparte para que el dashboard pueda
+# avisar de que ese total se queda corto.
+_SIN_TIPO_CAMBIO = {
+    "$and": [{"$not": [_ES_MONEDA_NACIONAL]}, {"$not": [_TIENE_TIPO_CAMBIO]}]
+}
+
+
+def _en_soles(campo: str) -> dict[str, Any]:
+    return {"$multiply": [{"$ifNull": [f"${campo}", 0]}, _FACTOR_A_SOLES]}
 
 
 def build_match_filter(
@@ -52,8 +87,9 @@ async def get_summary(
             "$group": {
                 "_id": None,
                 "total_comprobantes": {"$sum": 1},
-                "total_monto": {"$sum": "$total"},
-                "total_igv": {"$sum": "$igv"},
+                "total_monto": {"$sum": _en_soles("total")},
+                "total_igv": {"$sum": _en_soles("igv")},
+                "sin_tipo_cambio": {"$sum": {"$cond": [_SIN_TIPO_CAMBIO, 1, 0]}},
             }
         },
     ]
@@ -88,8 +124,11 @@ async def get_summary(
 
     return {
         "total_comprobantes": totales.get("total_comprobantes", 0),
+        # Siempre en soles, vengan como vengan los comprobantes.
+        "moneda": "PEN",
         "total_monto": monto_a_float(totales.get("total_monto")),
         "total_igv": monto_a_float(totales.get("total_igv")),
+        "sin_tipo_cambio": totales.get("sin_tipo_cambio", 0),
         "procesadas": procesadas,
         "pendientes": pendientes,
     }
@@ -110,7 +149,7 @@ async def get_top_contrapartes(
     )
     pipeline = [
         {"$match": filtro},
-        {"$group": {"_id": "$razon_social", "total_monto": {"$sum": "$total"}}},
+        {"$group": {"_id": "$razon_social", "total_monto": {"$sum": _en_soles("total")}}},
         {"$sort": {"total_monto": -1}},
         {"$limit": limit},
     ]

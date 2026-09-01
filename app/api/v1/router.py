@@ -40,13 +40,16 @@ api_router.include_router(
     prefix="/empresas/{ruc}/periodos/{periodo}/comprobantes",
     tags=["Comprobantes"],
 )
+# `libro` va en el path, no como filtro opcional: la extracción y el análisis
+# se comportan distinto en ventas y en compras, y un árbol de rutas por libro
+# garantizaría que las dos ramas divergieran.
 api_router.include_router(
     analisis.router,
-    prefix="/empresas/{ruc}/periodos/{periodo}/analisis",
+    prefix="/empresas/{ruc}/periodos/{periodo}/libros/{libro}/analisis",
     tags=["Análisis IA"],
 )
 api_router.include_router(
     detalle.router,
-    prefix="/empresas/{ruc}/periodos/{periodo}/detalle",
+    prefix="/empresas/{ruc}/periodos/{periodo}/libros/{libro}/detalle",
     tags=["Detalle SUNAT"],
 )

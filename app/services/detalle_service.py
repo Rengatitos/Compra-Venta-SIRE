@@ -6,6 +6,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.domain.comprobante import Libro
 from app.repositories import comprobantes as repo_comprobantes
 from app.services import scraping_sunat
 from app.services.jobs_service import Reportador
@@ -17,10 +18,11 @@ async def extraer(
     db: AsyncIOMotorDatabase,
     empresa: dict[str, Any],
     periodo: str,
+    libro: Libro,
     reportar: Reportador,
 ) -> dict[str, Any]:
     empresa_id = str(empresa["_id"])
-    pendientes = await repo_comprobantes.listar_sin_detalle(db, empresa_id, periodo)
+    pendientes = await repo_comprobantes.listar_sin_detalle(db, empresa_id, periodo, libro)
 
     if not pendientes:
         await reportar(0, 0, "No hay comprobantes pendientes de detalle")
@@ -30,7 +32,9 @@ async def extraer(
 
     # El listado corta en `SUNAT_MAX_COMPROBANTES`. Decirlo aquí evita que un
     # periodo grande parezca terminado cuando sólo se hizo la primera tanda.
-    faltan = await repo_comprobantes.contar_sin_detalle(db, empresa_id, periodo) - total
+    faltan = (
+        await repo_comprobantes.contar_sin_detalle(db, empresa_id, periodo, libro) - total
+    )
     if faltan > 0:
         await reportar(
             0, total, f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta"
@@ -70,7 +74,7 @@ async def extraer(
         try:
             futuro = asyncio.run_coroutine_threadsafe(
                 repo_comprobantes.guardar_detalle_sunat(
-                    db, empresa_id, periodo, serie_numero, detalle
+                    db, empresa_id, periodo, libro, serie_numero, detalle
                 ),
                 loop,
             )
@@ -81,7 +85,7 @@ async def extraer(
         futuro.add_done_callback(_registrar_fallo)
 
     resultados = await scraping_sunat.obtener_detalles(
-        empresa, pendientes, progreso=avisar, al_extraer=guardar
+        empresa, pendientes, libro=libro, progreso=avisar, al_extraer=guardar
     )
 
     # Red de seguridad por si algún aviso se perdió: reintenta sólo lo que no
@@ -91,7 +95,7 @@ async def extraer(
         if not detalle or serie_numero in guardados:
             continue
         await repo_comprobantes.guardar_detalle_sunat(
-            db, empresa_id, periodo, serie_numero, detalle
+            db, empresa_id, periodo, libro, serie_numero, detalle
         )
         con_detalle += 1
 
@@ -99,9 +103,11 @@ async def extraer(
 
     await reportar(total, total, "Extracción finalizada")
     logger.info(
-        "Detalle extraído ruc=%s periodo=%s procesados=%s con_detalle=%s sin_detalle=%s faltan=%s",
+        "Detalle extraído ruc=%s periodo=%s libro=%s "
+        "procesados=%s con_detalle=%s sin_detalle=%s faltan=%s",
         empresa.get("ruc"),
         periodo,
+        libro.value,
         total,
         con_detalle,
         sin_detalle,

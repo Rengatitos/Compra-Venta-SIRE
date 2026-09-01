@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -49,27 +50,74 @@ async def listar(
 
 
 async def activo(
-    db: AsyncIOMotorDatabase, ruc: str, tipo: TipoJob
+    db: AsyncIOMotorDatabase,
+    ruc: str,
+    tipo: TipoJob,
+    *,
+    periodo: str | None = None,
+    libro: Libro | None = None,
 ) -> Job | None:
-    """Devuelve el trabajo de ese tipo que siga vivo para la empresa, si lo hay.
+    """El trabajo de ese tipo que siga vivo, si lo hay.
 
-    El scraping abre un Chromium por trabajo y la API corre con un solo worker,
-    así que dos extracciones a la vez se pelean por la RAM y por la sesión SOL,
-    que es única por usuario.
+    Sin `periodo` ni `libro` responde por toda la empresa —sirve para saber si
+    algo va a tener que esperar—; con ellos acota a esa combinación, que es lo
+    que decide si una petición es un duplicado.
     """
     for estado in (EstadoJob.EN_PROGRESO, EstadoJob.PENDIENTE):
-        vivos = await repo_jobs.listar(db, ruc, tipo=tipo, estado=estado, limit=1)
+        vivos = await repo_jobs.listar(
+            db, ruc, periodo=periodo, libro=libro, tipo=tipo, estado=estado, limit=1
+        )
         if vivos:
             return vivos[0]
     return None
 
 
-async def ejecutar(db: AsyncIOMotorDatabase, job_id: str, tarea: Tarea) -> None:
+# Una cola por empresa. El scraping abre un Chromium y entra con la sesión SOL,
+# que es única por usuario: dos extracciones a la vez se pelean por ella y
+# SUNAT acaba invalidando una de las dos. En vez de rechazar la segunda, se
+# encola —el trabajo se acepta, se queda en `pendiente` y arranca solo cuando
+# el anterior termina—, que es lo que permite lanzar compras y ventas seguidas.
+#
+# El candado vive en el proceso, y eso basta porque la API corre con un único
+# worker (ver el Dockerfile). Con varias réplicas haría falta un candado en
+# Mongo; hasta entonces, esto es lo proporcionado.
+_colas: dict[str, asyncio.Lock] = {}
+
+
+def _cola(nombre: str) -> asyncio.Lock:
+    candado = _colas.get(nombre)
+    if candado is None:
+        candado = asyncio.Lock()
+        _colas[nombre] = candado
+    return candado
+
+
+async def ejecutar(
+    db: AsyncIOMotorDatabase, job_id: str, tarea: Tarea, cola: str | None = None
+) -> None:
     async def reportar(actual: int, total: int, mensaje: str = "") -> None:
         await repo_jobs.actualizar(
             db, job_id, progreso=Progreso(actual=actual, total=total, mensaje=mensaje)
         )
 
+    if cola is None:
+        await _correr(db, job_id, tarea, reportar)
+        return
+
+    candado = _cola(cola)
+    if candado.locked():
+        # El trabajo ya está aceptado y visible; decir que espera evita que
+        # parezca colgado en `pendiente` sin explicación.
+        await reportar(0, 0, "En cola: hay otra extracción en curso")
+        logger.info("Job en cola job_id=%s cola=%s", job_id, cola)
+
+    async with candado:
+        await _correr(db, job_id, tarea, reportar)
+
+
+async def _correr(
+    db: AsyncIOMotorDatabase, job_id: str, tarea: Tarea, reportar: Reportador
+) -> None:
     await repo_jobs.actualizar(db, job_id, estado=EstadoJob.EN_PROGRESO)
 
     try:

@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.api.v1.deps import empresa_actual, periodo_valido
+from app.api.v1.deps import empresa_actual, libro_valido, periodo_valido
 from app.db.database import get_db
 from app.domain import rubro as dominio_rubro
+from app.domain.comprobante import Libro
 from app.repositories import vectores as repo_vectores
 from app.schemas.generic import StatusResponse
 from app.services import analisis_ia
@@ -23,6 +24,7 @@ async def ejecutar_analisis(
     request: Request,
     archivos: list[UploadFile] = File(default=[]),
     periodo: str = Depends(periodo_valido),
+    libro: Libro = Depends(libro_valido),
     empresa: dict = Depends(empresa_actual),
     db=Depends(get_db),
 ):
@@ -59,12 +61,16 @@ async def ejecutar_analisis(
             db,
             empresa_id,
             periodo,
+            libro,
             contexto_usuario or None,
             rubro=rubro,
         )
         return {"estado": "exito", "mensaje": "Análisis completado", "datos": resultado}
     except Exception as exc:
         logger.exception(
-            "Error ejecutando el análisis IA empresa_id=%s periodo=%s", empresa_id, periodo
+            "Error ejecutando el análisis IA empresa_id=%s periodo=%s libro=%s",
+            empresa_id,
+            periodo,
+            libro.value,
         )
         raise HTTPException(status_code=500, detail=str(exc)) from exc

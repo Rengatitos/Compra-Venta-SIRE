@@ -22,12 +22,6 @@ async def _asegurar_periodo(db, empresa: str, periodo: str) -> None:
         raise HTTPException(status_code=404, detail="Periodo no encontrado para esta empresa")
 
 
-def _filtrar_por_libro(filas: list[dict], libro: Libro | None) -> list[dict]:
-    if libro is None:
-        return filas
-    return [f for f in filas if f.get("libro") == libro.value]
-
-
 @router.get("", response_model=list[ComprobanteResponse], summary="Listar comprobantes")
 async def listar_comprobantes(
     periodo: str = Depends(periodo_valido),
@@ -38,8 +32,10 @@ async def listar_comprobantes(
     db=Depends(get_db),
 ):
     await _asegurar_periodo(db, empresa, periodo)
-    filas = await repo_comprobantes.listar(db, empresa, periodo, skip=skip, limit=limit)
-    return serializar_lote(_filtrar_por_libro(filas, libro))
+    filas = await repo_comprobantes.listar(
+        db, empresa, periodo, libro=libro, skip=skip, limit=limit
+    )
+    return serializar_lote(filas)
 
 
 @router.get("/export", summary="Exportar todos los comprobantes del periodo")
@@ -62,8 +58,7 @@ async def exportar_lote(
             detail="Indica el libro (compras o ventas) para exportar en Excel",
         )
 
-    todas = await repo_comprobantes.listar(db, empresa, periodo, limit=5000)
-    filas = _filtrar_por_libro(todas, libro)
+    filas = await repo_comprobantes.listar(db, empresa, periodo, libro=libro, limit=5000)
     if not filas:
         raise HTTPException(status_code=404, detail="No hay comprobantes en el periodo indicado")
 
@@ -91,10 +86,11 @@ async def obtener_comprobante(
     serie_numero: str,
     periodo: str = Depends(periodo_valido),
     empresa: str = Depends(empresa_id),
+    libro: Libro | None = Query(None, description="Desambigua si existe en ambos libros"),
     db=Depends(get_db),
 ):
     await _asegurar_periodo(db, empresa, periodo)
-    fila = await repo_comprobantes.obtener(db, empresa, periodo, serie_numero)
+    fila = await repo_comprobantes.obtener(db, empresa, periodo, serie_numero, libro)
     if not fila:
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
     return serializar(fila)
@@ -108,9 +104,10 @@ async def actualizar_comprobante(
     datos: ComprobanteUpdate,
     periodo: str = Depends(periodo_valido),
     empresa: str = Depends(empresa_id),
+    libro: Libro | None = Query(None, description="Desambigua si existe en ambos libros"),
     db=Depends(get_db),
 ):
-    fila = await repo_comprobantes.obtener(db, empresa, periodo, serie_numero)
+    fila = await repo_comprobantes.obtener(db, empresa, periodo, serie_numero, libro)
     if not fila:
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
 
@@ -128,11 +125,12 @@ async def exportar_comprobante(
     periodo: str = Depends(periodo_valido),
     empresa: str = Depends(empresa_id),
     formato: str = Query("pdf", pattern="^(excel|pdf)$"),
+    libro: Libro | None = Query(None, description="Desambigua si existe en ambos libros"),
     db=Depends(get_db),
 ):
     await _asegurar_periodo(db, empresa, periodo)
 
-    fila = await repo_comprobantes.obtener(db, empresa, periodo, serie_numero)
+    fila = await repo_comprobantes.obtener(db, empresa, periodo, serie_numero, libro)
     if not fila:
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
 

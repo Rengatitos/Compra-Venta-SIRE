@@ -197,9 +197,23 @@ class Comprobante(BaseModel):
 
     moneda: str = "PEN"
     tipo_cambio: Decimal | None = None
+    # Tasa de IGV en puntos porcentuales (18, 10.5...). `None` cuando el
+    # comprobante no la trae: escribir una tasa por defecto falsearía los
+    # comprobantes no gravados y los del régimen de selva.
+    porcentaje_igv: Decimal | None = None
 
     base_imponible: Decimal = CERO
     igv: Decimal = CERO
+    # El RCE reparte la base y el IGV en tres destinos y el registro de compras
+    # los pide en columnas separadas, así que además del total se guarda cada
+    # uno: gravadas (DG), gravadas y no gravadas (DGNG) y no gravadas (DNG).
+    # `base_imponible` e `igv` siguen siendo la suma de los tres.
+    base_imponible_dg: Decimal = CERO
+    igv_dg: Decimal = CERO
+    base_imponible_dgng: Decimal = CERO
+    igv_dgng: Decimal = CERO
+    base_imponible_dng: Decimal = CERO
+    igv_dng: Decimal = CERO
     exonerado: Decimal = CERO
     inafecto: Decimal = CERO
     # El RCE no separa exonerado de inafecto en compras: lo agrupa todo en
@@ -248,6 +262,12 @@ class Comprobante(BaseModel):
     @field_validator(
         "base_imponible",
         "igv",
+        "base_imponible_dg",
+        "igv_dg",
+        "base_imponible_dgng",
+        "igv_dgng",
+        "base_imponible_dng",
+        "igv_dng",
         "exonerado",
         "inafecto",
         "no_gravado",
