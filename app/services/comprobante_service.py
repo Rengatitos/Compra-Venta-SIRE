@@ -32,6 +32,7 @@ def serializar_analisis(metadata: dict[str, Any] | None) -> dict[str, Any] | Non
         "documentos": metadata.get("documentos"),
         "descripcion": metadata.get("descripcion"),
         "observaciones": metadata.get("observaciones"),
+        "rag": metadata.get("rag"),
     }
 
 

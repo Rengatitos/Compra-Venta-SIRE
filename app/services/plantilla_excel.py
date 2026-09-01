@@ -6,8 +6,8 @@ de versiones y no entra a la imagen de Docker). No se reconstruye el layout a
 mano: se abre el archivo real y se escriben las filas debajo de sus encabezados,
 así el formato queda idéntico al que espera el contador.
 
-El análisis IA no viaja en este archivo. Las columnas que solo podría llenar la
-IA —cuenta contable y glosa— se dejan vacías a propósito.
+Los importes y datos tributarios salen del SIRE. Los códigos contables y la
+glosa se completan únicamente con la clasificación guardada por la API RAG.
 """
 
 from __future__ import annotations
@@ -101,15 +101,22 @@ def _fechas(comprobante: dict[str, Any]) -> tuple[date | None, date | None]:
     return emision, vencimiento
 
 
+def _rag(comprobante: dict[str, Any]) -> dict[str, Any]:
+    return ((comprobante.get("analisis") or {}).get("rag") or {})
+
+
 def _fila_compras(comprobante: dict[str, Any]) -> dict[str, Any]:
     emision, vencimiento = _fechas(comprobante)
+    rag = _rag(comprobante)
     return {
         "A": emision,
         "B": vencimiento,
-        "C": _texto(comprobante.get("tipo_cp")),
+        "C": _texto(rag.get("codigo_comprobante") or comprobante.get("tipo_cp")),
         "D": _texto(comprobante.get("serie")),
         "F": _entero_o_texto(comprobante.get("numero")),
-        "G": _entero_o_texto(comprobante.get("tipo_doc_identidad")),
+        "G": _entero_o_texto(
+            rag.get("codigo_identidad") or comprobante.get("tipo_doc_identidad")
+        ),
         "H": _entero_o_texto(comprobante.get("documento_contraparte")),
         "I": _texto(comprobante.get("razon_social")),
         "J": _monto(comprobante.get("base_imponible")),
@@ -130,19 +137,25 @@ def _fila_compras(comprobante: dict[str, Any]) -> dict[str, Any]:
         "W": _monto(comprobante.get("tipo_cambio")),
         "AB": _moneda(comprobante.get("moneda")),
         "AD": vencimiento,
+        "AF": _texto(rag.get("cuenta_base")),
+        "AH": _texto(rag.get("cuenta_total")),
         "AR": TASA_IGV,
+        "AS": _texto(rag.get("glosa")),
     }
 
 
 def _fila_ventas(comprobante: dict[str, Any]) -> dict[str, Any]:
     emision, vencimiento = _fechas(comprobante)
+    rag = _rag(comprobante)
     return {
         "A": emision,
         "B": vencimiento,
-        "C": _texto(comprobante.get("tipo_cp")),
+        "C": _texto(rag.get("codigo_comprobante") or comprobante.get("tipo_cp")),
         "D": _texto(comprobante.get("serie")),
         "E": _entero_o_texto(comprobante.get("numero")),
-        "F": _entero_o_texto(comprobante.get("tipo_doc_identidad")),
+        "F": _entero_o_texto(
+            rag.get("codigo_identidad") or comprobante.get("tipo_doc_identidad")
+        ),
         "G": _entero_o_texto(comprobante.get("documento_contraparte")),
         "H": _texto(comprobante.get("razon_social")),
         "J": _monto(comprobante.get("base_imponible")),
@@ -155,7 +168,10 @@ def _fila_ventas(comprobante: dict[str, Any]) -> dict[str, Any]:
         "Q": _monto(comprobante.get("tipo_cambio")),
         "V": _moneda(comprobante.get("moneda")),
         "X": vencimiento,
+        "AB": _texto(rag.get("cuenta_base")),
+        "AD": _texto(rag.get("cuenta_total")),
         "AL": TASA_IGV,
+        "AM": _texto(rag.get("glosa")),
     }
 
 

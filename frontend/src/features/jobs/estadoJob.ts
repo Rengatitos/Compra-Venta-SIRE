@@ -24,7 +24,7 @@ export function presentarEstadoJob(estado: EstadoJob): Presentacion {
  * crudo a la pantalla.
  */
 const TIPOS: Record<TipoJob, string> = {
-  extraccion_detalles: 'Extracción de detalle',
+  extraccion_detalles: 'Detalle SUNAT y códigos RAG',
 };
 
 export function presentarTipoJob(tipo: string): string {

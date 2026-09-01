@@ -51,6 +51,10 @@ Definidas en la clase [Settings](../app/core/config.py:4) (`pydantic-settings`),
 | JWT_EXPIRE_HOURS | int, default 2 | No | Horas de validez del JWT. |
 | MONGO_URI | str, opcional en el schema pero requerida en la práctica | Sí | Cadena de conexión a MongoDB. |
 | MONGO_FACTURASDB_NAME | str, opcional en el schema pero requerida en la práctica | Sí | Nombre de la base con las colecciones `empresas`, `periodos`, `comprobantes`, `jobs`, `vector_global`, `vector_usuarios`. |
+| RAG_API_URL | str | No | Base de la API Contasis RAG; la aplicación consume `POST /v1/codigo`. |
+| RAG_API_DOCS_URL | str | No | Enlace a la documentación Swagger de la API RAG. |
+| RAG_API_TIMEOUT_SECONDS | int | No | Tiempo máximo de cada consulta RAG. |
+| RAG_API_MAX_CONCURRENCY | int | No | Máximo de comprobantes enriquecidos simultáneamente. |
 | SUNAT_CLIENT_ID / SUNAT_CLIENT_SECRET | str, opcional | No | Fallback global de credenciales OAuth SUNAT si la empresa no tiene las suyas propias. Ver [credenciales_cliente](../app/services/sunat/auth.py:24). |
 | URL_SIRE_PROPUESTA | str | Sí (en la práctica) | Plantilla de URL de la API SIRE, con el placeholder `{PERIODO}`. Debe apuntar al endpoint de búsqueda del RCE, no al de comprobantes. |
 | GEMINI_API_KEY | str, opcional en el schema | Sí (para análisis IA) | API key de Gemini. Se valida perezosamente en [_get_client](../app/services/analisis_ia.py:18): si falta, el primer análisis falla con un error explícito en vez de fallar en silencio. |

@@ -6,8 +6,9 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.core.config import settings
 from app.repositories import comprobantes as repo_comprobantes
-from app.services import scraping_sunat
+from app.services import rag_service, scraping_sunat
 from app.services.jobs_service import Reportador
 
 logger = logging.getLogger(__name__)
@@ -95,9 +96,37 @@ async def extraer(
         )
         con_detalle += 1
 
+    # El detalle extraído es la glosa de entrada del RAG. Cada comprobante se
+    # aísla: una caída temporal de Render no borra el scraping ni impide que los
+    # demás comprobantes terminen.
+    limite = asyncio.Semaphore(settings.RAG_API_MAX_CONCURRENCY)
+    enriquecidos = 0
+    errores_rag = 0
+
+    async def enriquecer(documento: dict[str, Any]) -> None:
+        nonlocal enriquecidos, errores_rag
+        serie_numero = documento.get("serie_numero", "")
+        detalle = resultados.get(serie_numero) or []
+        if not detalle:
+            return
+        try:
+            async with limite:
+                rag = await rag_service.enriquecer(documento, detalle, empresa)
+            metadata = dict(documento.get("metadata_procesada") or {})
+            metadata["rag"] = rag
+            await repo_comprobantes.guardar_metadata(db, documento["_id"], metadata)
+            enriquecidos += 1
+        except Exception:
+            errores_rag += 1
+            logger.exception("Error enriqueciendo con RAG serie_numero=%s", serie_numero)
+
+    if resultados:
+        await reportar(total, total, "Clasificando códigos contables con RAG")
+        await asyncio.gather(*(enriquecer(documento) for documento in pendientes))
+
     sin_detalle = total - con_detalle
 
-    await reportar(total, total, "Extracción finalizada")
+    await reportar(total, total, "Extracción y clasificación RAG finalizadas")
     logger.info(
         "Detalle extraído ruc=%s periodo=%s procesados=%s con_detalle=%s sin_detalle=%s faltan=%s",
         empresa.get("ruc"),
@@ -112,4 +141,6 @@ async def extraer(
         "con_detalle": con_detalle,
         "sin_detalle": sin_detalle,
         "pendientes": max(faltan, 0),
+        "enriquecidos_rag": enriquecidos,
+        "errores_rag": errores_rag,
     }

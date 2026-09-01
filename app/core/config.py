@@ -44,6 +44,13 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str | None = None
 
+    # API externa que traduce comprobantes, documentos y glosas a los códigos
+    # que espera la plantilla de Contasis.
+    RAG_API_URL: str = "https://contasis-rag-api.onrender.com"
+    RAG_API_DOCS_URL: str = "https://contasis-rag-api.onrender.com/docs"
+    RAG_API_TIMEOUT_SECONDS: int = 60
+    RAG_API_MAX_CONCURRENCY: int = 5
+
     # Orígenes permitidos por CORS. Se acepta tanto la lista separada por comas
     # que documenta `.env.example` como una lista JSON.
     #

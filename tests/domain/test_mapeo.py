@@ -280,6 +280,22 @@ class TestPlantillaContasis:
         # Cuenta contable base imponible / otros tributos / total, y glosa.
         assert [hoja[c + "14"].value for c in ("AF", "AG", "AH", "AS")] == [None] * 4
 
+    def test_el_rag_completa_cuentas_codigos_y_glosa_de_compras(self):
+        documento = _documento_completo()
+        documento["metadata_procesada"]["rag"] = {
+            "codigo_comprobante": "07",
+            "codigo_identidad": "1",
+            "cuenta_base": "6365095",
+            "cuenta_total": "4212",
+            "glosa": "SERVICIO DE INTERNET",
+        }
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["C14"].value == "07"
+        assert hoja["G14"].value == 1
+        assert hoja["AF14"].value == "6365095"
+        assert hoja["AH14"].value == "4212"
+        assert hoja["AS14"].value == "SERVICIO DE INTERNET"
+
     def test_el_analisis_no_aparece_en_ninguna_celda(self):
         hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
         textos = [str(c.value) for fila in hoja.iter_rows() for c in fila if c.value is not None]

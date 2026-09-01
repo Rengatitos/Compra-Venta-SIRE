@@ -115,6 +115,16 @@ export interface AnalisisIA {
   documentos: boolean | null;
   descripcion: string | null;
   observaciones: string | null;
+  rag: ClasificacionRAG | null;
+}
+
+export interface ClasificacionRAG {
+  codigo_comprobante: string | null;
+  codigo_identidad: string | null;
+  cuenta_base: string | null;
+  cuenta_total: string | null;
+  glosa: string | null;
+  respuesta_cuentas: string | null;
 }
 
 export interface ComprobanteResponse {
