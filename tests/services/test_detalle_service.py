@@ -37,8 +37,16 @@ def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None):
     async def guardar_metadata(db, documento_id, metadata):
         enriquecidos.append(documento_id)
 
-    async def enriquecer(documento, detalle, empresa):
-        return {"cuenta_base": "6365095", "cuenta_total": "4212", "glosa": "un ítem"}
+    async def clasificar(db, documento, empresa):
+        return {
+            "cuenta_base": "6365095",
+            "cuenta_contrapartida": "4212",
+            "confianza": 0.9,
+            "clasificacion": "GASTO",
+            "estado_tributario": "APTO",
+            "evidencias": [{"id": "TEST"}],
+            "explicacion": "un ítem",
+        }
 
     async def obtener_detalles(empresa, comprobantes, progreso=None, al_extraer=None, **resto):
         # Igual que Playwright: el recorrido ocurre fuera del loop.
@@ -69,7 +77,7 @@ def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None):
     )
     monkeypatch.setattr(detalle_service.repo_comprobantes, "guardar_metadata", guardar_metadata)
     monkeypatch.setattr(detalle_service.scraping_sunat, "obtener_detalles", obtener_detalles)
-    monkeypatch.setattr(detalle_service.rag_service, "enriquecer", enriquecer)
+    monkeypatch.setattr(detalle_service.ollama_rag, "clasificar", clasificar)
 
     async def principal():
         resultado = await detalle_service.extraer(None, EMPRESA, "202606", reportar)

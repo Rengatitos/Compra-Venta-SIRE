@@ -8,7 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import settings
 from app.repositories import comprobantes as repo_comprobantes
-from app.services import rag_service, scraping_sunat
+from app.services import ollama_rag, scraping_sunat
 from app.services.jobs_service import Reportador
 
 logger = logging.getLogger(__name__)
@@ -51,9 +51,7 @@ async def extraer(
     def avisar(hechos: int, serie_numero: str) -> None:
         mensaje = f"Extrayendo {serie_numero} ({hechos + 1} de {total})"
         try:
-            futuro = asyncio.run_coroutine_threadsafe(
-                reportar(hechos, total, mensaje), loop
-            )
+            futuro = asyncio.run_coroutine_threadsafe(reportar(hechos, total, mensaje), loop)
         except RuntimeError:
             # El loop se cerró: el scraping sigue, pero
             # ya no hay a quién informarle.
@@ -99,7 +97,7 @@ async def extraer(
     # El detalle extraído es la glosa de entrada del RAG. Cada comprobante se
     # aísla: una caída temporal de Render no borra el scraping ni impide que los
     # demás comprobantes terminen.
-    limite = asyncio.Semaphore(settings.RAG_API_MAX_CONCURRENCY)
+    limite = asyncio.Semaphore(settings.RAG_MAX_CONCURRENCY)
     enriquecidos = 0
     errores_rag = 0
 
@@ -111,9 +109,9 @@ async def extraer(
             return
         try:
             async with limite:
-                rag = await rag_service.enriquecer(documento, detalle, empresa)
-            metadata = dict(documento.get("metadata_procesada") or {})
-            metadata["rag"] = rag
+                entrada = {**documento, "detalle_sunat": detalle}
+                resultado = await ollama_rag.clasificar(db, entrada, empresa)
+            metadata = ollama_rag.a_formato_legacy(resultado, entrada)
             await repo_comprobantes.guardar_metadata(db, documento["_id"], metadata)
             enriquecidos += 1
         except Exception:

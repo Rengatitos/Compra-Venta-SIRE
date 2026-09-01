@@ -12,6 +12,12 @@ NOMBRE_COL_COMPROBANTES = "comprobantes"
 NOMBRE_COL_JOBS = "jobs"
 NOMBRE_COL_VECTOR_GLOBAL = "vector_global"
 NOMBRE_COL_VECTOR_USUARIOS = "vector_usuarios"
+NOMBRE_COL_RAG_RULES = "rag_rules_index"
+NOMBRE_COL_RAG_ACCOUNTS = "rag_account_plan_index"
+NOMBRE_COL_RAG_HISTORICAL = "rag_historical_index"
+NOMBRE_COL_RAG_COMPANY = "rag_company_knowledge_index"
+NOMBRE_COL_RAG_TAX = "rag_tax_document_index"
+NOMBRE_COL_RAG_AUDIT = "rag_auditoria"
 
 
 def monto_a_bson(valor: Decimal | None) -> Decimal128 | None:

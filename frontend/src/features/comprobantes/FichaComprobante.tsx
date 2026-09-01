@@ -84,12 +84,9 @@ function FichaAnalisis({ analisis }: { analisis: AnalisisIA }) {
       <Dato termino="Documentos de respaldo">
         {analisis.documentos === null ? '—' : analisis.documentos ? 'Sí' : 'No'}
       </Dato>
-<<<<<<< Updated upstream
       <Dato termino="Observaciones" className={estilos.observaciones}>
         {analisis.observaciones ?? '—'}
       </Dato>
-=======
-      <Dato termino="Observaciones">{analisis.observaciones ?? '—'}</Dato>
       <Dato termino="Código comprobante RAG">
         {analisis.rag?.codigo_comprobante ?? '—'}
       </Dato>
@@ -97,7 +94,6 @@ function FichaAnalisis({ analisis }: { analisis: AnalisisIA }) {
       <Dato termino="Cuenta base RAG">{analisis.rag?.cuenta_base ?? '—'}</Dato>
       <Dato termino="Cuenta total RAG">{analisis.rag?.cuenta_total ?? '—'}</Dato>
       <Dato termino="Glosa para Excel">{analisis.rag?.glosa ?? '—'}</Dato>
->>>>>>> Stashed changes
     </dl>
   );
 }

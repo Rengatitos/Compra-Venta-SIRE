@@ -42,14 +42,17 @@ class Settings(BaseSettings):
     # decir nada.
     SUNAT_MAX_COMPROBANTES: int = 100
 
-    GEMINI_API_KEY: str | None = None
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
+    OLLAMA_CHAT_MODEL: str = "gemma3:4b"
+    OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
+    RAG_TOP_K_RULES: int = 6
+    RAG_TOP_K_ACCOUNTS: int = 8
+    RAG_TOP_K_HISTORICAL: int = 6
+    RAG_CONFIDENCE_THRESHOLD: float = 0.80
 
     # API externa que traduce comprobantes, documentos y glosas a los códigos
     # que espera la plantilla de Contasis.
-    RAG_API_URL: str = "https://contasis-rag-api.onrender.com"
-    RAG_API_DOCS_URL: str = "https://contasis-rag-api.onrender.com/docs"
-    RAG_API_TIMEOUT_SECONDS: int = 60
-    RAG_API_MAX_CONCURRENCY: int = 5
+    RAG_MAX_CONCURRENCY: int = 5
 
     # Orígenes permitidos por CORS. Se acepta tanto la lista separada por comas
     # que documenta `.env.example` como una lista JSON.
