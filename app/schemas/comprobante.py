@@ -12,6 +12,15 @@ class LineaDetalle(BaseModel):
     razon: str | None = None
 
 
+class ClasificacionRAG(BaseModel):
+    codigo_comprobante: str | None = None
+    codigo_identidad: str | None = None
+    cuenta_base: str | None = None
+    cuenta_total: str | None = None
+    glosa: str | None = None
+    respuesta_cuentas: str | None = None
+
+
 class AnalisisIA(BaseModel):
     detalle: list[LineaDetalle] = []
     cuenta_contable: str | None = None
@@ -23,6 +32,7 @@ class AnalisisIA(BaseModel):
     documentos: bool | None = None
     descripcion: str | None = None
     observaciones: str | None = None
+    rag: ClasificacionRAG | None = None
 
 
 class ComprobanteResponse(BaseModel):

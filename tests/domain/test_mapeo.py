@@ -442,6 +442,23 @@ class TestPlantillaContasis:
         assert hoja["AI14"].value is None
         assert hoja["AJ14"].value is None
 
+    def test_el_rag_completa_cuentas_codigos_y_glosa_de_compras(self):
+        documento = _documento_completo()
+        documento["metadata_procesada"]["rag"] = {
+            "codigo_comprobante": "07",
+            "codigo_identidad": "1",
+            "cuenta_base": "6365095",
+            "cuenta_total": "4212",
+            "glosa": "SERVICIO DE INTERNET",
+        }
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["C14"].value == "07"
+        assert hoja["G14"].value == 1
+        assert hoja["AF14"].value == "6365095"
+        assert hoja["AH14"].value == "4212"
+        assert hoja["AS14"].value == "SERVICIO DE INTERNET"
+
+    def test_el_analisis_no_aparece_en_ninguna_celda(self):
     def test_las_cuentas_que_la_ia_no_deduce_siguen_vacias(self):
         # Cuenta contable de otros tributos y del total: el análisis no las da.
         hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)

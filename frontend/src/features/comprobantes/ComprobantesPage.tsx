@@ -224,6 +224,18 @@ export function ComprobantesPage() {
       render: (fila) => fila.documento_contraparte || '—',
     },
     {
+      clave: 'cuenta_rag',
+      cabecera: 'Cuenta RAG',
+      monoespaciada: true,
+      render: (fila) => fila.analisis?.rag?.cuenta_base ?? '—',
+    },
+    {
+      clave: 'glosa_rag',
+      cabecera: 'Glosa',
+      anchoMinimo: '16rem',
+      render: (fila) => fila.analisis?.rag?.glosa ?? '—',
+    },
+    {
       clave: 'igv',
       cabecera: 'IGV',
       numerica: true,
@@ -288,7 +300,7 @@ export function ComprobantesPage() {
       <div className={layout.pilaAmplia}>
         <Panel
           titulo="Procesar el periodo"
-          descripcion="La extracción de detalle hace scraping del portal SOL y corre en segundo plano; puedes seguirla desde la campana de notificaciones. El análisis con IA clasifica los comprobantes pendientes."
+          descripcion="El proceso consulta cada comprobante en SOL, arma la glosa desde sus ítems y obtiene los códigos contables con RAG. Al terminar, esta vista previa se actualiza y el Excel queda listo."
           acciones={
             <SelectField
               etiqueta="Libro"
@@ -311,7 +323,7 @@ export function ComprobantesPage() {
               cargando={extraer.isPending}
               disabled={jobActivo !== undefined}
             >
-              Extraer detalle de ítems
+              Completar con SUNAT y RAG
             </Button>
             <Button
               onClick={() => {

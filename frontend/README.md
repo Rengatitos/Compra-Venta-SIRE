@@ -7,7 +7,7 @@ exportación de comprobantes y el dashboard de analítica.
 
 ## Arrancar
 
-El backend debe estar corriendo en `http://127.0.0.1:9007` (ver el README raíz).
+El backend debe estar corriendo en `http://127.0.0.1:8000`.
 
 ```bash
 npm install --prefix frontend

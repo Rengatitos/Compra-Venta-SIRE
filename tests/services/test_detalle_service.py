@@ -11,9 +11,9 @@ from app.services import detalle_service
 
 EMPRESA = {"_id": "abc123", "ruc": "20608997106"}
 PENDIENTES = [
-    {"serie_numero": "F001-1"},
-    {"serie_numero": "F001-2"},
-    {"serie_numero": "F001-3"},
+    {"_id": "1", "serie_numero": "F001-1", "tipo_cp": "01", "tipo_doc_identidad": "6"},
+    {"_id": "2", "serie_numero": "F001-2", "tipo_cp": "01", "tipo_doc_identidad": "6"},
+    {"_id": "3", "serie_numero": "F001-3", "tipo_cp": "01", "tipo_doc_identidad": "6"},
 ]
 
 
@@ -67,7 +67,9 @@ def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None, libro=Libr
     monkeypatch.setattr(
         detalle_service.repo_comprobantes, "guardar_detalle_sunat", guardar_detalle_sunat
     )
+    monkeypatch.setattr(detalle_service.repo_comprobantes, "guardar_metadata", guardar_metadata)
     monkeypatch.setattr(detalle_service.scraping_sunat, "obtener_detalles", obtener_detalles)
+    monkeypatch.setattr(detalle_service.ollama_rag, "clasificar", clasificar)
 
     async def principal():
         resultado = await detalle_service.extraer(None, EMPRESA, "202606", libro, reportar)
@@ -82,7 +84,14 @@ def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None, libro=Libr
 def test_reporta_el_avance_de_cada_comprobante(monkeypatch):
     resultado, reportes, guardados, _ = _correr(monkeypatch, PENDIENTES)
 
-    assert resultado == {"procesados": 3, "con_detalle": 3, "sin_detalle": 0, "pendientes": 0}
+    assert resultado == {
+        "procesados": 3,
+        "con_detalle": 3,
+        "sin_detalle": 0,
+        "pendientes": 0,
+        "enriquecidos_rag": 3,
+        "errores_rag": 0,
+    }
 
     # Uno por comprobante, además del inicial y el final.
     intermedios = [r for r in reportes if r[2].startswith("Extrayendo F001-")]
@@ -90,7 +99,7 @@ def test_reporta_el_avance_de_cada_comprobante(monkeypatch):
     assert intermedios[0][2] == "Extrayendo F001-1 (1 de 3)"
 
     assert reportes[0] == (0, 3, "Extrayendo detalle de 3 comprobantes")
-    assert reportes[-1] == (3, 3, "Extracción finalizada")
+    assert reportes[-1] == (3, 3, "Extracción y clasificación RAG finalizadas")
 
 
 def test_sin_pendientes_no_abre_el_navegador(monkeypatch):
@@ -106,7 +115,8 @@ def test_avisa_cuando_el_tope_recorta_el_trabajo(monkeypatch):
     # todos y no había manera de saber que faltaba otra vuelta.
     resultado, reportes, guardados, _ = _correr(monkeypatch, PENDIENTES, total_en_bd=10)
 
-    assert resultado == {"procesados": 3, "con_detalle": 3, "sin_detalle": 0, "pendientes": 7}
+    assert resultado["pendientes"] == 7
+    assert resultado["enriquecidos_rag"] == 3
     assert reportes[0] == (0, 3, "Extrayendo 3 comprobantes; quedarán 7 para otra vuelta")
 
 

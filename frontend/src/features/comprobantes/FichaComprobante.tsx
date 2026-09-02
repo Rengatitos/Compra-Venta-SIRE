@@ -102,6 +102,13 @@ function FichaAnalisis({ analisis }: { analisis: AnalisisIA }) {
       <Dato termino="Observaciones" className={estilos.observaciones}>
         {analisis.observaciones ?? '—'}
       </Dato>
+      <Dato termino="Código comprobante RAG">
+        {analisis.rag?.codigo_comprobante ?? '—'}
+      </Dato>
+      <Dato termino="Código identidad RAG">{analisis.rag?.codigo_identidad ?? '—'}</Dato>
+      <Dato termino="Cuenta base RAG">{analisis.rag?.cuenta_base ?? '—'}</Dato>
+      <Dato termino="Cuenta total RAG">{analisis.rag?.cuenta_total ?? '—'}</Dato>
+      <Dato termino="Glosa para Excel">{analisis.rag?.glosa ?? '—'}</Dato>
     </dl>
   );
 }

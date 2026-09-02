@@ -170,15 +170,22 @@ def _fechas(comprobante: dict[str, Any]) -> tuple[date | None, date | None]:
     return emision, vencimiento
 
 
+def _rag(comprobante: dict[str, Any]) -> dict[str, Any]:
+    return ((comprobante.get("analisis") or {}).get("rag") or {})
+
+
 def _fila_compras(comprobante: dict[str, Any]) -> dict[str, Any]:
     emision, vencimiento = _fechas(comprobante)
+    rag = _rag(comprobante)
     return {
         "A": emision,
         "B": vencimiento,
-        "C": _texto(comprobante.get("tipo_cp")),
+        "C": _texto(rag.get("codigo_comprobante") or comprobante.get("tipo_cp")),
         "D": _texto(comprobante.get("serie")),
         "F": _entero_o_texto(comprobante.get("numero")),
-        "G": _entero_o_texto(comprobante.get("tipo_doc_identidad")),
+        "G": _entero_o_texto(
+            rag.get("codigo_identidad") or comprobante.get("tipo_doc_identidad")
+        ),
         "H": _entero_o_texto(comprobante.get("documento_contraparte")),
         "I": _texto(comprobante.get("razon_social")),
         # Los tres destinos van en columnas distintas. Se usa el desglose y no
@@ -214,13 +221,16 @@ def _fila_compras(comprobante: dict[str, Any]) -> dict[str, Any]:
 
 def _fila_ventas(comprobante: dict[str, Any]) -> dict[str, Any]:
     emision, vencimiento = _fechas(comprobante)
+    rag = _rag(comprobante)
     return {
         "A": emision,
         "B": vencimiento,
-        "C": _texto(comprobante.get("tipo_cp")),
+        "C": _texto(rag.get("codigo_comprobante") or comprobante.get("tipo_cp")),
         "D": _texto(comprobante.get("serie")),
         "E": _entero_o_texto(comprobante.get("numero")),
-        "F": _entero_o_texto(comprobante.get("tipo_doc_identidad")),
+        "F": _entero_o_texto(
+            rag.get("codigo_identidad") or comprobante.get("tipo_doc_identidad")
+        ),
         "G": _entero_o_texto(comprobante.get("documento_contraparte")),
         "H": _texto(comprobante.get("razon_social")),
         "J": _monto(comprobante.get("base_imponible")),

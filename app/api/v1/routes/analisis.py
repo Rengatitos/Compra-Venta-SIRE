@@ -59,7 +59,7 @@ async def ejecutar_analisis(
 
         resultado = await analisis_ia.procesar_lote(
             db,
-            empresa_id,
+            empresa,
             periodo,
             libro,
             contexto_usuario or None,

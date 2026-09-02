@@ -53,6 +53,17 @@ class Settings(BaseSettings):
     # decir nada.
     SUNAT_MAX_COMPROBANTES: int = 100
 
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
+    OLLAMA_CHAT_MODEL: str = "gemma3:4b"
+    OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
+    RAG_TOP_K_RULES: int = 6
+    RAG_TOP_K_ACCOUNTS: int = 8
+    RAG_TOP_K_HISTORICAL: int = 6
+    RAG_CONFIDENCE_THRESHOLD: float = 0.80
+
+    # API externa que traduce comprobantes, documentos y glosas a los códigos
+    # que espera la plantilla de Contasis.
+    RAG_MAX_CONCURRENCY: int = 5
     # Acceso a Gemini. Hay dos modos excluyentes:
     #   - API de AI Studio: basta GEMINI_API_KEY.
     #   - Vertex AI: define VERTEX_PROJECT (y opcionalmente el JSON de la
