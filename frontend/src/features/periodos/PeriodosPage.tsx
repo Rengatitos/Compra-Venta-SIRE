@@ -28,7 +28,8 @@ import {
 } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
-import type { PeriodoResponse } from '@/types/api';
+import type { PeriodoResponse, ResultadoPropuesta } from '@/types/api';
+import type { Libro } from '@/types/domain';
 import { esPeriodoValido } from '@/types/domain';
 
 import { presentarEstadoPeriodo } from './estadoPeriodo';
@@ -37,6 +38,15 @@ const ANIOS: readonly Opcion[] = aniosDisponibles().map((anio) => ({
   valor: anio,
   texto: anio,
 }));
+
+const LIBROS: readonly Libro[] = ['compras', 'ventas'];
+const ETIQUETA_LIBRO: Record<Libro, string> = { compras: 'Compras', ventas: 'Ventas' };
+
+type SincronizacionLibro = {
+  libro: Libro;
+  datos?: ResultadoPropuesta;
+  error?: string;
+};
 
 /**
  * El mes más reciente que todavía no existe, caminando hacia atrás desde el
@@ -140,26 +150,46 @@ export function PeriodosPage() {
   });
 
   const sincronizar = useMutation({
-    // Solo compras: `libro=ventas` responde 501 porque el RVIE no tiene cliente.
-    mutationFn: (periodo: string) => sincronizarPropuesta(ruc, periodo, 'compras'),
-    onSuccess: async (respuesta) => {
-      const datos = respuesta.datos;
-      const detalle = datos
-        ? `${datos.nuevos} nuevos · ${datos.actualizados} actualizados · ${datos.descartados} descartados (series distintas de F o E, o fuera del periodo).`
-        : undefined;
+    // Los dos libros en la misma acción: un periodo no está sincronizado hasta
+    // que están compras y ventas. Van en serie y cada uno se captura por
+    // separado, porque si el RVIE falla lo ya descargado del RCE sigue siendo
+    // válido y el aviso tiene que decir cuál de los dos se cayó.
+    mutationFn: async (periodo: string) => {
+      const resultados: SincronizacionLibro[] = [];
+      for (const libro of LIBROS) {
+        try {
+          const respuesta = await sincronizarPropuesta(ruc, periodo, libro);
+          resultados.push({ libro, datos: respuesta.datos ?? undefined });
+        } catch (fallo) {
+          resultados.push({
+            libro,
+            error: fallo instanceof ApiError ? fallo.message : 'Error inesperado.',
+          });
+        }
+      }
+      return resultados;
+    },
+    onSuccess: async (resultados) => {
+      const fallidos = resultados.filter((r) => r.error);
+      const detalle = resultados
+        .map((r) =>
+          r.datos
+            ? `${ETIQUETA_LIBRO[r.libro]}: ${r.datos.nuevos} nuevos · ${r.datos.actualizados} actualizados · ${r.datos.descartados} descartados (fuera del periodo o sin identificar).`
+            : `${ETIQUETA_LIBRO[r.libro]}: ${r.error}`,
+        )
+        .join(' ');
+
       mostrar({
-        tono: 'exito',
-        titulo: respuesta.mensaje ?? 'Sincronización completada',
+        tono: fallidos.length === resultados.length ? 'error' : 'exito',
+        titulo:
+          fallidos.length === 0
+            ? 'Sincronización completada'
+            : fallidos.length === resultados.length
+              ? 'No se pudo sincronizar la propuesta'
+              : 'Sincronización parcial',
         detalle,
       });
       await invalidarPeriodos();
-    },
-    onError: (fallo) => {
-      mostrar({
-        tono: 'error',
-        titulo: 'No se pudo sincronizar la propuesta',
-        detalle: fallo instanceof ApiError ? fallo.message : 'Error inesperado.',
-      });
     },
   });
 

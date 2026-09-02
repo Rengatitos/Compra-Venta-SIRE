@@ -31,7 +31,7 @@ import {
 } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
-import type { ComprobanteResponse, ResultadoAnalisis } from '@/types/api';
+import type { ComprobanteResponse, JobResponse, ResultadoAnalisis } from '@/types/api';
 import type { FormatoExport, Libro } from '@/types/domain';
 import { ESTADOS_JOB_TERMINALES, esPeriodoValido } from '@/types/domain';
 
@@ -82,17 +82,26 @@ export function ComprobantesPage() {
 
   // El seguimiento vive en `JobsProvider`, así que el avance sigue visible
   // aunque se navegue fuera y se vuelva, y también tras recargar.
-  const jobActivo = seguidos
+  // Los trabajos vivos de este periodo, por libro. Sin filtrar por libro, una
+  // extracción de compras pintaba su avance bajo la vista de ventas: se veía
+  // «Extrayendo E001-789 (6 de 87)» en un libro que sólo tiene 4 comprobantes.
+  const jobsVivos = seguidos
     .map((jobId) => porId[jobId])
-    .find(
-      (job) =>
+    .filter(
+      (job): job is JobResponse =>
         job !== undefined &&
         job.periodo === periodo &&
         !ESTADOS_JOB_TERMINALES.includes(job.estado),
     );
 
+  const jobActivo = jobsVivos.find((job) => job.libro === libro);
+  // El de otro libro no bloquea el botón —el backend lo encola— pero conviene
+  // decir que está ahí: explica por qué esta extracción puede tardar en
+  // arrancar.
+  const otroLibro = jobsVivos.find((job) => job.libro !== libro);
+
   const extraer = useMutation({
-    mutationFn: () => iniciarExtraccionDetalle(ruc, periodo),
+    mutationFn: () => iniciarExtraccionDetalle(ruc, periodo, libro),
     onSuccess: (aceptado) => {
       seguir(aceptado.job_id);
       // `aceptado.mensaje` apunta al endpoint de la API, que no le sirve a
@@ -120,7 +129,7 @@ export function ComprobantesPage() {
   });
 
   const analizar = useMutation({
-    mutationFn: () => ejecutarAnalisis(ruc, periodo, archivos),
+    mutationFn: () => ejecutarAnalisis(ruc, periodo, libro, archivos),
     onSuccess: async (respuesta) => {
       setResultado(respuesta.datos);
       setDialogoAnalisis(false);
@@ -302,7 +311,7 @@ export function ComprobantesPage() {
               }}
               opciones={[
                 { valor: 'compras', texto: 'Compras (RCE)' },
-                { valor: 'ventas', texto: 'Ventas (RVIE) — no disponible', deshabilitada: true },
+                { valor: 'ventas', texto: 'Ventas (RVIE)' },
               ]}
             />
           }
@@ -332,7 +341,7 @@ export function ComprobantesPage() {
 
           {jobActivo ? (
             <ProgressBar
-              etiqueta="Avance de la extracción de detalle"
+              etiqueta={`Avance de la extracción de detalle (${libro})`}
               actual={jobActivo.progreso.actual}
               total={jobActivo.progreso.total}
               porcentaje={jobActivo.progreso.porcentaje}
@@ -340,6 +349,13 @@ export function ComprobantesPage() {
                 jobActivo.progreso.mensaje || presentarEstadoJob(jobActivo.estado).texto
               }
             />
+          ) : null}
+
+          {otroLibro ? (
+            <p className={layout.textoSecundario}>
+              También hay una extracción de {otroLibro.libro} en curso para este periodo.
+              Corren de una en una: la sesión SOL es única por empresa.
+            </p>
           ) : null}
         </Panel>
 

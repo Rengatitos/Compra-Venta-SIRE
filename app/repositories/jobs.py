@@ -5,6 +5,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.domain.comprobante import Libro
 from app.domain.jobs import EstadoJob, Job, Progreso, TipoJob
 from app.repositories._mongo import NOMBRE_COL_JOBS
 
@@ -68,6 +69,7 @@ async def listar(
     ruc: str,
     *,
     periodo: str | None = None,
+    libro: Libro | None = None,
     tipo: TipoJob | None = None,
     estado: EstadoJob | None = None,
     limit: int = 50,
@@ -77,6 +79,8 @@ async def listar(
     filtro: dict[str, Any] = {"ruc": ruc}
     if periodo:
         filtro["periodo"] = periodo
+    if libro:
+        filtro["libro"] = libro.value
     if tipo:
         filtro["tipo"] = tipo.value
     if estado:

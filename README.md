@@ -39,8 +39,8 @@ La identidad del recurso es el **RUC**, no el `_id` de Mongo. El sujeto sale del
 | `POST` | `…/periodos/{periodo}/libros/{libro}/propuesta` | Sincronizar la propuesta del SIRE |
 | `GET` `PATCH` | `…/periodos/{periodo}/comprobantes` | Consultar y editar comprobantes |
 | `GET` | `…/comprobantes/export` | Exportar a Excel o PDF |
-| `POST` | `…/periodos/{periodo}/analisis` | Clasificar con IA |
-| `POST` | `…/periodos/{periodo}/detalle` | Extraer detalle del portal SOL → `202` + `job_id` |
+| `POST` | `…/libros/{libro}/analisis` | Clasificar con IA |
+| `POST` | `…/libros/{libro}/detalle` | Extraer detalle del portal SOL → `202` + `job_id` |
 | `GET` | `/jobs` | Historial de operaciones asíncronas de la empresa |
 | `GET` | `/jobs/{job_id}` | Estado y progreso de una operación asíncrona |
 | `GET` | `/analytics/*` | Agregados para el dashboard externo |
@@ -49,9 +49,8 @@ Documentación interactiva en `http://127.0.0.1:9007/docs`.
 
 ## Limitaciones conocidas
 
-- **Solo compras (RCE).** `libro=ventas` responde `501`: el RVIE no está implementado.
 - **Solo lectura contra el SIRE.** Aceptar y reemplazar propuesta requieren el flujo por ticket de SUNAT, todavía sin construir.
-- **Filtro de series heredado.** La sincronización solo guarda comprobantes cuya serie empiece con `F` o `E`, así que descarta boletas. Ver `PREFIJOS_SERIE_ACEPTADOS` en `app/services/sunat/propuesta.py`.
+- **Sin flujo por ticket.** La descarga de las dos propuestas es JSON paginado y directo. `exportapropuesta` (que devuelve un `numTicket`) no se usa, y aceptar o reemplazar la propuesta sí lo necesitarán.
 - **`docs/` está desactualizado** — describe la estructura anterior al refactor.
 
 ## Variables de entorno
@@ -66,7 +65,9 @@ Documentación interactiva en `http://127.0.0.1:9007/docs`.
 | `MONGO_URI` | Conexión a MongoDB | Sí |
 | `MONGO_FACTURASDB_NAME` | Nombre de la base | Sí |
 | `SUNAT_CLIENT_ID` / `SUNAT_CLIENT_SECRET` | Credenciales del cliente API SIRE, como respaldo global | No |
-| `URL_SIRE_PROPUESTA` | Plantilla de URL del SIRE con el placeholder `{PERIODO}` | Sí |
+| `URL_SIRE_PROPUESTA` | Plantilla de URL del RCE (compras) con el placeholder `{PERIODO}` | Sí |
+| `URL_SIRE_PROPUESTA_VENTAS` | Plantilla de URL del RVIE (ventas), mismo placeholder | Sí (para ventas) |
+| `SIRE_PER_PAGE` / `SIRE_MAX_PAGINAS` | Tamaño de página al descargar la propuesta y tope de páginas (default `100` / `50`) | No |
 | `GEMINI_API_KEY` | API key de Gemini para el análisis contable | Sí (para IA) |
 | `CORS_ORIGINS` | Orígenes permitidos, separados por comas | No |
 

@@ -4,8 +4,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.api.v1.deps import empresa_actual, periodo_valido
+from app.api.v1.deps import empresa_actual, libro_valido, periodo_valido
 from app.db.database import get_db
+from app.domain.comprobante import Libro
 from app.domain.jobs import TipoJob
 from app.schemas.job import JobAceptado
 from app.services import detalle_service, jobs_service
@@ -26,45 +27,62 @@ async def iniciar_extraccion(
     request: Request,
     background_tasks: BackgroundTasks,
     periodo: str = Depends(periodo_valido),
+    libro: Libro = Depends(libro_valido),
     empresa: dict = Depends(empresa_actual),
     db=Depends(get_db),
 ):
-    # El límite de slowapi es por IP y no impide encolar cinco extracciones
-    # seguidas: cada una abriría su propio Chromium contra la misma sesión SOL.
-    en_curso = await jobs_service.activo(
-        db, empresa["ruc"], TipoJob.EXTRACCION_DETALLES
+    # Duplicado: el mismo periodo y el mismo libro ya en marcha. Pedirlo otra
+    # vez no aporta nada y dejaría dos trabajos raspando lo mismo.
+    duplicado = await jobs_service.activo(
+        db, empresa["ruc"], TipoJob.EXTRACCION_DETALLES, periodo=periodo, libro=libro
     )
-    if en_curso:
+    if duplicado:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"Ya hay una extracción en curso para el periodo {en_curso.periodo}. "
-                f"Espera a que termine (job {en_curso.job_id})."
+                f"Ya hay una extracción de {libro.value} en curso para el periodo "
+                f"{periodo}. Espera a que termine (job {duplicado.job_id})."
             ),
         )
 
+    # Otro libro (u otro periodo) sí se acepta: no se rechaza, se encola. El
+    # scraper entra con la sesión SOL, que es única por usuario, así que los
+    # trabajos de una misma empresa corren de uno en uno; pero eso lo resuelve
+    # la cola, no un 409 que obligue al usuario a estar pendiente.
+    en_curso = await jobs_service.activo(
+        db, empresa["ruc"], TipoJob.EXTRACCION_DETALLES
+    )
+
     job = await jobs_service.crear(
-        db, TipoJob.EXTRACCION_DETALLES, empresa["ruc"], periodo
+        db, TipoJob.EXTRACCION_DETALLES, empresa["ruc"], periodo, libro
     )
 
     async def tarea(reportar):
-        return await detalle_service.extraer(db, empresa, periodo, reportar)
+        return await detalle_service.extraer(db, empresa, periodo, libro, reportar)
 
-    background_tasks.add_task(jobs_service.ejecutar, db, job.job_id, tarea)
+    background_tasks.add_task(
+        jobs_service.ejecutar, db, job.job_id, tarea, empresa["ruc"]
+    )
 
     logger.info(
-        "Extracción de detalle encolada ruc=%s periodo=%s job_id=%s",
+        "Extracción de detalle encolada ruc=%s periodo=%s libro=%s job_id=%s",
         empresa["ruc"],
         periodo,
+        libro.value,
         job.job_id,
     )
 
-    return {
-        "job_id": job.job_id,
-        "estado": job.estado.value,
-        # La plantilla se quedaba sin interpolar y el cliente recibía
-        # "{job_id}" tal cual, que era lo que acababa mostrándose en el aviso.
-        "mensaje": (
-            f"Extracción iniciada. Consulta su avance en /api/v1/jobs/{job.job_id}"
-        ),
-    }
+    # La plantilla se quedaba sin interpolar y el cliente recibía "{job_id}"
+    # tal cual, que era lo que acababa mostrándose en el aviso.
+    if en_curso:
+        mensaje = (
+            f"Extracción de {libro.value} en cola: arrancará cuando termine la "
+            f"que está en curso. Consulta su avance en /api/v1/jobs/{job.job_id}"
+        )
+    else:
+        mensaje = (
+            f"Extracción de {libro.value} iniciada. "
+            f"Consulta su avance en /api/v1/jobs/{job.job_id}"
+        )
+
+    return {"job_id": job.job_id, "estado": job.estado.value, "mensaje": mensaje}

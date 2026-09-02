@@ -1,10 +1,14 @@
-"""Recalcula los importes de los comprobantes ya guardados.
+"""Recalcula los campos que salen del crudo del SIRE en comprobantes ya guardados.
 
 Cada comprobante conserva la respuesta cruda del SIRE en `extra.raw_sire`, así
 que volver a mapearla no cuesta ni una llamada a SUNAT. Sirve cuando el mapeo
-cambia y los documentos existentes quedaron con importes viejos —por ejemplo
-los que se guardaron mientras la base imponible y el IGV se leían con nombres
-de campo que el SIRE no envía nunca y llegaban siempre en cero.
+cambia y los documentos existentes quedaron con datos viejos —por ejemplo los
+que se guardaron mientras la base imponible y el IGV se leían con nombres de
+campo que el SIRE no envía nunca y llegaban siempre en cero, o mientras el
+vencimiento, el tipo de cambio y la tasa de IGV se buscaban donde no estaban.
+
+No toca el análisis de la IA ni el estado de procesamiento: sólo los campos que
+se derivan del crudo.
 
     uv run python scripts/recalcular_importes.py            # muestra qué haría
     uv run python scripts/recalcular_importes.py --aplicar  # escribe
@@ -30,15 +34,27 @@ load_dotenv()
 from app.domain.comprobante import Libro  # noqa: E402
 from app.repositories._mongo import (  # noqa: E402
     NOMBRE_COL_COMPROBANTES,
+    fecha_a_bson,
+    fecha_desde_bson,
     monto_a_bson,
     monto_a_float,
 )
 from app.repositories.comprobantes import _CAMPOS_MONTO  # noqa: E402
 from app.services.sunat.propuesta import a_comprobante  # noqa: E402
 
+# Importes que pueden venir sin valor: hay que distinguir "no lo mandó SUNAT"
+# de "vale cero", porque `monto_a_float` colapsa los dos en 0.0.
+_CAMPOS_MONTO_OPCIONAL = ("tipo_cambio", "porcentaje_igv")
+
+
+def _mismo_opcional(actual: Any, nuevo: Any) -> bool:
+    if actual is None or nuevo is None:
+        return actual is None and nuevo is None
+    return monto_a_float(actual) == float(nuevo)
+
 
 def _recalcular(documento: dict[str, Any]) -> dict[str, Any] | None:
-    """Devuelve sólo los campos cuyo importe cambia, o None si no cambia nada."""
+    """Devuelve sólo los campos que cambian, o None si no cambia nada."""
     crudo = (documento.get("extra") or {}).get("raw_sire")
     if not crudo:
         return None
@@ -56,7 +72,24 @@ def _recalcular(documento: dict[str, Any]) -> dict[str, Any] | None:
         nuevo = getattr(recalculado, campo)
         if monto_a_float(documento.get(campo)) != float(nuevo):
             cambios[campo] = monto_a_bson(nuevo)
+
+    for campo in _CAMPOS_MONTO_OPCIONAL:
+        nuevo = getattr(recalculado, campo)
+        if not _mismo_opcional(documento.get(campo), nuevo):
+            cambios[campo] = monto_a_bson(nuevo)
+
+    if fecha_desde_bson(documento.get("fecha_vencimiento")) != recalculado.fecha_vencimiento:
+        cambios["fecha_vencimiento"] = fecha_a_bson(recalculado.fecha_vencimiento)
+
     return cambios or None
+
+
+def _mostrar(valor: Any) -> str:
+    if valor is None:
+        return "-"
+    if hasattr(valor, "date"):
+        return valor.date().isoformat()
+    return str(monto_a_float(valor))
 
 
 async def main() -> None:
@@ -102,7 +135,7 @@ async def main() -> None:
     print(f"  con importes que cambian: {len(pendientes)}\n")
 
     for _, serie_numero, cambios in pendientes[:40]:
-        detalle = ", ".join(f"{c}={monto_a_float(v)}" for c, v in sorted(cambios.items()))
+        detalle = ", ".join(f"{c}={_mostrar(v)}" for c, v in sorted(cambios.items()))
         print(f"  {serie_numero:<18} {detalle}")
     if len(pendientes) > 40:
         print(f"  ... y {len(pendientes) - 40} más")

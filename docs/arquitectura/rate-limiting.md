@@ -6,8 +6,8 @@ Los límites de tasa se implementan con `slowapi`, indexados por IP remota ([get
 |---|---|---|
 | `POST /api/v1/empresas` | 5/minuto | Evitar registro masivo de empresas. |
 | `POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/propuesta` | 10/minuto | La API oficial de SUNAT también tiene sus propios límites; evita saturarla desde un solo cliente. |
-| `POST /api/v1/empresas/{ruc}/periodos/{periodo}/analisis` | 5/minuto | Cada llamada dispara una o más peticiones a Gemini, que tiene costo y límites propios. |
-| `POST /api/v1/empresas/{ruc}/periodos/{periodo}/detalle` | 5/minuto | Cada llamada lanza un navegador Playwright completo contra el portal SOL. |
+| `POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/analisis` | 5/minuto | Cada llamada dispara una o más peticiones a Gemini, que tiene costo y límites propios. |
+| `POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/detalle` | 5/minuto | Cada llamada lanza un navegador Playwright completo contra el portal SOL. |
 
 El resto de los endpoints no tiene límite propio.
 

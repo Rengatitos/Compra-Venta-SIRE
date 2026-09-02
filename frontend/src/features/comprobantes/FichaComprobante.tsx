@@ -37,6 +37,21 @@ function Dato({
   );
 }
 
+/**
+ * Un comprobante tiene desglose que mostrar solo si alguna adquisición fue a
+ * parar a operaciones no gravadas. Si todo es DG, el desglose es la base y no
+ * aporta nada.
+ */
+function hayDesglose(datos: ComprobanteResponse): boolean {
+  return (
+    datos.base_imponible_dgng !== 0 ||
+    datos.igv_dgng !== 0 ||
+    datos.base_imponible_dng !== 0 ||
+    datos.igv_dng !== 0
+  );
+}
+
+
 function Seccion({
   titulo,
   acciones,
@@ -202,6 +217,30 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
             {formatearMoneda(datos.base_imponible, datos.moneda)}
           </Dato>
           <Dato termino="IGV">{formatearMoneda(datos.igv, datos.moneda)}</Dato>
+          {/*
+            El desglose por destino solo aparece cuando hay algo que desglosar.
+            En la inmensa mayoría de comprobantes todo va a «gravadas» y
+            repetir la base imponible en tres filas idénticas sería ruido.
+          */}
+          {hayDesglose(datos) ? (
+            <>
+              <Dato termino="Gravadas (DG)">
+                {formatearMoneda(datos.base_imponible_dg, datos.moneda)} ·{' '}
+                {formatearMoneda(datos.igv_dg, datos.moneda)} de IGV
+              </Dato>
+              <Dato termino="Gravadas y no gravadas (DGNG)">
+                {formatearMoneda(datos.base_imponible_dgng, datos.moneda)} ·{' '}
+                {formatearMoneda(datos.igv_dgng, datos.moneda)} de IGV
+              </Dato>
+              <Dato termino="No gravadas (DNG)">
+                {formatearMoneda(datos.base_imponible_dng, datos.moneda)} ·{' '}
+                {formatearMoneda(datos.igv_dng, datos.moneda)} de IGV
+              </Dato>
+            </>
+          ) : null}
+          {datos.porcentaje_igv !== null ? (
+            <Dato termino="Tasa IGV">{datos.porcentaje_igv} %</Dato>
+          ) : null}
           <Dato termino="Exonerado">{formatearMoneda(datos.exonerado, datos.moneda)}</Dato>
           <Dato termino="Inafecto">{formatearMoneda(datos.inafecto, datos.moneda)}</Dato>
           <Dato termino="No gravado">{formatearMoneda(datos.no_gravado, datos.moneda)}</Dato>

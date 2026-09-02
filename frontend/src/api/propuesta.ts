@@ -5,9 +5,8 @@ import type { Libro } from '@/types/domain';
 /**
  * `POST …/libros/{libro}/propuesta`. Límite 10/min.
  *
- * Con `libro=ventas` el backend responde 501 (el RVIE no está implementado), y
- * si SUNAT no tiene propuesta el periodo queda en `sin_propuesta` con
- * `nuevos: 0` — eso no es un error.
+ * Vale para los dos libros. Si SUNAT no tiene propuesta el periodo queda en
+ * `sin_propuesta` con `nuevos: 0` — eso no es un error.
  */
 export function sincronizarPropuesta(
   ruc: string,

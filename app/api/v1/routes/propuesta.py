@@ -29,12 +29,6 @@ async def sincronizar_propuesta(
     empresa: dict = Depends(empresa_actual),
     db=Depends(get_db),
 ):
-    if libro is Libro.VENTAS:
-        raise HTTPException(
-            status_code=501,
-            detail="La sincronización del libro de ventas (RVIE) todavía no está implementada",
-        )
-
     logger.info(
         "Sincronizando propuesta ruc=%s periodo=%s libro=%s",
         empresa.get("ruc"),

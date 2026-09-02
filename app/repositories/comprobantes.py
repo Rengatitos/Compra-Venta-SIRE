@@ -22,6 +22,12 @@ from app.repositories._mongo import (
 _CAMPOS_MONTO = (
     "base_imponible",
     "igv",
+    "base_imponible_dg",
+    "igv_dg",
+    "base_imponible_dgng",
+    "igv_dgng",
+    "base_imponible_dng",
+    "igv_dng",
     "exonerado",
     "inafecto",
     "no_gravado",
@@ -71,6 +77,7 @@ def a_documento(comprobante: Comprobante, empresa_id: str, periodo: str) -> dict
         "fecha_vencimiento": fecha_a_bson(comprobante.fecha_vencimiento),
         "moneda": comprobante.moneda,
         "tipo_cambio": monto_a_bson(comprobante.tipo_cambio),
+        "porcentaje_igv": monto_a_bson(comprobante.porcentaje_igv),
         "extra": comprobante.extra,
     }
     for campo in _CAMPOS_MONTO:
@@ -81,6 +88,7 @@ def a_documento(comprobante: Comprobante, empresa_id: str, periodo: str) -> dict
 def desde_documento(documento: dict[str, Any]) -> Comprobante:
     montos = {campo: monto_desde_bson(documento.get(campo)) for campo in _CAMPOS_MONTO}
     tipo_cambio = documento.get("tipo_cambio")
+    porcentaje_igv = documento.get("porcentaje_igv")
     return Comprobante(
         libro=Libro(documento.get("libro", Libro.COMPRAS.value)),
         origen=Origen(documento.get("origen", Origen.SIRE.value)),
@@ -94,6 +102,9 @@ def desde_documento(documento: dict[str, Any]) -> Comprobante:
         fecha_vencimiento=fecha_desde_bson(documento.get("fecha_vencimiento")),
         moneda=documento.get("moneda", "PEN"),
         tipo_cambio=monto_desde_bson(tipo_cambio) if tipo_cambio is not None else None,
+        porcentaje_igv=(
+            monto_desde_bson(porcentaje_igv) if porcentaje_igv is not None else None
+        ),
         extra=documento.get("extra", {}),
         **montos,
     )
@@ -132,59 +143,88 @@ async def listar(
     db: AsyncIOMotorDatabase,
     empresa_id: str,
     periodo: str,
+    libro: Libro | None = None,
     skip: int = 0,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    cursor = _col(db).find({"empresa_id": empresa_id, "periodo": periodo}).skip(skip).limit(limit)
+    # El libro se filtra en la consulta, no después de paginar: con los dos
+    # libros en el mismo periodo, una página de cien podía salir entera de
+    # compras y dejar el listado de ventas vacío.
+    filtro: dict[str, Any] = {"empresa_id": empresa_id, "periodo": periodo}
+    if libro is not None:
+        filtro["libro"] = libro.value
+    cursor = _col(db).find(filtro).skip(skip).limit(limit)
     return await cursor.to_list(length=limit)
 
 
 async def obtener(
-    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, serie_numero: str
+    db: AsyncIOMotorDatabase,
+    empresa_id: str,
+    periodo: str,
+    serie_numero: str,
+    libro: Libro | None = None,
 ) -> dict[str, Any] | None:
-    return await _col(db).find_one(
-        {"empresa_id": empresa_id, "periodo": periodo, "serie_numero": serie_numero}
-    )
+    filtro: dict[str, Any] = {
+        "empresa_id": empresa_id,
+        "periodo": periodo,
+        "serie_numero": serie_numero,
+    }
+    # `serie_numero` no es único dentro de un periodo: la misma serie-número
+    # puede existir como venta propia y como compra a un tercero.
+    if libro is not None:
+        filtro["libro"] = libro.value
+    return await _col(db).find_one(filtro)
 
 
 async def listar_pendientes_analisis(
-    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, limit: int = 1000
+    db: AsyncIOMotorDatabase,
+    empresa_id: str,
+    periodo: str,
+    libro: Libro | None = None,
+    limit: int = 1000,
 ) -> list[dict[str, Any]]:
     pendientes = [EstadoProcesamiento.SIRE_RECIBIDO.value, EstadoProcesamiento.ERROR_ANALISIS.value]
-    cursor = (
-        _col(db)
-        .find(
-            {
-                "empresa_id": empresa_id,
-                "periodo": periodo,
-                "$or": [
-                    {"estado_procesamiento": {"$in": pendientes}},
-                    {"estado_procesamiento": {"$exists": False}},
-                ],
-            }
-        )
-        .sort([("_id", -1)])
-    )
+    filtro: dict[str, Any] = {
+        "empresa_id": empresa_id,
+        "periodo": periodo,
+        "$or": [
+            {"estado_procesamiento": {"$in": pendientes}},
+            {"estado_procesamiento": {"$exists": False}},
+        ],
+    }
+    # El prompt de la IA depende del libro (una venta no es un gasto), así que
+    # cada lote se analiza por separado.
+    if libro is not None:
+        filtro["libro"] = libro.value
+    cursor = _col(db).find(filtro).sort([("_id", -1)])
     return await cursor.to_list(length=limit)
 
 
-def _filtro_sin_detalle(empresa_id: str, periodo: str) -> dict[str, Any]:
+def _filtro_sin_detalle(empresa_id: str, periodo: str, libro: Libro) -> dict[str, Any]:
+    # El libro no es opcional aquí: el scraper consulta "FE Recibidas" o "FE
+    # Emitidas" según el libro, así que mezclar los dos en una extracción
+    # buscaría cada comprobante en la bandeja equivocada.
     return {
         "empresa_id": empresa_id,
         "periodo": periodo,
+        "libro": libro.value,
         "detalle_sunat": {"$exists": False},
     }
 
 
 async def listar_sin_detalle(
-    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, limit: int | None = None
+    db: AsyncIOMotorDatabase,
+    empresa_id: str,
+    periodo: str,
+    libro: Libro,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    cursor = _col(db).find(_filtro_sin_detalle(empresa_id, periodo))
+    cursor = _col(db).find(_filtro_sin_detalle(empresa_id, periodo, libro))
     return await cursor.to_list(length=limit or settings.SUNAT_MAX_COMPROBANTES)
 
 
 async def contar_sin_detalle(
-    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str
+    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, libro: Libro
 ) -> int:
     """Cuántos quedan pendientes en total, con o sin tope.
 
@@ -192,7 +232,7 @@ async def contar_sin_detalle(
     recorte era invisible: un periodo con más comprobantes que el tope
     terminaba el job como si los hubiera hecho todos.
     """
-    return await _col(db).count_documents(_filtro_sin_detalle(empresa_id, periodo))
+    return await _col(db).count_documents(_filtro_sin_detalle(empresa_id, periodo, libro))
 
 
 async def guardar_analisis(
@@ -225,11 +265,19 @@ async def guardar_detalle_sunat(
     db: AsyncIOMotorDatabase,
     empresa_id: str,
     periodo: str,
+    libro: Libro,
     serie_numero: str,
     detalle: list[Any],
 ) -> None:
+    # Sin `libro` en el filtro, un F001-1 que exista a la vez como venta y como
+    # compra recibía el detalle en el documento equivocado.
     await _col(db).update_one(
-        {"empresa_id": empresa_id, "periodo": periodo, "serie_numero": serie_numero},
+        {
+            "empresa_id": empresa_id,
+            "periodo": periodo,
+            "libro": libro.value,
+            "serie_numero": serie_numero,
+        },
         {"$set": {"detalle_sunat": detalle}},
     )
 

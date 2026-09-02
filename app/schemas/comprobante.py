@@ -54,9 +54,22 @@ class ComprobanteResponse(BaseModel):
 
     moneda: str = "PEN"
     tipo_cambio: float = 0.0
+    # `None` cuando el comprobante no trae tasa: un 0.0 aquí se leería como
+    # "tasa cero", que no es lo mismo que "SUNAT no la mandó".
+    porcentaje_igv: float | None = None
 
     base_imponible: float = 0.0
     igv: float = 0.0
+    # Desglose por destino de la base y el IGV. Los declara el modelo aunque
+    # casi siempre sólo el primero tenga importe: sin ellos aquí, Pydantic los
+    # descartaba de la respuesta y el registro de compras que ve el cliente no
+    # cuadraba con el Excel, que sí los escribe en columnas separadas.
+    base_imponible_dg: float = 0.0
+    igv_dg: float = 0.0
+    base_imponible_dgng: float = 0.0
+    igv_dgng: float = 0.0
+    base_imponible_dng: float = 0.0
+    igv_dng: float = 0.0
     exonerado: float = 0.0
     inafecto: float = 0.0
     no_gravado: float = 0.0
