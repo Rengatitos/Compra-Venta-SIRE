@@ -67,6 +67,12 @@ def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None, libro=Libr
     monkeypatch.setattr(
         detalle_service.repo_comprobantes, "guardar_detalle_sunat", guardar_detalle_sunat
     )
+    async def guardar_metadata(db, documento_id, metadata) -> None:
+        return None
+
+    async def clasificar(db, documento, empresa) -> dict:
+        return {}
+
     monkeypatch.setattr(detalle_service.repo_comprobantes, "guardar_metadata", guardar_metadata)
     monkeypatch.setattr(detalle_service.scraping_sunat, "obtener_detalles", obtener_detalles)
     monkeypatch.setattr(detalle_service.ollama_rag, "clasificar", clasificar)

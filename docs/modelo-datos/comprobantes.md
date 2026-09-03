@@ -30,7 +30,7 @@ En la inmensa mayoría de comprobantes todo cae en `DG` y los otros cuatro campo
 
 ### Tasa de IGV
 
-Se guarda `None`, no la tasa general, cuando SUNAT no la manda: escribir un 18 % por defecto falsearía los comprobantes no gravados y los del régimen de selva (10.5 %). El respaldo a la tasa general vive en la exportación —`_tasa_igv` en [plantilla_excel.py](../../app/services/plantilla_excel.py)— y solo se aplica si el comprobante tiene IGV.
+Se guarda `None`, no la tasa general, cuando SUNAT no la manda: el modelo de dominio no inventa un 18 % que falsearía los comprobantes no gravados y los del régimen de selva (10.5 %). El respaldo a la tasa general vive sólo en la exportación —`_tasa_igv` en [plantilla_excel.py](../../app/services/plantilla_excel.py)— y ahí sí se aplica siempre que falte la tasa, tenga o no tenga IGV el comprobante: los registros reales de contador usados para comparar esta exportación llevan una tasa en todas las filas.
 
 SUNAT manda la tasa como fracción (`0.18`) y el modelo la guarda en puntos, así que [tasa_porcentual](../../app/services/sunat/campos.py) multiplica por 100 — pero solo si el valor es menor que 1. Ese supuesto no está confirmado para el RVIE, y multiplicar a ciegas un `18` que ya viniera en puntos escribiría `1800` en el Excel.
 | `extra` | dict | Campos propios del origen que no entran al modelo común. Para `origen="sire"`: `raw_sire` (el JSON crudo de la respuesta, como texto) y `periodo_sunat` (el periodo tributario que asigna SUNAT, que es el que decide a qué registro pertenece el comprobante — no su mes de emisión). En ventas se añaden el CAR SUNAT, el tipo de operación y la referencia al documento que modifica una nota de crédito. |

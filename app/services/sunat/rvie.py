@@ -52,7 +52,7 @@ _CAMPOS_MONEDA = ("codMoneda", "desMoneda")
 _CAMPOS_TIPO_CAMBIO = ("mtoTipoCambio", "valTipoCambio")
 # Tampoco manda la tasa de IGV, que el RCE sí trae en `porTasaIGV`. Sin ella el
 # comprobante queda con `porcentaje_igv=None` y la exportación cae en la tasa
-# general sólo si hay IGV.
+# general, tenga o no tenga IGV el comprobante.
 _CAMPOS_TASA_IGV = ("porTasaIGV", "porcTasaIGV")
 
 _CAMPOS_BI_GRAVADA = ("mtoBIGravada",)
@@ -126,9 +126,9 @@ def a_comprobante(registro: dict[str, Any]) -> Comprobante:
     if numero_final is not None:
         extra["numero_final"] = numero_final
 
-    # Referencia al comprobante que modifica una nota de crédito o débito. Es
-    # lo que hoy deja vacías esas columnas del registro (ver el flujo de
-    # exportación), así que se conserva aunque todavía nadie lo lea.
+    # Referencia al comprobante que modifica una nota de crédito o débito.
+    # `plantilla_excel._referencia_modificado` la lee de aquí para llenar las
+    # columnas de referencia del registro de ventas.
     modificados = registro.get(_CAMPO_DOC_MODIFICADO)
     if modificados:
         extra["documentos_modificados"] = modificados

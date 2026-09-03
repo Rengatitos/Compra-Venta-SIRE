@@ -186,6 +186,8 @@ export interface ComprobanteResponse {
   /** Salida del análisis IA. El backend la llama `analisis`, no `metadata_procesada`. */
   analisis: AnalisisIA | null;
   detalle_sunat: unknown[];
+  /** Referencia al comprobante que modifica una nota de crédito o débito. Sólo en ventas. */
+  documentos_modificados: Record<string, unknown>[];
 }
 
 /** Único campo editable de un comprobante. */

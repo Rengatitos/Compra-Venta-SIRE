@@ -60,7 +60,7 @@ El bloque `totales` que acompaña a cada respuesta es el mejor control del mapeo
 
    **La contraparte es el punto delicado.** El registro trae dos razones sociales: `nomRazonSocial`, que es la de la **propia empresa emisora**, y `nomRazonSocialCliente`, que es la del cliente. Tomar la primera ponía el nombre del vendedor en todas y cada una de las filas del registro de ventas.
 
-   Otras dos diferencias con el RCE: el RVIE manda los importes **sueltos en la raíz**, sin bloque `montos`, y no trae ni fecha de vencimiento (`fecVencPag`) ni tasa de IGV (`porTasaIGV`). Sin tasa, el comprobante queda con `porcentaje_igv=None` y la exportación cae en la tasa general sólo si hay IGV.
+   Otras dos diferencias con el RCE: el RVIE manda los importes **sueltos en la raíz**, sin bloque `montos`, y no trae ni fecha de vencimiento (`fecVencPag`) ni tasa de IGV (`porTasaIGV`). Sin tasa, el comprobante queda con `porcentaje_igv=None` y la exportación cae en la tasa general, tenga o no tenga IGV el comprobante.
 
    Lo que no cabe en el modelo común —`mtoValFactExpo`, `mtoBIIvap`, `codCar`, `indTipoOperacion`, `codEstadoComprobante`, las operaciones gratuitas y el `documentoMod` al que apunta una nota de crédito— va a `extra`.
 

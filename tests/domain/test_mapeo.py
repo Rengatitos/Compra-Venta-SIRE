@@ -316,25 +316,30 @@ def _hoja(comprobantes: list[dict], libro: Libro):
 class TestPlantillaContasis:
     def test_conserva_los_encabezados_de_la_plantilla(self):
         hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
-        assert hoja["A8"].value == "FORMATO REGISTRO DE COMPRAS  - SISTEMA EXPERTO CONTABLE 14.00"
-        assert hoja["A10"].value == "FECHA DE EMISION DEL COMPROBANTE DE PAGO O DOCUMENTO"
-        assert hoja["C12"].value == "TIPO"
-        assert hoja["A13"].value == "dd/mm/yyyy"
+        assert hoja["A1"].value == "FECHA DE EMISION DEL COMPROBANTE DE PAGO O DOCUMENTO"
+        assert hoja["G2"].value == "DOCUMENTO IDENTIDAD"
+        assert hoja["C3"].value == "TIPO"
 
     def test_mapeo_de_compras(self):
         hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
-        assert hoja["A14"].value.date() == date(2026, 6, 15)
-        assert hoja["C14"].value == "01"
-        assert hoja["D14"].value == "F001"
-        assert hoja["F14"].value == 123
-        assert hoja["G14"].value == 6
-        assert hoja["H14"].value == 20129646099
-        assert hoja["I14"].value == "ELECTROCENTRO S.A."
-        assert hoja["J14"].value == 100.0
-        assert hoja["K14"].value == 18.0
-        assert hoja["S14"].value == 118.0
-        assert hoja["AB14"].value == "S"
-        assert hoja["AR14"].value == 18
+        assert hoja["A4"].value.date() == date(2026, 6, 15)
+        assert hoja["C4"].value == "01"
+        assert hoja["D4"].value == "F001"
+        assert hoja["F4"].value == 123
+        assert hoja["G4"].value == 6
+        assert hoja["H4"].value == 20129646099
+        assert hoja["I4"].value == "ELECTROCENTRO S.A."
+        assert hoja["J4"].value == 100.0
+        assert hoja["K4"].value == 18.0
+        assert hoja["S4"].value == 118.0
+        assert hoja["AB4"].value == "S"
+        assert hoja["AR4"].value == 18
+        # El comprobante está en soles: sin tipo de cambio que declarar.
+        assert hoja["W4"].value is None
+        assert hoja["AC4"].value is None
+        # Sin vencimiento, la condición de pago es al contado.
+        assert hoja["AE4"].value == "CON"
+        assert hoja["AH4"].value == "4212"
 
     def test_las_adquisiciones_no_gravadas_llegan_a_la_columna_p(self):
         # El SIRE no separa exonerado de inafecto en compras: manda un único
@@ -342,7 +347,7 @@ class TestPlantillaContasis:
         # sin contar `no_gravado` salía en cero para toda compra exonerada.
         documento = {**_documento_completo(), "no_gravado": Decimal("59.78")}
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["P14"].value == 59.78
+        assert hoja["P4"].value == 59.78
 
     def test_la_columna_p_suma_los_tres_conceptos(self):
         documento = {
@@ -352,7 +357,7 @@ class TestPlantillaContasis:
             "no_gravado": Decimal("20.00"),
         }
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["P14"].value == 35.0
+        assert hoja["P4"].value == 35.0
 
     def test_los_tres_destinos_van_a_columnas_distintas(self):
         # J/K son sólo las gravadas; DGNG y DNG tienen sus propias columnas.
@@ -368,26 +373,39 @@ class TestPlantillaContasis:
             "igv_dng": Decimal("4.50"),
         }
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["J14"].value == 100.0
-        assert hoja["K14"].value == 18.0
-        assert hoja["L14"].value == 50.0
-        assert hoja["M14"].value == 9.0
-        assert hoja["N14"].value == 25.0
-        assert hoja["O14"].value == 4.5
+        assert hoja["J4"].value == 100.0
+        assert hoja["K4"].value == 18.0
+        assert hoja["L4"].value == 50.0
+        assert hoja["M4"].value == 9.0
+        assert hoja["N4"].value == 25.0
+        assert hoja["O4"].value == 4.5
 
     def test_el_tipo_de_cambio_llega_a_la_columna_w(self):
-        documento = {**_documento_completo(), "tipo_cambio": Decimal("3.387")}
+        # En soles no hay nada que convertir: hace falta una moneda extranjera
+        # para que el tipo de cambio y la conversión entren en juego.
+        documento = {
+            **_documento_completo(),
+            "moneda": "USD",
+            "tipo_cambio": Decimal("3.387"),
+        }
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["W14"].value == 3.387
+        assert hoja["W4"].value == 3.387
+        assert hoja["AB4"].value == "D"
+        # Importes convertidos a soles con el tipo de cambio de la fila.
+        assert hoja["J4"].value == 338.7
+        assert hoja["K4"].value == 60.97
+        assert hoja["S4"].value == 399.67
+        # El total original en dólares va aparte, sin convertir.
+        assert hoja["AC4"].value == 118.0
 
     def test_la_tasa_declarada_gana_a_la_general(self):
         documento = {**_documento_completo(), "porcentaje_igv": Decimal("10.50")}
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["AR14"].value == 10.5
+        assert hoja["AR4"].value == 10.5
 
-    def test_sin_igv_no_se_inventa_una_tasa(self):
-        # Un comprobante no gravado no tiene tasa; escribir la general lo
-        # declaraba al 18 %.
+    def test_sin_igv_la_tasa_sigue_siendo_la_general(self):
+        # Los cuatro registros reales usados para comparar esta exportación
+        # llevan 18 en todas las filas, también en las que no tienen IGV.
         documento = {
             **_documento_completo(),
             "igv": Decimal("0.00"),
@@ -395,29 +413,44 @@ class TestPlantillaContasis:
             "porcentaje_igv": None,
         }
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["AR14"].value is None
+        assert hoja["AR4"].value == plantilla_excel.TASA_IGV
 
     def test_con_igv_y_sin_tasa_declarada_cae_en_la_general(self):
         documento = {**_documento_completo(), "porcentaje_igv": None}
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["AR14"].value == plantilla_excel.TASA_IGV
+        assert hoja["AR4"].value == plantilla_excel.TASA_IGV
 
     def test_mapeo_de_ventas(self):
         hoja = _hoja([serializar(_documento_ventas())], Libro.VENTAS)
-        assert hoja["C14"].value == "01"
-        assert hoja["D14"].value == "F001"
-        assert hoja["E14"].value == 123
-        assert hoja["H14"].value == "ELECTROCENTRO S.A."
-        assert hoja["J14"].value == 100.0
-        assert hoja["N14"].value == 18.0
-        assert hoja["P14"].value == 118.0
-        assert hoja["V14"].value == "S"
-        assert hoja["AL14"].value == 18
+        assert hoja["C4"].value == "01"
+        assert hoja["D4"].value == "F001"
+        assert hoja["E4"].value == 123
+        assert hoja["H4"].value == "ELECTROCENTRO S.A."
+        assert hoja["J4"].value == 100.0
+        assert hoja["N4"].value == 18.0
+        assert hoja["P4"].value == 118.0
+        assert hoja["V4"].value == "S"
+        assert hoja["AL4"].value == 18
+        assert hoja["Q4"].value is None
+        assert hoja["W4"].value is None
+        assert hoja["Y4"].value == "CON"
+        assert hoja["AD4"].value == "1212"
+
+    def test_condicion_de_pago_es_credito_con_vencimiento_posterior(self):
+        documento = {**_documento_completo(), "fecha_vencimiento": date(2026, 7, 31)}
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AE4"].value == "CRE"
+
+    def test_condicion_de_pago_es_contado_si_el_vencimiento_no_es_posterior(self):
+        documento = {**_documento_completo(), "fecha_vencimiento": date(2026, 6, 15)}
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AE4"].value == "CON"
 
     def test_el_analisis_llena_cuenta_contable_y_glosa(self):
         hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
-        assert hoja["AF14"].value == "6361"
-        assert hoja["AS14"].value == "Energía eléctrica"
+        assert hoja["AF4"].value == "6361"
+        # Siempre en mayúsculas, como la escriben los contadores.
+        assert hoja["AS4"].value == "ENERGÍA ELÉCTRICA"
 
     def test_el_analisis_tambien_viaja_en_la_hoja_de_ventas(self):
         # La hoja de ventas coloca las mismas columnas en otras letras: la
@@ -428,8 +461,8 @@ class TestPlantillaContasis:
             "detalle": [{"producto": "Venta de mercadería"}],
         }
         hoja = _hoja([serializar(documento)], Libro.VENTAS)
-        assert hoja["AB14"].value == "7011"
-        assert hoja["AM14"].value == "Venta de mercadería"
+        assert hoja["AB4"].value == "7011"
+        assert hoja["AM4"].value == "VENTA DE MERCADERÍA"
 
     def test_el_centro_de_costos_no_se_escribe(self):
         # La plantilla pide el código del catálogo de Contasis (9 caracteres) y
@@ -439,8 +472,8 @@ class TestPlantillaContasis:
         documento = _documento_completo()
         documento["metadata_procesada"]["centro_costos"] = "Operaciones - Flota Vehicular"
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["AI14"].value is None
-        assert hoja["AJ14"].value is None
+        assert hoja["AI4"].value is None
+        assert hoja["AJ4"].value is None
 
     def test_el_rag_completa_cuentas_codigos_y_glosa_de_compras(self):
         documento = _documento_completo()
@@ -452,17 +485,31 @@ class TestPlantillaContasis:
             "glosa": "SERVICIO DE INTERNET",
         }
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["C14"].value == "07"
-        assert hoja["G14"].value == 1
-        assert hoja["AF14"].value == "6365095"
-        assert hoja["AH14"].value == "4212"
-        assert hoja["AS14"].value == "SERVICIO DE INTERNET"
+        assert hoja["C4"].value == "07"
+        assert hoja["G4"].value == 1
+        assert hoja["AF4"].value == "6365095"
+        assert hoja["AH4"].value == "4212"
+        assert hoja["AS4"].value == "SERVICIO DE INTERNET"
 
-    def test_el_analisis_no_aparece_en_ninguna_celda(self):
+    def test_la_cuenta_total_del_rag_gana_a_la_general_del_libro(self):
+        # El RAG puede resolver una cuenta propia de la empresa, distinta de
+        # la 4212/1212 general: si la trae, es la que se escribe.
+        documento = _documento_completo()
+        documento["metadata_procesada"]["rag"] = {"cuenta_total": "42121"}
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AH4"].value == "42121"
+
     def test_las_cuentas_que_la_ia_no_deduce_siguen_vacias(self):
-        # Cuenta contable de otros tributos y del total: el análisis no las da.
+        # La cuenta de otros tributos no la da ni el análisis ni el RAG; la
+        # del total sí tiene valor siempre, aunque nadie la haya deducido: cae
+        # en la cuenta general del libro.
         hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
-        assert [hoja[c + "14"].value for c in ("AG", "AH")] == [None, None]
+        assert hoja["AG4"].value is None
+        assert hoja["AH4"].value == "4212"
+
+    def test_la_cuenta_total_en_ventas_es_la_general_sin_rag(self):
+        hoja = _hoja([serializar(_documento_ventas())], Libro.VENTAS)
+        assert hoja["AD4"].value == "1212"
 
     def test_la_glosa_se_recorta_al_ancho_de_la_columna(self):
         documento = _documento_completo()
@@ -475,16 +522,16 @@ class TestPlantillaContasis:
             "para la flota vehicular de la empresa durante el periodo"
         )
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        glosa = hoja["AS14"].value
+        glosa = hoja["AS4"].value
         assert len(glosa) <= plantilla_excel.MAX_GLOSA
         # Cortada por palabra, no a mitad de una.
-        assert glosa == "Adquisición de servicios de mantenimiento preventivo y"
+        assert glosa == "ADQUISICIÓN DE SERVICIOS DE MANTENIMIENTO PREVENTIVO Y"
 
     def test_con_un_solo_item_la_glosa_es_el_producto(self):
         documento = _documento_completo()
         documento["metadata_procesada"]["descripcion"] = "Resumen largo del comprobante"
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["AS14"].value == "Energía eléctrica"
+        assert hoja["AS4"].value == "ENERGÍA ELÉCTRICA"
 
     def test_con_varios_items_la_glosa_es_el_resumen(self):
         # El nombre del primer ítem describiría sólo una parte de la compra.
@@ -495,33 +542,91 @@ class TestPlantillaContasis:
         ]
         documento["metadata_procesada"]["descripcion"] = "Insumos de mantenimiento"
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["AS14"].value == "Insumos de mantenimiento"
+        assert hoja["AS4"].value == "INSUMOS DE MANTENIMIENTO"
 
     def test_sin_analisis_las_columnas_de_la_ia_quedan_vacias(self):
         documento = _documento_completo()
         documento["metadata_procesada"] = None
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["AF14"].value is None
-        assert hoja["AS14"].value is None
+        assert hoja["AF4"].value is None
+        assert hoja["AS4"].value is None
+
+    def test_la_referencia_de_la_nota_de_credito_llega_a_ventas(self):
+        # Sólo el RVIE manda `documentoMod`; el RCE no lo hace nunca, así que
+        # esta referencia sólo existe en la hoja de ventas.
+        payload = {
+            **PAYLOAD_RVIE,
+            "codTipoCDP": "07",
+            "documentoMod": [
+                {"codTipoCDP": "03", "numSerieCDP": "B001", "numCDP": "5777"}
+            ],
+        }
+        documento = a_documento(a_comprobante(payload, Libro.VENTAS), "empresa1", "202606")
+        hoja = _hoja([serializar(documento)], Libro.VENTAS)
+        assert hoja["S4"].value == "03"
+        assert hoja["T4"].value == "B001"
+        assert hoja["U4"].value == 5777
+        assert hoja["R4"].value is None
+
+    def test_la_fecha_de_la_nota_de_credito_se_escribe_si_viene(self):
+        payload = {
+            **PAYLOAD_RVIE,
+            "codTipoCDP": "07",
+            "documentoMod": [
+                {
+                    "codTipoCDP": "03",
+                    "numSerieCDP": "B001",
+                    "numCDP": "5777",
+                    "fecEmision": "02/05/2025",
+                }
+            ],
+        }
+        documento = a_documento(a_comprobante(payload, Libro.VENTAS), "empresa1", "202606")
+        hoja = _hoja([serializar(documento)], Libro.VENTAS)
+        assert hoja["R4"].value.date() == date(2025, 5, 2)
+        assert hoja["R4"].number_format == plantilla_excel.FORMATO_FECHA
+
+    def test_compras_no_tiene_referencia_a_documento_modificado(self):
+        # El RCE nunca manda `documentoMod`: esas columnas se quedan vacías.
+        hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
+        assert [hoja[c + "4"].value for c in ("X", "Y", "Z", "AA")] == [None, None, None, None]
 
     def test_pie_de_totales_suma_el_rango_de_datos(self):
-        # Con una sola moneda el pie es una suma simple y el rótulo dice cuál.
+        # Un único pie: todo el registro ya está en soles.
         hoja = _hoja([serializar(_documento_completo())] * 3, Libro.COMPRAS)
-        assert hoja["A17"].value == "TOTAL S/"
-        assert hoja["S17"].value == "=SUM(S14:S16)"
+        assert hoja["A7"].value == "TOTAL"
+        assert hoja["S7"].value == "=SUM(S4:S6)"
+        assert hoja["A8"].value is None
 
     def test_sin_comprobantes_salen_solo_los_encabezados(self):
         hoja = _hoja([], Libro.VENTAS)
-        assert hoja.max_row == 13
-        assert hoja["A10"].value == "FECHA DE EMISION DEL COMPROBANTE DE PAGO O DOCUMENTO"
+        assert hoja.max_row == 3
+        assert hoja["A1"].value == "FECHA DE EMISION DEL COMPROBANTE DE PAGO O DOCUMENTO"
 
     def test_las_filas_de_ejemplo_de_la_plantilla_no_sobreviven(self):
-        # La plantilla trae `=+A14`, `=+S14/1.18` y una fila TOTAL precargada.
+        # La plantilla no trae filas de ejemplo por debajo del prototipo, pero
+        # si alguna vez las trajera, sólo debería sobrevivir el pie de totales.
         hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
         formulas = [
             str(c.value)
-            for fila in hoja.iter_rows(min_row=14)
+            for fila in hoja.iter_rows(min_row=4)
             for c in fila
             if isinstance(c.value, str) and c.value.startswith("=")
         ]
         assert all(f.startswith("=SUM(") for f in formulas)
+
+    def test_las_columnas_que_llena_la_exportacion_no_quedan_ocultas(self):
+        # La plantilla oficial trae INAFECTA e ISC ocultas en ventas; esta
+        # exportación sí las llena, así que no pueden quedar invisibles.
+        hoja = _hoja([serializar(_documento_ventas())], Libro.VENTAS)
+        assert hoja.column_dimensions["L"].hidden is False
+        assert hoja.column_dimensions["M"].hidden is False
+        assert hoja.column_dimensions["O"].hidden is False
+
+    def test_las_filas_no_llevan_una_altura_propia(self):
+        # La altura uniforme la resuelve la plantilla (`defaultRowHeight`); si
+        # `openpyxl` dejara alturas sueltas de una plantilla vieja, las filas
+        # de datos y el pie se verían más chicas o más grandes que el resto.
+        hoja = _hoja([serializar(_documento_completo())] * 2, Libro.COMPRAS)
+        assert hoja.sheet_format.defaultRowHeight == 18.75
+        assert all(hoja.row_dimensions[fila].height is None for fila in (4, 5, 6))

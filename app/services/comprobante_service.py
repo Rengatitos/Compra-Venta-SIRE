@@ -82,6 +82,15 @@ def serializar(documento: dict[str, Any]) -> dict[str, Any]:
         "estado_procesamiento": documento.get("estado_procesamiento", "pendiente"),
         "analisis": serializar_analisis(documento.get("metadata_procesada")),
         "detalle_sunat": documento.get("detalle_sunat", []) or [],
+        # Referencia al comprobante que modifica una nota de crédito o débito.
+        # Sólo el RVIE la manda (ver `extra.documentos_modificados` en
+        # `app/services/sunat/rvie.py`); la usa la exportación a Excel para
+        # llenar las columnas de referencia que antes quedaban vacías.
+        "documentos_modificados": [
+            item
+            for item in (documento.get("extra") or {}).get("documentos_modificados") or []
+            if isinstance(item, dict)
+        ],
     }
     for campo in _CAMPOS_MONTO:
         salida[campo] = monto_a_float(documento.get(campo))

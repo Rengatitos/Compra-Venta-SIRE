@@ -81,6 +81,9 @@ class ComprobanteResponse(BaseModel):
     estado_procesamiento: str
     analisis: AnalisisIA | None = None
     detalle_sunat: list[Any] = []
+    # Referencia al comprobante que modifica una nota de crédito o débito.
+    # Sólo el RVIE la manda; en compras (RCE) queda siempre vacía.
+    documentos_modificados: list[dict[str, Any]] = []
 
     model_config = {"from_attributes": True}
 
