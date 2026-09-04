@@ -26,7 +26,14 @@ export type EstadoJob = 'pendiente' | 'en_progreso' | 'completado' | 'fallido';
 export const ESTADOS_JOB_TERMINALES: readonly EstadoJob[] = ['completado', 'fallido'];
 
 /** `app/domain/jobs.py::TipoJob`. */
-export type TipoJob = 'extraccion_detalles';
+export type TipoJob = 'extraccion_detalles' | 'descarga_pdfs';
+
+/**
+ * Fuentes que respaldan un dato del reporte, de menos a más cerca del
+ * documento original (`app/api/v1/routes/auditoria.py`). Es lo que el auditor
+ * usa para rastrear de dónde salió cada importe.
+ */
+export type FuenteDato = 'propuesta_sire' | 'detalle_portal_sol' | 'pdf_descargado';
 
 /**
  * Estados de periodo. `sincronizado` y `sin_propuesta` los escribe el propio

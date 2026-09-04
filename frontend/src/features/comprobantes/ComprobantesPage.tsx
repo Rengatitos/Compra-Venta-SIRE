@@ -158,10 +158,15 @@ export function ComprobantesPage() {
 
   if (!esPeriodoValido(periodo)) return <NoEncontradaPage />;
 
-  async function exportar(descarga: Descarga, formato: FormatoExport, libroPedido?: Libro) {
+  async function exportar(
+    descarga: Descarga,
+    formato: FormatoExport,
+    libroPedido?: Libro,
+    destino?: string,
+  ) {
     setExportando(descarga);
     try {
-      await exportarLote(ruc, periodo, formato, libroPedido);
+      await exportarLote(ruc, periodo, formato, libroPedido, destino);
     } catch (fallo) {
       mostrar({
         tono: 'error',
@@ -269,7 +274,11 @@ export function ComprobantesPage() {
     <>
       <PageHeader
         titulo={`Comprobantes · ${formatearPeriodo(periodo)}`}
-        descripcion="Registro de compras (RCE) sincronizado desde el SIRE. Solo se guardan series que empiezan por F o E."
+        descripcion={
+          libro === 'compras'
+            ? 'Registro de compras (RCE) sincronizado desde el SIRE. Solo se guardan series que empiezan por F o E.'
+            : 'Registro de ventas (RVIE) sincronizado desde el SIRE. Solo se guardan series que empiezan por F, B o E.'
+        }
         acciones={
           <>
             <Button

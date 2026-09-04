@@ -21,6 +21,7 @@ def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None, libro=Libr
     """Ejecuta `extraer` con el repositorio y el scraping simulados."""
     reportes: list[tuple[int, int, str]] = []
     guardados: list[str] = []
+    xml_guardados: list[str] = []
     libros_pedidos: list[Libro] = []
 
     async def reportar(actual: int, total: int, mensaje: str = "") -> None:
@@ -37,8 +38,17 @@ def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None, libro=Libr
         libros_pedidos.append(libro_pedido)
         guardados.append(serie_numero)
 
+    async def guardar_xml_sunat(db, empresa_id, periodo, libro_pedido, serie_numero, ruta, bytes_):
+        xml_guardados.append(serie_numero)
+
     async def obtener_detalles(
-        empresa, comprobantes, libro=None, progreso=None, al_extraer=None, **resto
+        empresa,
+        comprobantes,
+        libro=None,
+        progreso=None,
+        al_extraer=None,
+        al_descargar_xml=None,
+        **resto,
     ):
         libros_pedidos.append(libro)
         # Igual que Playwright: el recorrido ocurre fuera del loop.
@@ -54,6 +64,8 @@ def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None, libro=Libr
                 hechos_ok[serie] = [{"descripcion": "un ítem"}]
                 if al_extraer:
                     al_extraer(serie, hechos_ok[serie])
+                if al_descargar_xml and serie.startswith("E"):
+                    al_descargar_xml(serie, b"<Invoice/>")
             return hechos_ok
 
         return await asyncio.to_thread(en_otro_hilo)
@@ -67,6 +79,15 @@ def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None, libro=Libr
     monkeypatch.setattr(
         detalle_service.repo_comprobantes, "guardar_detalle_sunat", guardar_detalle_sunat
     )
+    monkeypatch.setattr(
+        detalle_service.repo_comprobantes, "guardar_xml_sunat", guardar_xml_sunat
+    )
+    async def guardar_metadata(db, documento_id, metadata) -> None:
+        return None
+
+    async def clasificar(db, documento, empresa) -> dict:
+        return {}
+
     monkeypatch.setattr(detalle_service.repo_comprobantes, "guardar_metadata", guardar_metadata)
     monkeypatch.setattr(detalle_service.scraping_sunat, "obtener_detalles", obtener_detalles)
     monkeypatch.setattr(detalle_service.ollama_rag, "clasificar", clasificar)
@@ -78,11 +99,11 @@ def _correr(monkeypatch, pendientes, total_en_bd=None, corta_en=None, libro=Libr
         await asyncio.sleep(0)
         return resultado
 
-    return asyncio.run(principal()), reportes, guardados, libros_pedidos
+    return asyncio.run(principal()), reportes, guardados, libros_pedidos, xml_guardados
 
 
 def test_reporta_el_avance_de_cada_comprobante(monkeypatch):
-    resultado, reportes, guardados, _ = _correr(monkeypatch, PENDIENTES)
+    resultado, reportes, guardados, *_resto = _correr(monkeypatch, PENDIENTES)
 
     assert resultado == {
         "procesados": 3,
@@ -103,7 +124,7 @@ def test_reporta_el_avance_de_cada_comprobante(monkeypatch):
 
 
 def test_sin_pendientes_no_abre_el_navegador(monkeypatch):
-    resultado, reportes, guardados, _ = _correr(monkeypatch, [])
+    resultado, reportes, guardados, *_resto = _correr(monkeypatch, [])
 
     assert resultado == {"procesados": 0, "con_detalle": 0}
     assert reportes == [(0, 0, "No hay comprobantes pendientes de detalle")]
@@ -113,7 +134,7 @@ def test_avisa_cuando_el_tope_recorta_el_trabajo(monkeypatch):
     # `listar_sin_detalle` corta en SUNAT_MAX_COMPROBANTES. Si el periodo tiene
     # más, el job debe decirlo: antes terminaba igual que si los hubiera hecho
     # todos y no había manera de saber que faltaba otra vuelta.
-    resultado, reportes, guardados, _ = _correr(monkeypatch, PENDIENTES, total_en_bd=10)
+    resultado, reportes, guardados, *_resto = _correr(monkeypatch, PENDIENTES, total_en_bd=10)
 
     assert resultado["pendientes"] == 7
     assert resultado["enriquecidos_rag"] == 3
@@ -124,7 +145,7 @@ def test_guarda_lo_ya_extraido_aunque_el_portal_se_caiga(monkeypatch):
     # El caso real: el portal dejó de responder en el tercer comprobante. Los
     # dos anteriores tienen que estar en la base. Antes el guardado ocurría al
     # final, así que un tropiezo se llevaba por delante todo lo ya recorrido.
-    resultado, _, guardados, _libros = _correr(monkeypatch, PENDIENTES, corta_en="F001-3")
+    resultado, _, guardados, _libros, *_resto = _correr(monkeypatch, PENDIENTES, corta_en="F001-3")
 
     assert guardados == ["F001-1", "F001-2"]
     assert resultado["con_detalle"] == 2
@@ -133,7 +154,7 @@ def test_guarda_lo_ya_extraido_aunque_el_portal_se_caiga(monkeypatch):
 
 def test_no_guarda_dos_veces_el_mismo_comprobante(monkeypatch):
     # El repaso final es una red de seguridad, no una segunda escritura.
-    _, _, guardados, _libros = _correr(monkeypatch, PENDIENTES)
+    _, _, guardados, _libros, *_resto = _correr(monkeypatch, PENDIENTES)
 
     assert guardados == ["F001-1", "F001-2", "F001-3"]
 
@@ -142,7 +163,26 @@ def test_el_libro_llega_al_repositorio_y_al_scraper(monkeypatch):
     # Sin el libro, una extracción de ventas recogería comprobantes de compras
     # y el detalle acabaría escrito en el documento equivocado: `serie_numero`
     # no es único dentro de un periodo.
-    _, _, _, libros = _correr(monkeypatch, PENDIENTES, libro=Libro.VENTAS)
+    _, _, _, libros, *_resto = _correr(monkeypatch, PENDIENTES, libro=Libro.VENTAS)
 
     assert libros
     assert set(libros) == {Libro.VENTAS}
+
+
+def test_guarda_el_xml_si_el_scraper_lo_entrega(monkeypatch, tmp_path):
+    monkeypatch.setattr(detalle_service.almacen_pdf.settings, "SUNAT_DATA_DIR", str(tmp_path))
+    pendientes_con_sol = [
+        {
+            "_id": "1",
+            "serie_numero": "E001-1929",
+            "serie": "E001",
+            "numero": "1929",
+            "tipo_cp": "01",
+        },
+        {"_id": "2", "serie_numero": "F001-2", "serie": "F001", "numero": "2", "tipo_cp": "01"},
+    ]
+    _res, _rep, guardados, _lib, xml_guardados = _correr(monkeypatch, pendientes_con_sol)
+
+    assert "E001-1929" in guardados
+    assert "F001-2" in guardados
+    assert xml_guardados == ["E001-1929"]

@@ -7,6 +7,7 @@ from app.db.database import get_db
 from app.domain.comprobante import Libro
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import periodos as repo_periodos
+from app.repositories._mongo import monto_a_float
 from app.schemas.comprobante import ComprobanteResponse, ComprobanteUpdate
 from app.schemas.generic import MessageResponse
 from app.services import export_service, plantilla_excel
@@ -46,6 +47,10 @@ async def exportar_lote(
     libro: Libro | None = Query(
         None, description="Obligatorio para `formato=excel`; filtro opcional para el PDF"
     ),
+    destino: str | None = Query(
+        None,
+        description="Destino de compras: 'dg' (gravado), 'dng' (no gravado/costo), 'dgng' o 'auto'",
+    ),
     db=Depends(get_db),
 ):
     await _asegurar_periodo(db, empresa, periodo)
@@ -65,9 +70,27 @@ async def exportar_lote(
     datos = serializar_lote(filas)
 
     if formato == "excel":
+        destino_resuelto = destino
+        if libro == Libro.COMPRAS and (destino is None or destino == "auto"):
+            # Auto-detección: si la empresa en este periodo (o en su histórico reciente)
+            # solo tiene ventas exoneradas/inafectas, todas sus compras corresponden
+            # a 'dng' (adquisiciones gravadas destinadas a operaciones no gravadas).
+            ventas_periodo = await repo_comprobantes.listar(
+                db, empresa, periodo, libro=Libro.VENTAS, limit=50
+            )
+            if not ventas_periodo:
+                ventas_periodo = await repo_comprobantes.listar(
+                    db, empresa, None, libro=Libro.VENTAS, limit=50
+                )
+            if ventas_periodo and all(
+                (monto_a_float(v.get("base_imponible")) == 0) and (monto_a_float(v.get("total")) > 0)
+                for v in ventas_periodo
+            ):
+                destino_resuelto = "dng"
+
         nombre = f"registro_{libro.value}_{periodo}.xlsx"
         return StreamingResponse(
-            plantilla_excel.excel_plantilla(datos, libro),
+            plantilla_excel.excel_plantilla(datos, libro, destino=destino_resuelto),
             media_type=MEDIA_EXCEL,
             headers={"Content-Disposition": f"attachment; filename={nombre}"},
         )

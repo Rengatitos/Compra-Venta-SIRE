@@ -9,7 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.config import settings
 from app.domain.comprobante import Libro
 from app.repositories import comprobantes as repo_comprobantes
-from app.services import ollama_rag, scraping_sunat
+from app.services import almacen_pdf, ollama_rag, scraping_sunat
 from app.services.jobs_service import Reportador
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,7 @@ async def extraer(
     # Guardar sobre la marcha, no al final: si el portal se cae a mitad de la
     # lista, lo ya recorrido queda en la base en vez de perderse con el resto.
     guardados: set[str] = set()
+    por_serie = {doc.get("serie_numero", ""): doc for doc in pendientes}
 
     def guardar(serie_numero: str, detalle: list) -> None:
         if not detalle:
@@ -83,8 +84,51 @@ async def extraer(
         guardados.add(serie_numero)
         futuro.add_done_callback(_registrar_fallo)
 
+    def guardar_xml(serie_numero: str, contenido_xml: bytes) -> None:
+        doc = por_serie.get(serie_numero)
+        if doc is None or not contenido_xml:
+            return
+        try:
+            destino = almacen_pdf.guardar(
+                empresa["ruc"],
+                libro,
+                periodo,
+                doc.get("tipo_cp"),
+                doc.get("serie", ""),
+                doc.get("numero", ""),
+                contenido_xml,
+                extension="xml",
+                subcarpeta="xml",
+            )
+        except (OSError, ValueError):
+            logger.exception("No se pudo guardar el XML serie_numero=%s", serie_numero)
+            return
+
+        try:
+            futuro = asyncio.run_coroutine_threadsafe(
+                repo_comprobantes.guardar_xml_sunat(
+                    db,
+                    empresa_id,
+                    periodo,
+                    libro,
+                    serie_numero,
+                    almacen_pdf.relativa(destino),
+                    len(contenido_xml),
+                ),
+                loop,
+            )
+        except RuntimeError:
+            logger.debug("No se pudo guardar el puntero del XML: el loop está cerrado")
+            return
+        futuro.add_done_callback(_registrar_fallo)
+
     resultados = await scraping_sunat.obtener_detalles(
-        empresa, pendientes, libro=libro, progreso=avisar, al_extraer=guardar
+        empresa,
+        pendientes,
+        libro=libro,
+        progreso=avisar,
+        al_extraer=guardar,
+        al_descargar_xml=guardar_xml,
     )
 
     # Red de seguridad por si algún aviso se perdió: reintenta sólo lo que no

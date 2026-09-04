@@ -7,6 +7,7 @@ import type {
   EstadoJob,
   EstadoPeriodo,
   EstadoProcesamiento,
+  FuenteDato,
   Libro,
   ResultadoIA,
   TipoJob,
@@ -127,6 +128,12 @@ export interface ClasificacionRAG {
   respuesta_cuentas: string | null;
 }
 
+export interface PdfSunat {
+  ruta: string;
+  bytes: number;
+  descargado_en: string | null;
+}
+
 export interface ComprobanteResponse {
   /** Identificador legible (`F001-123`). No es el `_id` de Mongo. */
   serie_numero: string;
@@ -186,6 +193,13 @@ export interface ComprobanteResponse {
   /** Salida del análisis IA. El backend la llama `analisis`, no `metadata_procesada`. */
   analisis: AnalisisIA | null;
   detalle_sunat: unknown[];
+  /**
+   * Respaldo descargado del portal SOL. `null` mientras no se haya corrido la
+   * descarga de PDFs; `ruta` es relativa a `SUNAT_DATA_DIR` en el servidor.
+   */
+  pdf_sunat: PdfSunat | null;
+  /** Referencia al comprobante que modifica una nota de crédito o débito. Sólo en ventas. */
+  documentos_modificados: Record<string, unknown>[];
 }
 
 /** Único campo editable de un comprobante. */
@@ -243,6 +257,98 @@ export interface ResultadoAnalisis {
 /** `POST …/referencias`. */
 export interface ResultadoReferencia {
   chunks: number;
+}
+
+/* — plan de cuentas (app/schemas/plan_cuentas.py) — */
+
+export interface CuentaResponse {
+  cuenta: string;
+  descripcion: string;
+  tipo: string;
+  analisis: string;
+  centro_costos: string;
+  /** 1 = elemento, 2 = cuenta, 3 = subcuenta y divisionarias. Dibuja la sangría. */
+  nivel: number;
+}
+
+export interface PlanCuentasResponse {
+  cuentas: CuentaResponse[];
+  /** Total que casa con el filtro, no el de la página. */
+  total: number;
+}
+
+export interface CargaResponse {
+  mensaje: string;
+  cuentas: number;
+}
+
+/* — PDFs (app/api/v1/routes/pdfs.py) — */
+
+/** `resultado` del job `descarga_pdfs` cuando termina. */
+export interface ResultadoDescargaPdfs {
+  procesados: number;
+  descargados: number;
+  sin_pdf: number;
+  /** Los que el tope de `SUNAT_MAX_PDFS` dejó para otra vuelta. */
+  pendientes: number;
+  bytes: number;
+}
+
+/* — auditoría (app/schemas/auditoria.py) — */
+
+export interface FilaReporte {
+  serie_numero: string;
+  tipo_cp: string;
+  tipo_cp_descripcion: string;
+  fecha_emision: string | null;
+  documento_contraparte: string;
+  razon_social: string;
+  moneda: string;
+
+  /** Lo que declara el registro (propuesta del SIRE). */
+  base_imponible: number;
+  igv: number;
+  total: number;
+
+  /**
+   * Suma de las líneas leídas del portal. `null` cuando no hay detalle
+   * extraído, que no es lo mismo que un importe de cero.
+   */
+  importe_detalle: number | null;
+  diferencia: number | null;
+  lineas_detalle: number;
+  detalle_sunat: unknown[];
+
+  glosa: string;
+  cuenta_base: string;
+  cuenta_total: string;
+  observaciones: string;
+
+  fuentes: FuenteDato[];
+  /** Ruta relativa dentro del almacén, o `null` si no se descargó. */
+  pdf: string | null;
+}
+
+export interface ResumenReporte {
+  comprobantes: number;
+  con_pdf: number;
+  con_detalle: number;
+  con_glosa: number;
+  /**
+   * Se separan a propósito: «0 descuadrados» sobre 0 comparables no dice
+   * nada, y presentarlo como si cuadrara todo sería mentir.
+   */
+  comparables: number;
+  descuadrados: number;
+  total_registro: number;
+}
+
+export interface ReporteResponse {
+  periodo: string;
+  libro: Libro | (string & {});
+  filas: FilaReporte[];
+  resumen: ResumenReporte;
+  zip_disponible: boolean;
 }
 
 /* — analytics (app/services/analytics_service.py) — */

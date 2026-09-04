@@ -3,12 +3,15 @@ from fastapi import APIRouter
 from app.api.v1.routes import (
     analisis,
     analytics,
+    auditoria,
     auth,
     comprobantes,
     detalle,
     empresas,
     jobs,
+    pdfs,
     periodos,
+    plan_cuentas,
     propuesta,
     referencias,
 )
@@ -24,6 +27,11 @@ api_router.include_router(
     referencias.router,
     prefix="/empresas/{ruc}/referencias",
     tags=["Referencias"],
+)
+api_router.include_router(
+    plan_cuentas.router,
+    prefix="/empresas/{ruc}/plan-cuentas",
+    tags=["Plan de cuentas"],
 )
 api_router.include_router(
     periodos.router,
@@ -52,4 +60,14 @@ api_router.include_router(
     detalle.router,
     prefix="/empresas/{ruc}/periodos/{periodo}/libros/{libro}/detalle",
     tags=["Detalle SUNAT"],
+)
+api_router.include_router(
+    pdfs.router,
+    prefix="/empresas/{ruc}/periodos/{periodo}/libros/{libro}/pdfs",
+    tags=["PDFs SUNAT"],
+)
+api_router.include_router(
+    auditoria.router,
+    prefix="/empresas/{ruc}/periodos/{periodo}/libros/{libro}/auditoria",
+    tags=["Auditoría"],
 )
