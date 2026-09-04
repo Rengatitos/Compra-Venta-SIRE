@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -33,6 +33,16 @@ class AnalisisIA(BaseModel):
     descripcion: str | None = None
     observaciones: str | None = None
     rag: ClasificacionRAG | None = None
+
+
+class PdfSunat(BaseModel):
+    """Respaldo del comprobante descargado del portal SOL."""
+
+    # Relativa al almacén (`SUNAT_DATA_DIR`), nunca absoluta: mover el
+    # volumen no debe invalidar el puntero.
+    ruta: str
+    bytes: int = 0
+    descargado_en: datetime | None = None
 
 
 class ComprobanteResponse(BaseModel):
@@ -81,6 +91,9 @@ class ComprobanteResponse(BaseModel):
     estado_procesamiento: str
     analisis: AnalisisIA | None = None
     detalle_sunat: list[Any] = []
+    # `None` mientras no se haya corrido la descarga de PDFs. La pantalla de
+    # auditoría lo usa para decir qué comprobantes siguen sin respaldo.
+    pdf_sunat: PdfSunat | None = None
     # Referencia al comprobante que modifica una nota de crédito o débito.
     # Sólo el RVIE la manda; en compras (RCE) queda siempre vacía.
     documentos_modificados: list[dict[str, Any]] = []

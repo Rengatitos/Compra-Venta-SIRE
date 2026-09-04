@@ -1,0 +1,30 @@
+# Despliegue mínimo de la API.
+#
+# Existe sobre todo por el volumen `pdfs`: los PDFs que se descargan del portal
+# SOL se escriben en `SUNAT_DATA_DIR` (por defecto `/app/data`), y la imagen no
+# declara ningún `VOLUME`. Sin montarlo, el respaldo del auditor desaparece en
+# cada reinicio del contenedor y la funcionalidad parece rota sin dar ninguna
+# pista del motivo.
+#
+# Mongo no está aquí: el proyecto apunta a MongoDB Atlas vía `MONGO_URI`.
+
+services:
+  api:
+    build: .
+    ports:
+      - "9007:9007"
+    env_file: .env
+    environment:
+      # Dentro del contenedor el WORKDIR es /app y `appuser` (uid 1000) es
+      # dueño de todo el árbol, así que puede escribir aquí sin más permisos.
+      SUNAT_DATA_DIR: /app/data
+    volumes:
+      - pdfs:/app/data
+      # Los logs y las capturas de error de Playwright también sobreviven así,
+      # que es justo cuando hacen falta: después de que algo falle.
+      - logs:/app/logs
+    restart: unless-stopped
+
+volumes:
+  pdfs:
+  logs:

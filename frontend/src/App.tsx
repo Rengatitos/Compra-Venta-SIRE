@@ -37,6 +37,17 @@ const ReferenciasPage = lazy(() =>
 const AjustesPage = lazy(() =>
   import('@/features/empresa/AjustesPage').then((m) => ({ default: m.AjustesPage })),
 );
+const PlanCuentasPage = lazy(() =>
+  import('@/features/plan-cuentas/PlanCuentasPage').then((m) => ({
+    default: m.PlanCuentasPage,
+  })),
+);
+const AuditoriaPage = lazy(() =>
+  import('@/features/auditoria/AuditoriaPage').then((m) => ({ default: m.AuditoriaPage })),
+);
+const ReportePage = lazy(() =>
+  import('@/features/reporte/ReportePage').then((m) => ({ default: m.ReportePage })),
+);
 
 export function App() {
   return (
@@ -52,7 +63,10 @@ export function App() {
                 <Route index element={<DashboardPage />} />
                 <Route path="periodos" element={<PeriodosPage />} />
                 <Route path="periodos/:periodo" element={<ComprobantesPage />} />
+                <Route path="periodos/:periodo/auditoria" element={<AuditoriaPage />} />
+                <Route path="periodos/:periodo/reporte" element={<ReportePage />} />
                 <Route path="procesos" element={<ProcesosPage />} />
+                <Route path="plan-cuentas" element={<PlanCuentasPage />} />
                 <Route path="referencias" element={<ReferenciasPage />} />
                 <Route path="ajustes" element={<AjustesPage />} />
                 <Route path="*" element={<NoEncontradaPage />} />

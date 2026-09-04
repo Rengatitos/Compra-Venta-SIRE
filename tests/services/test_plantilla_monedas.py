@@ -131,3 +131,53 @@ class TestPieDeTotales:
         )
         assert hoja["G6"].value == "TOTAL"
         assert hoja["P6"].value == "=SUM(P4:P5)"
+
+
+class TestDestinoCompras:
+    def test_destino_dng_coloca_base_e_igv_en_columnas_n_y_o(self):
+        # Operaciones no gravadas (empresas con ventas exoneradas o compras a costo sin crédito)
+        wb = load_workbook(
+            plantilla_excel.excel_plantilla(
+                [_comprobante("PEN", 1180.0)], Libro.COMPRAS, destino="dng"
+            )
+        )
+        hoja = wb[plantilla_excel.HOJAS[Libro.COMPRAS]]
+        assert hoja["J4"].value is None
+        assert hoja["K4"].value is None
+        assert hoja["N4"].value == 1000.0
+        assert hoja["O4"].value == 180.0
+        assert hoja["S4"].value == 1180.0
+        assert hoja["N5"].value == "=SUM(N4:N4)"
+        assert hoja["O5"].value == "=SUM(O4:O4)"
+
+    def test_destino_dgng_coloca_base_e_igv_en_columnas_l_y_m(self):
+        wb = load_workbook(
+            plantilla_excel.excel_plantilla(
+                [_comprobante("PEN", 1180.0)], Libro.COMPRAS, destino="dgng"
+            )
+        )
+        hoja = wb[plantilla_excel.HOJAS[Libro.COMPRAS]]
+        assert hoja["J4"].value is None
+        assert hoja["L4"].value == 1000.0
+        assert hoja["M4"].value == 180.0
+        assert hoja["N4"].value is None
+
+    def test_destino_dg_coloca_base_e_igv_en_columnas_j_y_k(self):
+        wb = load_workbook(
+            plantilla_excel.excel_plantilla(
+                [_comprobante("PEN", 1180.0)], Libro.COMPRAS, destino="dg"
+            )
+        )
+        hoja = wb[plantilla_excel.HOJAS[Libro.COMPRAS]]
+        assert hoja["J4"].value == 1000.0
+        assert hoja["K4"].value == 180.0
+        assert hoja["N4"].value is None
+
+
+class TestVistaPlantilla:
+    def test_top_left_cell_es_a4_en_ambas_hojas(self):
+        for libro in (Libro.COMPRAS, Libro.VENTAS):
+            hoja = _hoja([_comprobante("PEN", 1180.0)], libro)
+            assert hoja.sheet_view.topLeftCell == "A4"
+            if hoja.sheet_view.pane:
+                assert hoja.sheet_view.pane.topLeftCell == "A4"

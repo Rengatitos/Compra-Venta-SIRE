@@ -348,9 +348,45 @@ def _fechas(comprobante: dict[str, Any]) -> tuple[date | None, date | None]:
     return emision, vencimiento
 
 
-def _fila_compras(comprobante: dict[str, Any], conversion: _Conversion) -> dict[str, Any]:
+def _fila_compras(
+    comprobante: dict[str, Any],
+    conversion: _Conversion,
+    destino: str | None = None,
+) -> dict[str, Any]:
     emision, vencimiento = _fechas(comprobante)
     rag = _rag(comprobante)
+
+    destino_efectivo = (destino or comprobante.get("destino_compras") or "").lower()
+    base_gravada = comprobante.get("base_imponible_dg") or comprobante.get("base_imponible")
+    igv_gravado = comprobante.get("igv_dg") or comprobante.get("igv")
+
+    if destino_efectivo == "dng":
+        # Destinado a operaciones no gravadas (empresas con ventas exoneradas o compras a costo)
+        col_j, col_k = None, None
+        col_l, col_m = None, None
+        col_n = conversion.soles(base_gravada)
+        col_o = conversion.soles(igv_gravado)
+    elif destino_efectivo == "dgng":
+        # Destinado a operaciones gravadas y no gravadas (prorrata)
+        col_j, col_k = None, None
+        col_l = conversion.soles(base_gravada)
+        col_m = conversion.soles(igv_gravado)
+        col_n, col_o = None, None
+    elif destino_efectivo == "dg":
+        # Destinado a operaciones gravadas (crédito fiscal pleno)
+        col_j = conversion.soles(base_gravada)
+        col_k = conversion.soles(igv_gravado)
+        col_l, col_m = None, None
+        col_n, col_o = None, None
+    else:
+        # Desglose por defecto respetando los campos desagregados de SUNAT SIRE
+        col_j = conversion.soles(comprobante.get("base_imponible_dg"))
+        col_k = conversion.soles(comprobante.get("igv_dg"))
+        col_l = conversion.soles(comprobante.get("base_imponible_dgng"))
+        col_m = conversion.soles(comprobante.get("igv_dgng"))
+        col_n = conversion.soles(comprobante.get("base_imponible_dng"))
+        col_o = conversion.soles(comprobante.get("igv_dng"))
+
     return {
         "A": emision,
         "B": vencimiento,
@@ -362,15 +398,12 @@ def _fila_compras(comprobante: dict[str, Any], conversion: _Conversion) -> dict[
         ),
         "H": _entero_o_texto(comprobante.get("documento_contraparte")),
         "I": _texto(comprobante.get("razon_social")),
-        # Los tres destinos van en columnas distintas. Se usa el desglose y no
-        # `base_imponible`/`igv`, que son la suma de los tres: mandarlo todo a
-        # J/K declaraba como gravado lo destinado a operaciones no gravadas.
-        "J": conversion.soles(comprobante.get("base_imponible_dg")),
-        "K": conversion.soles(comprobante.get("igv_dg")),
-        "L": conversion.soles(comprobante.get("base_imponible_dgng")),
-        "M": conversion.soles(comprobante.get("igv_dgng")),
-        "N": conversion.soles(comprobante.get("base_imponible_dng")),
-        "O": conversion.soles(comprobante.get("igv_dng")),
+        "J": col_j,
+        "K": col_k,
+        "L": col_l,
+        "M": col_m,
+        "N": col_n,
+        "O": col_o,
         # Adquisiciones no gravadas. El SIRE las manda agrupadas en
         # `no_gravado`; sin sumarlo esta columna salía en cero para todas
         # las compras exoneradas o inafectas.
@@ -510,7 +543,11 @@ def _escribir_totales(hoja: Worksheet, indice: int, ultima: int, libro: Libro) -
         celda.number_format = FORMATO_IMPORTE
 
 
-def excel_plantilla(comprobantes: list[dict[str, Any]], libro: Libro) -> io.BytesIO:
+def excel_plantilla(
+    comprobantes: list[dict[str, Any]],
+    libro: Libro,
+    destino: str | None = None,
+) -> io.BytesIO:
     """Genera el registro del libro pedido sobre la plantilla oficial."""
     wb = load_workbook(io.BytesIO(_bytes_plantilla()))
 
@@ -519,20 +556,28 @@ def excel_plantilla(comprobantes: list[dict[str, Any]], libro: Libro) -> io.Byte
             wb.remove(wb[nombre])
 
     hoja = wb[HOJAS[libro]]
+    hoja.sheet_view.topLeftCell = f"A{PRIMERA_FILA_DATOS}"
+    if hoja.sheet_view.pane:
+        hoja.sheet_view.pane.topLeftCell = f"A{PRIMERA_FILA_DATOS}"
+
     prototipos = _prototipos(hoja)
     _limpiar_ejemplos(hoja)
 
-    mapear = _MAPEOS[libro]
     columnas_fecha = _COLUMNAS_FECHA[libro]
     columnas_importe = _COLUMNAS_IMPORTE[libro]
 
     indice = PRIMERA_FILA_DATOS
     for comprobante in comprobantes:
         conversion = _conversion(comprobante)
+        valores = (
+            _fila_compras(comprobante, conversion, destino=destino)
+            if libro == Libro.COMPRAS
+            else _fila_ventas(comprobante, conversion)
+        )
         _escribir_fila(
             hoja,
             indice,
-            mapear(comprobante, conversion),
+            valores,
             prototipos,
             columnas_fecha,
             columnas_importe,

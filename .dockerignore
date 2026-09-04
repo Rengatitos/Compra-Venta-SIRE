@@ -20,3 +20,6 @@ __pycache__/
 .env.local
 
 test1.py
+
+# PDFs descargados: van en un volumen, no en la imagen
+data/

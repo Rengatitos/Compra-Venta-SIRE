@@ -320,6 +320,9 @@ def _ajustar_vista(ws: Worksheet) -> None:
     ws.sheet_view.showGridLines = True
     ws.sheet_view.selection[0].activeCell = "A4"
     ws.sheet_view.selection[0].sqref = "A4"
+    ws.sheet_view.topLeftCell = "A4"
+    if ws.sheet_view.pane:
+        ws.sheet_view.pane.topLeftCell = "A4"
     ws.auto_filter.ref = None
     ws.conditional_formatting = ConditionalFormattingList()
 
@@ -392,6 +395,7 @@ def _verificar(destino: Path, resumen: dict[str, dict]) -> None:
 
         assert ws.freeze_panes == "A4", (ws.title, ws.freeze_panes)
         assert ws.sheet_view.zoomScale == 100
+        assert ws.sheet_view.topLeftCell == "A4", (ws.title, ws.sheet_view.topLeftCell)
         assert ws.auto_filter.ref is None, ws.title
         assert list(ws.conditional_formatting) == [], ws.title
         assert ws.sheet_format.defaultRowHeight == ALTURA_DATOS

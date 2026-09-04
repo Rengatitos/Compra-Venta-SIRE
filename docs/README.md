@@ -35,10 +35,13 @@ FastAPI servido con Uvicorn (un solo worker en producción, para ahorrar RAM). M
 
 - [Auth y Empresas](endpoints/empresas.md)
 - [Periodos](endpoints/periodos.md)
+- [Maestro de cuentas](endpoints/plan-cuentas.md)
 - [Propuesta SIRE](endpoints/propuesta.md)
 - [Comprobantes](endpoints/comprobantes.md)
 - [Análisis IA](endpoints/analisis.md)
 - [Detalle SUNAT (asíncrono)](endpoints/detalle.md)
+- [PDFs de comprobantes (asíncrono)](endpoints/pdfs.md)
+- [Auditoría](endpoints/auditoria.md)
 - [Jobs](endpoints/jobs.md)
 - [Referencias](endpoints/referencias.md)
 - [Analytics](endpoints/analytics.md)

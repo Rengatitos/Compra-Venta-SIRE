@@ -1,4 +1,7 @@
 # datos
+# PDFs descargados del portal SOL (SUNAT_DATA_DIR). Son documentos
+# tributarios de clientes reales: nunca al repositorio.
+data/
 *.json
 !package.json
 *.png

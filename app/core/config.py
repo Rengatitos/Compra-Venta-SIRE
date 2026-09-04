@@ -53,6 +53,23 @@ class Settings(BaseSettings):
     # decir nada.
     SUNAT_MAX_COMPROBANTES: int = 100
 
+    # Raíz de los PDFs descargados del portal SOL. Relativa al root del repo si
+    # no es absoluta, igual que el directorio de logs.
+    #
+    # OJO EN DOCKER: la imagen no declara ningún `VOLUME`, así que sin montar un
+    # volumen en `{WORKDIR}/data` los PDFs se pierden al reiniciar el
+    # contenedor. `/app` sí es escribible (el Dockerfile hace `chown` a
+    # `appuser`), así que el código funciona igual; lo que no sobrevive es el
+    # archivo.
+    SUNAT_DATA_DIR: str = "data"
+    # Techo de PDFs por trabajo, en la línea de `SUNAT_MAX_COMPROBANTES`: cada
+    # uno cuesta una búsqueda en el portal, así que un periodo grande se cubre
+    # en varias vueltas en vez de en un trabajo de horas.
+    SUNAT_MAX_PDFS: int = 100
+    # Techo aparte para la captura del PDF: renderizar o descargar el documento
+    # tarda más que leer la tabla de ítems que ya está en el DOM.
+    SUNAT_PDF_TIMEOUT_MS: int = 20000
+
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     OLLAMA_CHAT_MODEL: str = "gemma3:4b"
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text"

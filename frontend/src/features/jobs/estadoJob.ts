@@ -19,12 +19,13 @@ export function presentarEstadoJob(estado: EstadoJob): Presentacion {
 }
 
 /**
- * `app/domain/jobs.py::TipoJob`. Hoy solo existe `extraccion_detalles`, pero el
- * contrato está pensado para crecer, así que el nombre técnico nunca llega
- * crudo a la pantalla.
+ * `app/domain/jobs.py::TipoJob`. El nombre técnico nunca llega crudo a la
+ * pantalla: al ser un `Record` completo, añadir un tipo en el backend rompe
+ * el typecheck hasta que alguien le da un rótulo legible.
  */
 const TIPOS: Record<TipoJob, string> = {
   extraccion_detalles: 'Detalle SUNAT y códigos RAG',
+  descarga_pdfs: 'Descarga de PDFs',
 };
 
 export function presentarTipoJob(tipo: string): string {

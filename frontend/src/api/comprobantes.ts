@@ -61,13 +61,18 @@ export function exportarLote(
   periodo: string,
   formato: FormatoExport,
   libro?: Libro,
+  destino?: string,
 ): Promise<void> {
   const nombre =
     formato === 'excel' && libro
       ? `registro_${libro}_${periodo}.xlsx`
       : `comprobantes_${periodo}.${EXTENSION[formato]}`;
 
-  return descargar(`${base(ruc, periodo)}/export`, nombre, { formato, libro });
+  return descargar(`${base(ruc, periodo)}/export`, nombre, {
+    formato,
+    libro,
+    ...(destino ? { destino } : {}),
+  });
 }
 
 export function exportarComprobante(

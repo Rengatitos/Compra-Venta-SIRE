@@ -22,6 +22,7 @@ ESTADOS_TERMINALES = frozenset({EstadoJob.COMPLETADO, EstadoJob.FALLIDO})
 
 class TipoJob(str, Enum):
     EXTRACCION_DETALLES = "extraccion_detalles"
+    DESCARGA_PDFS = "descarga_pdfs"
 
 
 class Progreso(BaseModel):
