@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -46,3 +46,27 @@ async def sincronizar_propuesta(
         "mensaje": resultado.pop("mensaje"),
         "datos": resultado,
     }
+
+
+@router.post(
+    "/libros/compras/propuesta/archivo",
+    response_model=StatusResponse,
+    summary="Importar el ZIP oficial generado por un ticket RCE",
+)
+@limiter.limit("10/minute")
+async def importar_archivo_propuesta(
+    request: Request,
+    archivo: UploadFile = File(...),
+    periodo: str = Depends(periodo_valido),
+    empresa: dict = Depends(empresa_actual),
+    db=Depends(get_db),
+):
+    if not (archivo.filename or "").lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser un ZIP de propuesta RCE")
+    try:
+        resultado = await propuesta_service.sincronizar_archivo_rce(
+            db, empresa, periodo, await archivo.read()
+        )
+    except ErrorSunat as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"estado": "exito", "mensaje": resultado.pop("mensaje"), "datos": resultado}

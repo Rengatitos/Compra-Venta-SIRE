@@ -12,6 +12,9 @@ en una sola moneda.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
+import pytest
 from openpyxl import load_workbook
 
 from app.domain.comprobante import Libro
@@ -41,17 +44,24 @@ def _hoja(comprobantes: list[dict], libro: Libro = Libro.COMPRAS):
 
 
 class TestConversionASoles:
-    def test_un_comprobante_en_dolares_se_convierte_a_soles(self):
-        hoja = _hoja([_comprobante("USD", 149600.0, 3.387)])
-        assert hoja["J4"].value == 429402.71
-        assert hoja["K4"].value == 77292.49
-        assert hoja["S4"].value == 506695.2
+    def test_caso_obligatorio_85_19_por_3_394(self):
+        assert plantilla_excel.convertir_importe_a_pen("85.19", "USD", "3.394") == Decimal(
+            "85.19"
+        )
+
+    def test_promhil_no_se_convierte_dos_veces(self):
+        comprobante = _comprobante("USD", 613.42, 3.387)
+        comprobante.update(base_imponible_dg=519.84, igv_dg=93.58)
+        hoja = _hoja([comprobante])
+        assert hoja["J4"].value == 519.84
+        assert hoja["K4"].value == 93.58
+        assert hoja["S4"].value == 613.42
         assert "US$" not in hoja["S4"].number_format
         assert "#,##0.00" in hoja["S4"].number_format
 
-    def test_el_total_en_dolares_va_al_equivalente(self):
-        hoja = _hoja([_comprobante("USD", 149600.0, 3.387)])
-        assert hoja["AC4"].value == 149600.0
+    def test_equivalente_dolares_divide_total_pen_entre_tc(self):
+        hoja = _hoja([_comprobante("USD", 613.42, 3.387)])
+        assert hoja["AC4"].value == 181.11
         assert hoja["AB4"].value == "D"
 
     def test_un_comprobante_en_soles_no_lleva_tipo_de_cambio(self):
@@ -71,46 +81,50 @@ class TestConversionASoles:
         # convertía un 3.3871 en 3.39.
         hoja = _hoja([_comprobante("USD", 118.0, 3.3871)])
         assert hoja["W4"].value == 3.3871
-        assert hoja["S4"].value == 399.68
+        assert hoja["S4"].value == 118.0
 
     def test_en_ventas_el_equivalente_es_la_columna_w_y_el_tc_la_q(self):
         hoja = _hoja([_comprobante("USD", 149600.0, 3.387)], Libro.VENTAS)
         assert hoja["Q4"].value == 3.387
-        assert hoja["W4"].value == 149600.0
-        assert hoja["P4"].value == 506695.2
+        assert hoja["W4"].value == 44168.88
+        assert hoja["P4"].value == 149600.0
 
 
 class TestFilaSinTipoDeCambio:
-    def test_dolares_sin_tipo_de_cambio_se_deja_nominal_y_marcado(self):
-        # No hay con qué convertir: se deja el importe tal cual, con el
-        # símbolo de su moneda para que se note que no está en soles.
-        hoja = _hoja([_comprobante("USD", 149600.0, 0)])
-        assert hoja["S4"].value == 149600.0
-        assert "US$" in hoja["S4"].number_format
-        assert hoja["AC4"].value == 149600.0
-        assert hoja["W4"].value is None
+    def test_dolares_sin_tipo_de_cambio_bloquea_la_exportacion(self):
+        with pytest.raises(plantilla_excel.ErrorTipoCambio) as error:
+            _hoja([_comprobante("USD", 149600.0, 0)])
+        assert error.value.pendientes[0]["serie_numero"] == "F001-1"
+        assert error.value.pendientes[0]["moneda"] == "USD"
+        assert error.value.pendientes[0]["monto_original"] == "149600.0"
 
-    def test_una_moneda_desconocida_sin_tipo_de_cambio_usa_su_propio_codigo(self):
-        hoja = _hoja([_comprobante("EUR", 100.0, 0)])
-        assert "EUR" in hoja["S4"].number_format
+    def test_una_moneda_desconocida_sin_tipo_de_cambio_tambien_bloquea(self):
+        with pytest.raises(plantilla_excel.ErrorTipoCambio):
+            _hoja([_comprobante("EUR", 100.0, 0)])
 
     def test_una_moneda_desconocida_con_tipo_de_cambio_si_se_convierte(self):
         hoja = _hoja([_comprobante("EUR", 100.0, 3.9)])
-        assert hoja["S4"].value == 390.0
+        assert hoja["S4"].value == 100.0
         assert "EUR" not in hoja["S4"].number_format
         assert "#,##0.00" in hoja["S4"].number_format
 
-    def test_el_simbolo_es_por_fila_no_por_columna(self):
-        # En el mismo registro pueden convivir una fila en soles, una en
-        # dólares sin tipo de cambio y otra en dólares que sí se convierte.
-        hoja = _hoja([
+    def test_un_solo_comprobante_sin_tc_bloquea_el_lote_completo(self):
+        comprobantes = [
             _comprobante("PEN", 1180.0),
             _comprobante("USD", 149600.0, 0),
             _comprobante("USD", 149600.0, 3.387),
-        ])
-        assert "US$" not in hoja["S4"].number_format
-        assert "US$" in hoja["S5"].number_format
-        assert "US$" not in hoja["S6"].number_format
+        ]
+        with pytest.raises(plantilla_excel.ErrorTipoCambio):
+            _hoja(comprobantes)
+
+    def test_auditoria_separa_original_usd_y_total_pen(self):
+        auditoria = plantilla_excel.auditar_conversion(
+            [_comprobante("PEN", 100.0), _comprobante("USD", 85.19, 3.394)]
+        )
+        assert auditoria["cantidad_por_moneda"] == {"PEN": 1, "USD": 1}
+        assert auditoria["total_original_usd"] == "85.19"
+        assert auditoria["total_usd_convertido_pen"] == "85.19"
+        assert auditoria["totales_pen"]["total"] == "185.19"
 
 
 class TestPieDeTotales:

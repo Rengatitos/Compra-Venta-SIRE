@@ -140,6 +140,36 @@ async def upsert(
     return resultado.upserted_id is not None
 
 
+async def eliminar_sire_no_incluidos(
+    db: AsyncIOMotorDatabase,
+    empresa_id: str,
+    periodo: str,
+    libro: Libro,
+    comprobantes: list[Comprobante],
+) -> int:
+    """Retira filas SIRE obsoletas al reemplazar una propuesta oficial completa."""
+    if not comprobantes:
+        return 0
+    identidades = [
+        {
+            "tipo_cp": comprobante.tipo_cp,
+            "serie": comprobante.serie,
+            "numero": comprobante.numero,
+        }
+        for comprobante in comprobantes
+    ]
+    resultado = await _col(db).delete_many(
+        {
+            "empresa_id": empresa_id,
+            "periodo": periodo,
+            "libro": libro.value,
+            "origen": Origen.SIRE.value,
+            "$nor": identidades,
+        }
+    )
+    return resultado.deleted_count
+
+
 async def listar(
     db: AsyncIOMotorDatabase,
     empresa_id: str,

@@ -467,7 +467,7 @@ export function ComprobantesPage() {
       <Dialog
         abierto={dialogoAnalisis}
         titulo="Analizar con IA"
-        texto="Clasifica con Gemini todos los comprobantes del periodo que estén pendientes de análisis o que fallaron en un intento anterior."
+        texto="Clasifica con Ollama todos los comprobantes del periodo que estén pendientes de análisis o que fallaron en un intento anterior."
         onCerrar={() => setDialogoAnalisis(false)}
         acciones={
           <>

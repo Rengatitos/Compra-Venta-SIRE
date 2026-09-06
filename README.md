@@ -73,7 +73,8 @@ Documentación interactiva en `http://127.0.0.1:9007/docs`.
 | `URL_SIRE_PROPUESTA` | Plantilla de URL del RCE (compras) con el placeholder `{PERIODO}` | Sí |
 | `URL_SIRE_PROPUESTA_VENTAS` | Plantilla de URL del RVIE (ventas), mismo placeholder | Sí (para ventas) |
 | `SIRE_PER_PAGE` / `SIRE_MAX_PAGINAS` | Tamaño de página al descargar la propuesta y tope de páginas (default `100` / `50`) | No |
-| `GEMINI_API_KEY` | API key de Gemini para el análisis contable | Sí (para IA) |
+| `OLLAMA_BASE_URL` | URL de la instancia local de Ollama | No |
+| `OLLAMA_CHAT_MODEL` / `OLLAMA_EMBED_MODEL` | Modelos locales de chat y embeddings | No |
 | `CORS_ORIGINS` | Orígenes permitidos, separados por comas | No |
 | `SUNAT_DATA_DIR` | Raíz de los PDFs descargados del portal SOL (default `data`, relativo al repo) | No |
 | `SUNAT_MAX_PDFS` | Tope de PDFs por trabajo de descarga (default `100`) | No |

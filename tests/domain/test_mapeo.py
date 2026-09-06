@@ -392,11 +392,11 @@ class TestPlantillaContasis:
         assert hoja["W4"].value == 3.387
         assert hoja["AB4"].value == "D"
         # Importes convertidos a soles con el tipo de cambio de la fila.
-        assert hoja["J4"].value == 338.7
-        assert hoja["K4"].value == 60.97
-        assert hoja["S4"].value == 399.67
+        assert hoja["J4"].value == 100.0
+        assert hoja["K4"].value == 18.0
+        assert hoja["S4"].value == 118.0
         # El total original en dólares va aparte, sin convertir.
-        assert hoja["AC4"].value == 118.0
+        assert hoja["AC4"].value == 34.84
 
     def test_la_tasa_declarada_gana_a_la_general(self):
         documento = {**_documento_completo(), "porcentaje_igv": Decimal("10.50")}
