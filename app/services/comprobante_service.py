@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -60,6 +61,20 @@ def serializar_analisis(metadata: Any) -> dict[str, Any] | None:
     }
 
 
+def _tiene_detraccion(documento: dict[str, Any]) -> bool:
+    """Lee la marca de la propuesta conservada, incluidos registros anteriores."""
+    extra = documento.get("extra")
+    if not isinstance(extra, dict):
+        return False
+    crudo = extra.get("raw_sire")
+    if isinstance(crudo, str):
+        try:
+            crudo = json.loads(crudo)
+        except ValueError:
+            return False
+    return isinstance(crudo, dict) and crudo.get("indDetraccion") == "D"
+
+
 def serializar(documento: dict[str, Any]) -> dict[str, Any]:
     tipo_cp = documento.get("tipo_cp", "")
     salida: dict[str, Any] = {
@@ -82,6 +97,9 @@ def serializar(documento: dict[str, Any]) -> dict[str, Any]:
         "estado_procesamiento": documento.get("estado_procesamiento", "pendiente"),
         "analisis": serializar_analisis(documento.get("metadata_procesada")),
         "detalle_sunat": documento.get("detalle_sunat", []) or [],
+        "detraccion": _tiene_detraccion(documento),
+        "detracciones": documento.get("detracciones") or [],
+        "detracciones_consultado_en": documento.get("detracciones_consultado_en"),
         # Lo escribe el trabajo de descarga (`pdf_service`). Va aquí para que
         # la pantalla de auditoría sepa qué comprobantes siguen sin respaldo
         # sin tener que consultar el disco.

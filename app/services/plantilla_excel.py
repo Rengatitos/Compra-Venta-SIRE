@@ -126,7 +126,26 @@ DECIMALES_IMPORTE = 2
 DECIMALES_TIPO_CAMBIO = 4
 
 
-def _monto(valor: Any, factor: float = 1.0, decimales: int = DECIMALES_IMPORTE) -> float | None:
+def decimal_value(valor: Any) -> Decimal:
+    """Convierte importes sin pasar por float y sin perder precisión decimal."""
+    if valor in (None, ""):
+        return Decimal("0")
+    try:
+        return Decimal(str(valor))
+    except Exception as exc:
+        raise ValueError(f"Importe inválido: {valor!r}") from exc
+
+
+def convertir_importe_a_pen(importe: Any, moneda: str, tipo_cambio: Any) -> Decimal:
+    """Devuelve el importe PEN que SIRE ya entrega convertido."""
+    return decimal_value(importe).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _monto(
+    valor: Any,
+    factor: Any = Decimal("1"),
+    decimales: int = DECIMALES_IMPORTE,
+) -> float | None:
     """Un cero se escribe como celda vacía, no como `0`.
 
     Se redondea con `ROUND_HALF_UP` porque es como redondea un contador (y el
@@ -136,8 +155,8 @@ def _monto(valor: Any, factor: float = 1.0, decimales: int = DECIMALES_IMPORTE) 
     redondear, para que la base y el IGV en soles sigan sumando el total.
     """
     try:
-        numero = Decimal(str(float(valor))) * Decimal(str(factor))
-    except (TypeError, ValueError):
+        numero = decimal_value(valor) * decimal_value(factor)
+    except (TypeError, ValueError, ArithmeticError):
         return None
     exponente = Decimal(1).scaleb(-decimales)
     return float(numero.quantize(exponente, rounding=ROUND_HALF_UP)) or None
@@ -189,6 +208,12 @@ def _formato_sin_convertir(moneda: str) -> str:
     return rf'_ * "{moneda}"\ #,##0.00_ ;_ * "{moneda}"\ \-#,##0.00_ ;_ * "-"??_ ;_ @_ '
 
 
+class ErrorTipoCambio(ValueError):
+    def __init__(self, pendientes: list[dict[str, Any]]) -> None:
+        self.pendientes = pendientes
+        super().__init__(f"{len(pendientes)} comprobante(s) en moneda extranjera sin TC SUNAT")
+
+
 class _Conversion(NamedTuple):
     """Cómo pasa a soles una fila del registro.
 
@@ -198,26 +223,30 @@ class _Conversion(NamedTuple):
     """
 
     moneda: str
-    tipo_cambio: float | None
+    tipo_cambio: Decimal | None
 
     @property
-    def factor(self) -> float | None:
+    def factor(self) -> Decimal:
         """`None` cuando hay moneda extranjera sin tipo de cambio: no hay con qué convertir."""
         if self.moneda == "PEN":
-            return 1.0
+            return Decimal("1")
+        if self.tipo_cambio is None or self.tipo_cambio <= 0:
+            raise ValueError(f"Comprobante en {self.moneda} sin tipo de cambio SUNAT")
         return self.tipo_cambio
 
     @property
     def formato_importe(self) -> str:
-        return FORMATO_IMPORTE if self.factor is not None else _formato_sin_convertir(self.moneda)
+        return FORMATO_IMPORTE
 
     def soles(self, valor: Any, decimales: int = DECIMALES_IMPORTE) -> float | None:
-        """El importe en soles, o el nominal si no hay tipo de cambio con qué convertir."""
-        return _monto(valor, factor=self.factor or 1.0, decimales=decimales)
+        """Importe convertido a soles con el TC individual del comprobante."""
+        return _monto(valor, decimales=decimales)
 
     def equivalente(self, total: Any) -> float | None:
         """Total en la moneda original, para la columna «EQUIVALENTE EN DOLARES»."""
-        return None if self.moneda == "PEN" else _monto(total)
+        if self.moneda == "PEN":
+            return None
+        return _monto(total, factor=Decimal("1") / self.factor)
 
 
 def _conversion(comprobante: dict[str, Any]) -> _Conversion:
@@ -227,9 +256,63 @@ def _conversion(comprobante: dict[str, Any]) -> _Conversion:
     tipo_cambio = (
         None
         if moneda == "PEN"
-        else _monto(comprobante.get("tipo_cambio"), decimales=DECIMALES_TIPO_CAMBIO)
+        else decimal_value(comprobante.get("tipo_cambio"))
     )
+    if moneda != "PEN" and tipo_cambio <= 0:
+        tipo_cambio = None
     return _Conversion(moneda=moneda, tipo_cambio=tipo_cambio)
+
+
+CAMPOS_MONETARIOS = (
+    "base_imponible_dg", "igv_dg", "base_imponible_dgng", "igv_dgng",
+    "base_imponible_dng", "igv_dng", "no_gravado", "isc", "icbper",
+    "otros_tributos", "total",
+)
+
+
+def auditar_conversion(comprobantes: list[dict[str, Any]]) -> dict[str, Any]:
+    """Valida TC y calcula trazabilidad monetaria previa a la exportación."""
+    pendientes: list[dict[str, Any]] = []
+    monedas: dict[str, int] = {}
+    totales = {campo: Decimal("0.00") for campo in CAMPOS_MONETARIOS}
+    total_original_usd = Decimal("0.00")
+    total_usd_pen = Decimal("0.00")
+
+    for comprobante in comprobantes:
+        conversion = _conversion(comprobante)
+        monedas[conversion.moneda] = monedas.get(conversion.moneda, 0) + 1
+        if conversion.moneda != "PEN" and conversion.tipo_cambio is None:
+            pendientes.append({
+                "serie": comprobante.get("serie", ""),
+                "numero": comprobante.get("numero", ""),
+                "serie_numero": comprobante.get("serie_numero")
+                or f"{comprobante.get('serie', '')}-{comprobante.get('numero', '')}",
+                "fecha": str(comprobante.get("fecha_emision") or ""),
+                "moneda": conversion.moneda,
+                "monto_original": str(decimal_value(comprobante.get("total"))),
+                "tipo_cambio_sunat": None,
+            })
+            continue
+        for campo in CAMPOS_MONETARIOS:
+            totales[campo] += convertir_importe_a_pen(
+                comprobante.get(campo), conversion.moneda, conversion.tipo_cambio
+            )
+        if conversion.moneda == "USD":
+            original = decimal_value(comprobante.get("total"))
+            total_original_usd += original
+            total_usd_pen += original
+
+    return {
+        "cantidad_procesada": len(comprobantes),
+        "cantidad_por_moneda": monedas,
+        "comprobantes_sin_tc": pendientes,
+        "totales_pen": {
+            campo: str(valor.quantize(Decimal("0.01")))
+            for campo, valor in totales.items()
+        },
+        "total_original_usd": str(total_original_usd.quantize(Decimal('0.01'))),
+        "total_usd_convertido_pen": str(total_usd_pen.quantize(Decimal('0.01'))),
+    }
 
 
 def _analisis(comprobante: dict[str, Any]) -> dict[str, Any]:
@@ -415,7 +498,10 @@ def _fila_compras(
             )
         ),
         "Q": conversion.soles(comprobante.get("isc")),
-        "R": conversion.soles(comprobante.get("otros_tributos")),
+        # La plantilla agrupa ICBPER y otros cargos en una sola columna.
+        "R": conversion.soles(
+            _suma(comprobante.get("icbper"), comprobante.get("otros_tributos"))
+        ),
         "S": conversion.soles(comprobante.get("total")),
         "W": conversion.tipo_cambio,
         "AB": _moneda(comprobante.get("moneda")),
@@ -549,6 +635,9 @@ def excel_plantilla(
     destino: str | None = None,
 ) -> io.BytesIO:
     """Genera el registro del libro pedido sobre la plantilla oficial."""
+    auditoria = auditar_conversion(comprobantes)
+    if auditoria["comprobantes_sin_tc"]:
+        raise ErrorTipoCambio(auditoria["comprobantes_sin_tc"])
     wb = load_workbook(io.BytesIO(_bytes_plantilla()))
 
     for nombre in wb.sheetnames:

@@ -135,6 +135,15 @@ export interface PdfSunat {
 }
 
 export interface ComprobanteResponse {
+  detracciones?: {
+    tipo: 'pago' | 'npd';
+    numero?: string;
+    cabecera?: Record<string, unknown>;
+    datos: Record<string, unknown>;
+  }[];
+  detracciones_consultado_en?: string | null;
+  /** Marca indDetraccion="D" en la propuesta SUNAT. */
+  detraccion: boolean;
   /** Identificador legible (`F001-123`). No es el `_id` de Mongo. */
   serie_numero: string;
   libro: Libro | (string & {});
@@ -240,6 +249,7 @@ export interface JobAceptado {
 
 /** `POST …/propuesta`. `descartados` = filas que SUNAT trajo y el filtro rechazó. */
 export interface ResultadoPropuesta {
+  detracciones_job_id?: string;
   nuevos: number;
   actualizados: number;
   descartados: number;

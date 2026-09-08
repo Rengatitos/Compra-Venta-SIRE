@@ -8,6 +8,8 @@ destino y la tasa de IGV: el Excel los escribía y `GET /comprobantes` no.
 
 from __future__ import annotations
 
+import pytest
+
 from app.domain.comprobante import Libro
 from app.repositories.comprobantes import a_documento
 from app.schemas.comprobante import ComprobanteResponse
@@ -47,6 +49,24 @@ def test_la_respuesta_no_pierde_ningun_campo_del_serializador():
 
     descartados = sorted(set(salida) - set(respuesta))
     assert not descartados, f"campos que la API descarta: {descartados}"
+
+
+@pytest.mark.parametrize("marca, esperado", [("D", True), ("", False), (None, False), ("N", False)])
+def test_detraccion_desde_propuesta_hasta_respuesta(marca, esperado):
+    documento = _documento({**PAYLOAD, "indDetraccion": marca})
+    respuesta = ComprobanteResponse(**serializar(documento)).model_dump()
+    assert respuesta["detraccion"] is esperado
+
+
+@pytest.mark.parametrize("crudo", [None, "", "invalido", "null", "[]", {}])
+def test_detraccion_sin_marca_o_json_valido(crudo):
+    documento = _documento()
+    documento["extra"] = {"raw_sire": crudo}
+    assert serializar(documento)["detraccion"] is False
+
+
+def test_detraccion_ausente_en_propuesta():
+    assert serializar(_documento())["detraccion"] is False
 
 
 def test_el_desglose_por_destino_viaja_en_la_respuesta():

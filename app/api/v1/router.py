@@ -7,6 +7,7 @@ from app.api.v1.routes import (
     auth,
     comprobantes,
     detalle,
+    detracciones,
     empresas,
     jobs,
     pdfs,
@@ -17,6 +18,11 @@ from app.api.v1.routes import (
 )
 
 api_router = APIRouter()
+api_router.include_router(
+    detracciones.router,
+    prefix="/empresas/{ruc}/periodos/{periodo}/detracciones",
+    tags=["Detracciones"],
+)
 
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(empresas.router, prefix="/empresas", tags=["Empresas"])

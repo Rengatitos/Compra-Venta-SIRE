@@ -39,6 +39,18 @@ _CAMPOS_MONTO = (
 )
 
 
+async def listar_todos_compras(db, empresa_id, periodo):
+    return await _col(db).find({"empresa_id": empresa_id, "periodo": periodo,
+                               "libro": Libro.COMPRAS.value}).to_list(length=None)
+
+
+async def guardar_detracciones(db, empresa_id, documento_id, registros, consultado_en):
+    await _col(db).update_one(
+        {"_id": documento_id, "empresa_id": empresa_id},
+        {"$set": {"detracciones": registros, "detracciones_consultado_en": consultado_en}},
+    )
+
+
 def _col(db: AsyncIOMotorDatabase):
     return db[NOMBRE_COL_COMPROBANTES]
 
@@ -138,6 +150,36 @@ async def upsert(
         upsert=True,
     )
     return resultado.upserted_id is not None
+
+
+async def eliminar_sire_no_incluidos(
+    db: AsyncIOMotorDatabase,
+    empresa_id: str,
+    periodo: str,
+    libro: Libro,
+    comprobantes: list[Comprobante],
+) -> int:
+    """Retira filas SIRE obsoletas al reemplazar una propuesta oficial completa."""
+    if not comprobantes:
+        return 0
+    identidades = [
+        {
+            "tipo_cp": comprobante.tipo_cp,
+            "serie": comprobante.serie,
+            "numero": comprobante.numero,
+        }
+        for comprobante in comprobantes
+    ]
+    resultado = await _col(db).delete_many(
+        {
+            "empresa_id": empresa_id,
+            "periodo": periodo,
+            "libro": libro.value,
+            "origen": Origen.SIRE.value,
+            "$nor": identidades,
+        }
+    )
+    return resultado.deleted_count
 
 
 async def listar(

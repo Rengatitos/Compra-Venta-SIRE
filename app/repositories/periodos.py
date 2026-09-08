@@ -55,6 +55,13 @@ async def eliminar(db: AsyncIOMotorDatabase, empresa_id: str, periodo: str) -> i
     return resultado.deleted_count
 
 
+async def guardar_npds(db, empresa_id, periodo, npds, consultado_en):
+    await _col(db).update_one(
+        {"empresa_id": empresa_id, "periodo": periodo},
+        {"$set": {"npds": npds, "npds_consultado_en": consultado_en}},
+    )
+
+
 async def eliminar_de_empresa(db: AsyncIOMotorDatabase, empresa_id: str) -> int:
     resultado = await _col(db).delete_many({"empresa_id": empresa_id})
     return resultado.deleted_count

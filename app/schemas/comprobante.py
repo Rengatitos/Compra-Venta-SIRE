@@ -91,6 +91,10 @@ class ComprobanteResponse(BaseModel):
     estado_procesamiento: str
     analisis: AnalisisIA | None = None
     detalle_sunat: list[Any] = []
+    # True cuando la propuesta SUNAT contiene indDetraccion="D".
+    detraccion: bool = False
+    detracciones: list[dict[str, Any]] = []
+    detracciones_consultado_en: str | None = None
     # `None` mientras no se haya corrido la descarga de PDFs. La pantalla de
     # auditoría lo usa para decir qué comprobantes siguen sin respaldo.
     pdf_sunat: PdfSunat | None = None

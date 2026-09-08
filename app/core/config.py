@@ -78,29 +78,7 @@ class Settings(BaseSettings):
     RAG_TOP_K_HISTORICAL: int = 6
     RAG_CONFIDENCE_THRESHOLD: float = 0.80
 
-    # API externa que traduce comprobantes, documentos y glosas a los códigos
-    # que espera la plantilla de Contasis.
     RAG_MAX_CONCURRENCY: int = 5
-    # Acceso a Gemini. Hay dos modos excluyentes:
-    #   - API de AI Studio: basta GEMINI_API_KEY.
-    #   - Vertex AI: define VERTEX_PROJECT (y opcionalmente el JSON de la
-    #     service account). Tiene la cuota del proyecto de Google Cloud en vez
-    #     del saldo prepagado de AI Studio, que es lo que se agotó.
-    # Si VERTEX_PROJECT está definido, Vertex gana.
-    GEMINI_API_KEY: str | None = None
-    VERTEX_PROJECT: str | None = None
-    # `global` es la única región que sirve a la vez gemini-3.6-flash y
-    # gemini-embedding-001: en us-central1 el modelo de texto da 404.
-    VERTEX_LOCATION: str = "global"
-    # Ruta al JSON de la service account. Si se deja vacío se usan las
-    # credenciales por defecto del entorno (ADC).
-    VERTEX_CREDENTIALS_FILE: str | None = None
-
-    # Segundos mínimos entre llamadas a Gemini. El tier gratuito de AI Studio
-    # admitía 5 req/min, de ahí los 13s; en Vertex la cuota es mucho mayor y
-    # dejarlo así sólo alarga los lotes (60 comprobantes = 13 minutos de espera
-    # pura), así que es configurable por entorno.
-    GEMINI_MIN_INTERVAL_SECONDS: float = 13.0
 
     # Orígenes permitidos por CORS. Se acepta tanto la lista separada por comas
     # que documenta `.env.example` como una lista JSON.

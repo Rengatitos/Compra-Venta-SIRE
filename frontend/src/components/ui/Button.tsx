@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 
 import estilos from './Button.module.css';
 
-type Variante = 'primario' | 'secundario' | 'fantasma' | 'peligro';
+type Variante = 'primario' | 'secundario' | 'fantasma' | 'peligro' | 'azul';
 
 interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className'> {
   variante?: Variante;
@@ -16,6 +16,7 @@ interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className
 }
 
 const CLASE_VARIANTE: Record<Variante, string> = {
+  azul: estilos.azul ?? '',
   primario: estilos.primario ?? '',
   secundario: '',
   fantasma: estilos.fantasma ?? '',

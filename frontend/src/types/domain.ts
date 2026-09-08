@@ -26,7 +26,7 @@ export type EstadoJob = 'pendiente' | 'en_progreso' | 'completado' | 'fallido';
 export const ESTADOS_JOB_TERMINALES: readonly EstadoJob[] = ['completado', 'fallido'];
 
 /** `app/domain/jobs.py::TipoJob`. */
-export type TipoJob = 'extraccion_detalles' | 'descarga_pdfs';
+export type TipoJob = 'extraccion_detalles' | 'descarga_pdfs' | 'detracciones';
 
 /**
  * Fuentes que respaldan un dato del reporte, de menos a más cerca del

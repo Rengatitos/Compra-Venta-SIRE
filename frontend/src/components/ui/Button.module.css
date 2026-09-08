@@ -40,6 +40,17 @@
   border-color: var(--color-accent-hover);
 }
 
+.azul {
+  color: #fff;
+  background-color: #2563eb;
+  border-color: #2563eb;
+}
+
+.azul:hover:not(:disabled) {
+  background-color: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
 .fantasma {
   background-color: transparent;
   border-color: transparent;

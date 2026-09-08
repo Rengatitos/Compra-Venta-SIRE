@@ -6,21 +6,19 @@ servidor. Ningún endpoint la puebla: hasta ahora se asumía una carga manual. E
 script es esa carga.
 
 Lee los PDFs de una carpeta, los parte en fragmentos, pide el embedding de cada
-fragmento a Gemini y los inserta. No toca nada del backend: escribe documentos con
+fragmento a Ollama y los inserta. No toca nada del backend: escribe documentos con
 la misma forma que espera `_PROYECCION` en `app/repositories/vectores.py`
 (`texto`, `metadata`, `embedding`), así que basta reiniciar la API para que el
 análisis los use.
 
-El modelo y la llamada son deliberadamente idénticos a los de `buscar_contexto`
-—`models/gemini-embedding-001` sin `config`—: si aquí se pasara un `task_type` o
-un `output_dimensionality` distinto, los vectores dejarían de ser comparables con
-el de la consulta y la similitud de coseno devolvería basura silenciosamente.
+El modelo y la llamada son los mismos que usa `buscar_contexto`, por lo que los
+vectores indexados y los de consulta conservan la misma dimensión.
 
     uv run python scripts/indexar_vector_global.py --dry-run   # sólo cuenta chunks
     uv run python scripts/indexar_vector_global.py             # indexa lo que falte
     uv run python scripts/indexar_vector_global.py --rehacer   # reindexa todo
 
-Un embedding ya calculado se importa sin gastar cuota de Gemini, siempre que sus
+Un embedding ya calculado se importa sin recalcularlo, siempre que sus
 vectores vengan del mismo modelo (se valida la dimensión contra una consulta real):
 
     uv run python scripts/indexar_vector_global.py \\
@@ -40,13 +38,11 @@ import json
 import os
 import re
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
 import pymupdf
 from dotenv import load_dotenv
-from google.genai.errors import APIError
 from motor.motor_asyncio import AsyncIOMotorClient
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -54,9 +50,7 @@ sys.path.insert(0, str(RAIZ))
 load_dotenv(RAIZ / ".env")
 
 from app.repositories._mongo import NOMBRE_COL_VECTOR_GLOBAL  # noqa: E402
-from app.services.analisis_ia import _get_client  # noqa: E402
-
-MODELO_EMBEDDING = "models/gemini-embedding-001"
+from app.services.ollama_rag import embed_documents, embed_query  # noqa: E402
 
 CARPETA_POR_DEFECTO = RAIZ / "source" / "normativa"
 
@@ -164,51 +158,16 @@ def trocear_pdf(
     return chunks
 
 
-def _retry_delay(exc: APIError) -> float | None:
-    detalles = exc.details if isinstance(exc.details, dict) else {}
-    for item in detalles.get("error", {}).get("details", []):
-        valor = item.get("retryDelay")
-        if valor:
-            match = re.match(r"([\d.]+)", str(valor))
-            if match:
-                return float(match.group(1))
-    return None
-
-
 class Embebedor:
-    """Llama a Gemini por lotes, respetando el límite de peticiones por minuto."""
+    """Genera embeddings por lotes mediante la instancia local de Ollama."""
 
-    def __init__(self, rpm: int, reintentos: int = 5) -> None:
-        self.intervalo = 60.0 / max(rpm, 1)
-        self.reintentos = reintentos
-        self._ultima = 0.0
-
-    def _esperar_turno(self) -> None:
-        espera = self._ultima + self.intervalo - time.monotonic()
-        if espera > 0:
-            time.sleep(espera)
-        self._ultima = time.monotonic()
+    def __init__(self, rpm: int | None = None) -> None:
+        # Se conserva el parámetro por compatibilidad con invocaciones previas.
+        # Ollama es local y no necesita limitar peticiones por minuto.
+        del rpm
 
     def __call__(self, textos: list[str]) -> list[list[float]]:
-        for intento in range(1, self.reintentos + 1):
-            self._esperar_turno()
-            try:
-                respuesta = _get_client().models.embed_content(
-                    model=MODELO_EMBEDDING,
-                    contents=textos,
-                )
-                return [list(e.values) for e in respuesta.embeddings]
-            except APIError as exc:
-                if intento == self.reintentos:
-                    raise
-                espera = _retry_delay(exc) or min(2**intento, 60)
-                print(
-                    f"    aviso: {exc.code if hasattr(exc, 'code') else 'APIError'}; "
-                    f"reintento {intento}/{self.reintentos - 1} en {espera:.0f}s",
-                    flush=True,
-                )
-                time.sleep(espera)
-        return []
+        return embed_documents(textos)
 
 
 def _dimension_de_consulta() -> int:
@@ -218,10 +177,7 @@ def _dimension_de_consulta() -> int:
     producto punto de `buscar_contexto` revienta, la excepción se traga en su
     `except` y el análisis se queda sin contexto normativo sin avisar.
     """
-    respuesta = _get_client().models.embed_content(
-        model=MODELO_EMBEDDING, contents="verificacion de dimension"
-    )
-    return len(respuesta.embeddings[0].values)
+    return len(embed_query("verificacion de dimension"))
 
 
 async def importar_json(coleccion, ruta: Path, rehacer: bool) -> int:
@@ -297,7 +253,7 @@ async def indexar(args: argparse.Namespace) -> int:
     print(f"  {'TOTAL A EMBEBER':48s} {total:4d} chunks")
 
     if args.dry_run:
-        print("\n--dry-run: no se llamó a Gemini ni se escribió en Mongo.")
+        print("\n--dry-run: no se llamó a Ollama ni se escribió en Mongo.")
         return 0
 
     uri = os.environ.get("MONGO_URI")
@@ -340,7 +296,7 @@ async def indexar(args: argparse.Namespace) -> int:
             vectores = embebedor([c["texto"] for c in lote])
             if len(vectores) != len(lote):
                 print(
-                    f"    error: Gemini devolvió {len(vectores)} vectores "
+                    f"    error: Ollama devolvió {len(vectores)} vectores "
                     f"para {len(lote)} textos"
                 )
                 return 1

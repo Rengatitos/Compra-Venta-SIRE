@@ -4,6 +4,7 @@ import type { ChangeEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 
 import { ejecutarAnalisis } from '@/api/analisis';
+import { obtenerJob } from '@/api/jobs';
 import { exportarLote, listarComprobantes } from '@/api/comprobantes';
 import { iniciarExtraccionDetalle } from '@/api/detalle';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -18,7 +19,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { Panel } from '@/components/ui/Panel';
 import { ProgressBar } from '@/components/ui/Progress';
 import { useRuc } from '@/features/auth/useAuth';
-import { presentarEstadoJob } from '@/features/jobs/estadoJob';
+import { presentarEstadoJob, presentarTipoJob } from '@/features/jobs/estadoJob';
 import { useJobs } from '@/features/jobs/useJobs';
 import { NoEncontradaPage } from '@/features/shared/NoEncontradaPage';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -36,6 +37,8 @@ import type { FormatoExport, Libro } from '@/types/domain';
 import { ESTADOS_JOB_TERMINALES, esPeriodoValido } from '@/types/domain';
 
 import { DialogComprobante } from './DialogComprobante';
+import { DescargarDetraccionesButton, DetraccionCelda, NpdPanel } from './Detracciones';
+import { DescargarPdfsButton } from './DescargarPdfsButton';
 import { presentarEstadoComprobante, presentarResultadoIA } from './estadoComprobante';
 
 const POR_PAGINA = 100;
@@ -100,36 +103,21 @@ export function ComprobantesPage() {
   // arrancar.
   const otroLibro = jobsVivos.find((job) => job.libro !== libro);
 
-  const extraer = useMutation({
-    mutationFn: () => iniciarExtraccionDetalle(ruc, periodo, libro),
-    onSuccess: (aceptado) => {
-      seguir(aceptado.job_id);
-      // `aceptado.mensaje` apunta al endpoint de la API, que no le sirve a
-      // nadie mirando la pantalla. El avance sale en la barra de aquí abajo y
-      // queda registrado en Procesos.
-      mostrar({
-        tono: 'exito',
-        titulo: 'Extracción iniciada',
-        detalle: 'El avance aparece en esta misma página mientras corre.',
-        accion: { texto: 'Ver en Procesos', a: '/procesos' },
-      });
-    },
-    onError: (fallo) => {
-      mostrar({
-        tono: 'error',
-        titulo: 'No se pudo iniciar la extracción',
-        detalle:
-          fallo instanceof ApiError && fallo.esLimiteDeTasa
-            ? 'La extracción admite 5 arranques por minuto. Espera un momento.'
-            : fallo instanceof ApiError
-              ? fallo.message
-              : 'Error inesperado.',
-      });
-    },
-  });
-
   const analizar = useMutation({
-    mutationFn: () => ejecutarAnalisis(ruc, periodo, libro, archivos),
+    mutationFn: async () => {
+      const aceptado = await iniciarExtraccionDetalle(ruc, periodo, libro);
+      seguir(aceptado.job_id);
+      for (;;) {
+        const job = await obtenerJob(aceptado.job_id);
+        if (job.estado === 'fallido') {
+          throw new Error(job.error || 'No se pudo completar los datos con SUNAT y RAG.');
+        }
+        if (job.estado === 'completado') break;
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+      }
+      await cliente.invalidateQueries({ queryKey: ['comprobantes', ruc, periodo] });
+      return ejecutarAnalisis(ruc, periodo, libro, archivos);
+    },
     onSuccess: async (respuesta) => {
       setResultado(respuesta.datos);
       setDialogoAnalisis(false);
@@ -149,7 +137,7 @@ export function ComprobantesPage() {
         detalle:
           fallo instanceof ApiError && fallo.esLimiteDeTasa
             ? 'El análisis admite 5 ejecuciones por minuto. Espera un momento.'
-            : fallo instanceof ApiError
+            : fallo instanceof Error
               ? fallo.message
               : 'Error inesperado.',
       });
@@ -176,7 +164,7 @@ export function ComprobantesPage() {
             ? libroPedido
               ? `El periodo no tiene comprobantes de ${libroPedido} que exportar.`
               : 'El periodo no tiene comprobantes que exportar.'
-            : fallo instanceof ApiError
+            : fallo instanceof Error
               ? fallo.message
               : 'Error inesperado.',
       });
@@ -253,6 +241,11 @@ export function ComprobantesPage() {
       render: (fila) => formatearMoneda(fila.total, fila.moneda),
     },
     {
+      clave: 'detraccion',
+      cabecera: 'Detracción',
+      render: (fila) => <DetraccionCelda fila={fila} />,
+    },
+    {
       clave: 'estado',
       cabecera: 'Estado',
       render: (fila) => {
@@ -281,6 +274,10 @@ export function ComprobantesPage() {
         }
         acciones={
           <>
+            <DescargarPdfsButton ruc={ruc} periodo={periodo} libro={libro} />
+            {libro === 'compras' ? (
+              <DescargarDetraccionesButton ruc={ruc} periodo={periodo} />
+            ) : null}
             <Button
               onClick={() => void exportar('excel:compras', 'excel', 'compras')}
               cargando={exportando === 'excel:compras'}
@@ -309,11 +306,12 @@ export function ComprobantesPage() {
       <div className={layout.pilaAmplia}>
         <Panel
           titulo="Procesar el periodo"
-          descripcion="El proceso consulta cada comprobante en SOL, arma la glosa desde sus ítems y obtiene los códigos contables con RAG. Al terminar, esta vista previa se actualiza y el Excel queda listo."
+          descripcion="Consulta los comprobantes en SUNAT, completa la glosa y las cuentas con RAG y ejecuta el análisis con IA. La tabla se actualiza al terminar."
           acciones={
             <SelectField
               etiqueta="Libro"
               value={libro}
+              disabled={analizar.isPending}
               onChange={(evento) => {
                 setLibro(evento.target.value as Libro);
                 setPagina(1);
@@ -328,20 +326,14 @@ export function ComprobantesPage() {
           <div className={layout.fila}>
             <Button
               variante="primario"
-              onClick={() => extraer.mutate()}
-              cargando={extraer.isPending}
-              disabled={jobActivo !== undefined}
-            >
-              Completar con SUNAT y RAG
-            </Button>
-            <Button
               onClick={() => {
                 setResultado(null);
                 setDialogoAnalisis(true);
               }}
               cargando={analizar.isPending}
+              disabled={jobActivo !== undefined}
             >
-              Analizar con IA
+              Completar con GLOSA
             </Button>
             <ButtonLink a="/periodos" variante="fantasma">
               Volver a periodos
@@ -350,20 +342,18 @@ export function ComprobantesPage() {
 
           {jobActivo ? (
             <ProgressBar
-              etiqueta={`Avance de la extracción de detalle (${libro})`}
+              etiqueta={`${presentarTipoJob(jobActivo.tipo)} (${libro})`}
               actual={jobActivo.progreso.actual}
               total={jobActivo.progreso.total}
               porcentaje={jobActivo.progreso.porcentaje}
-              mensaje={
-                jobActivo.progreso.mensaje || presentarEstadoJob(jobActivo.estado).texto
-              }
+              mensaje={jobActivo.progreso.mensaje || presentarEstadoJob(jobActivo.estado).texto}
             />
           ) : null}
 
           {otroLibro ? (
             <p className={layout.textoSecundario}>
-              También hay una extracción de {otroLibro.libro} en curso para este periodo.
-              Corren de una en una: la sesión SOL es única por empresa.
+              También hay una extracción de {otroLibro.libro} en curso para este periodo. Corren
+              de una en una: la sesión SOL es única por empresa.
             </p>
           ) : null}
         </Panel>
@@ -397,6 +387,8 @@ export function ComprobantesPage() {
             </div>
           </Panel>
         ) : null}
+
+        {libro === 'compras' ? <NpdPanel ruc={ruc} periodo={periodo} /> : null}
 
         <Panel titulo="Listado">
           {comprobantes.isPending ? (
@@ -466,8 +458,8 @@ export function ComprobantesPage() {
 
       <Dialog
         abierto={dialogoAnalisis}
-        titulo="Analizar con IA"
-        texto="Clasifica con Gemini todos los comprobantes del periodo que estén pendientes de análisis o que fallaron en un intento anterior."
+        titulo="Completar con GLOSA"
+        texto="Primero completa los datos con SUNAT y RAG. Al terminar, analiza con IA los comprobantes pendientes o con errores."
         onCerrar={() => setDialogoAnalisis(false)}
         acciones={
           <>
@@ -477,9 +469,10 @@ export function ComprobantesPage() {
             <Button
               variante="primario"
               cargando={analizar.isPending}
+              disabled={jobActivo !== undefined || analizar.isPending}
               onClick={() => analizar.mutate()}
             >
-              Ejecutar análisis
+              Iniciar proceso
             </Button>
           </>
         }

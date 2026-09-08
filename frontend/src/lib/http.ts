@@ -96,6 +96,27 @@ async function extraerDetalle(respuesta: Response): Promise<string> {
           .filter((msg): msg is string => msg !== null);
         if (mensajes.length > 0) return mensajes.join('. ');
       }
+      if (detalle && typeof detalle === 'object' && 'mensaje' in detalle) {
+        const mensaje = detalle.mensaje;
+        if (typeof mensaje !== 'string' || !mensaje.trim()) {
+          return MENSAJES_POR_ESTADO[respuesta.status] ?? `Error ${respuesta.status}`;
+        }
+        if ('comprobantes_sin_tc' in detalle && Array.isArray(detalle.comprobantes_sin_tc)) {
+          const pendientes = detalle.comprobantes_sin_tc
+            .map((item: unknown) => {
+              if (!item || typeof item !== 'object' || !('serie_numero' in item)) return null;
+              const serieNumero = item.serie_numero;
+              const moneda = 'moneda' in item ? item.moneda : '';
+              const monto = 'monto_original' in item ? item.monto_original : '';
+              return typeof serieNumero === 'string'
+                ? `${serieNumero} (${String(moneda)}, ${String(monto)})`
+                : null;
+            })
+            .filter((item): item is string => item !== null);
+          return pendientes.length > 0 ? `${mensaje}: ${pendientes.join(', ')}` : mensaje;
+        }
+        return mensaje;
+      }
     }
   } catch {
     // Respuesta sin JSON (por ejemplo un 502 del proxy): se usa el respaldo.
