@@ -32,6 +32,20 @@ export function ErrorState({ titulo, texto, accion }: PropsEstado) {
   );
 }
 
+/**
+ * Aviso que no bloquea: algo va a salir incompleto y aquí se dice por qué y
+ * qué hacer. `role="status"` para que se anuncie sin interrumpir.
+ */
+export function WarningState({ titulo, texto, accion }: PropsEstado) {
+  return (
+    <div className={`${estilos.estado} ${estilos.estadoAviso ?? ''}`} role="status">
+      <p className={estilos.tituloEstado}>{titulo}</p>
+      {texto ? <p className={estilos.textoEstado}>{texto}</p> : null}
+      {accion}
+    </div>
+  );
+}
+
 interface PropsEsqueleto {
   /** Número de líneas de marcador de posición. */
   lineas?: number;

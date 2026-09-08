@@ -7,14 +7,21 @@ import { ejecutarAnalisis } from '@/api/analisis';
 import { obtenerJob } from '@/api/jobs';
 import { exportarLote, listarComprobantes } from '@/api/comprobantes';
 import { iniciarExtraccionDetalle } from '@/api/detalle';
+import { estadoRag } from '@/api/rag';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import { DataTable, TableFooter } from '@/components/ui/DataTable';
 import type { Columna } from '@/components/ui/DataTable';
 import { Dialog } from '@/components/ui/Dialog';
-import { EmptyState, ErrorState, MetricTile, Skeleton } from '@/components/ui/Feedback';
-import { FileField, SelectField } from '@/components/ui/Field';
+import {
+  EmptyState,
+  ErrorState,
+  MetricTile,
+  Skeleton,
+  WarningState,
+} from '@/components/ui/Feedback';
+import { FileField } from '@/components/ui/Field';
 import { Pagination } from '@/components/ui/Pagination';
 import { Panel } from '@/components/ui/Panel';
 import { ProgressBar } from '@/components/ui/Progress';
@@ -32,22 +39,77 @@ import {
 } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
-import type { ComprobanteResponse, JobResponse, ResultadoAnalisis } from '@/types/api';
+import type {
+  ComprobanteResponse,
+  JobResponse,
+  ResultadoAnalisis,
+  ResultadoExtraccion,
+} from '@/types/api';
 import type { FormatoExport, Libro } from '@/types/domain';
 import { ESTADOS_JOB_TERMINALES, esPeriodoValido } from '@/types/domain';
 
+import estilos from './ComprobantesPage.module.css';
 import { DialogComprobante } from './DialogComprobante';
 import { DescargarDetraccionesButton, DetraccionCelda, NpdPanel } from './Detracciones';
 import { DescargarPdfsButton } from './DescargarPdfsButton';
-import { presentarEstadoComprobante, presentarResultadoIA } from './estadoComprobante';
+import {
+  presentarCuenta,
+  presentarEstadoComprobante,
+  presentarResultadoIA,
+} from './estadoComprobante';
 
 const POR_PAGINA = 100;
 
+const LIBROS: readonly Libro[] = ['compras', 'ventas'];
+const ETIQUETA_LIBRO: Record<Libro, string> = {
+  compras: 'Compras (RCE)',
+  ventas: 'Ventas (RVIE)',
+};
+const NOMBRE_REGISTRO: Record<Libro, string> = {
+  compras: 'Registro de compras',
+  ventas: 'Registro de ventas',
+};
+
 /**
- * El Excel sigue la plantilla de Contasis, que tiene una hoja por libro: hay una
- * descarga por libro, más el PDF (el único que lleva el análisis IA).
+ * El Excel sigue la plantilla de Contasis, que tiene una hoja por libro, así
+ * que se exporta el libro que está a la vista. El PDF es el único que lleva el
+ * análisis IA y también se acota al libro para que cuadre con la tabla.
  */
-type Descarga = 'excel:compras' | 'excel:ventas' | 'pdf';
+type Descarga = 'excel' | 'pdf';
+
+/** Cuenta base y contrapartida del RAG, o el motivo por el que faltan. */
+function CuentaCelda({ fila }: { fila: ComprobanteResponse }) {
+  const cuenta = presentarCuenta(fila.analisis);
+  if (!cuenta) return <>—</>;
+  if (!cuenta.cuenta) {
+    return (
+      <span title={cuenta.motivo ?? 'El RAG no encontró una cuenta del plan para este comprobante.'}>
+        <Badge tono="aviso">Sin cuenta</Badge>
+      </span>
+    );
+  }
+  return (
+    <div className={estilos.cuenta}>
+      <span>{cuenta.cuenta}</span>
+      {cuenta.contrapartida ? (
+        <span className={estilos.contrapartida}>contra {cuenta.contrapartida}</span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Qué respaldo del portal SOL tiene ya el comprobante. */
+function RespaldoCelda({ fila }: { fila: ComprobanteResponse }) {
+  const conDetalle = fila.detalle_sunat.length > 0;
+  const conPdf = Boolean(fila.pdf_sunat?.ruta);
+  if (!conDetalle && !conPdf) return <>—</>;
+  return (
+    <div className={estilos.respaldo}>
+      {conDetalle ? <Badge tono="info">Detalle</Badge> : null}
+      {conPdf ? <Badge tono="info">PDF</Badge> : null}
+    </div>
+  );
+}
 
 export function ComprobantesPage() {
   const { periodo = '' } = useParams();
@@ -69,6 +131,7 @@ export function ComprobantesPage() {
   const [archivos, setArchivos] = useState<File[]>([]);
   const [errorArchivos, setErrorArchivos] = useState<string | null>(null);
   const [resultado, setResultado] = useState<ResultadoAnalisis | null>(null);
+  const [extraccion, setExtraccion] = useState<ResultadoExtraccion | null>(null);
 
   useDocumentTitle(`Comprobantes ${formatearPeriodo(periodo)}`);
 
@@ -81,6 +144,14 @@ export function ComprobantesPage() {
         skip: (pagina - 1) * POR_PAGINA,
       }),
     enabled: esPeriodoValido(periodo),
+  });
+
+  // Sin cuentas indexadas el RAG no puede devolver ninguna: la columna sale
+  // en blanco para todos y el guion no explica nada. Esto sí.
+  const rag = useQuery({
+    queryKey: ['rag', 'estado'],
+    queryFn: estadoRag,
+    staleTime: 60_000,
   });
 
   // El seguimiento vive en `JobsProvider`, así que el avance sigue visible
@@ -112,7 +183,10 @@ export function ComprobantesPage() {
         if (job.estado === 'fallido') {
           throw new Error(job.error || 'No se pudo completar los datos con SUNAT y RAG.');
         }
-        if (job.estado === 'completado') break;
+        if (job.estado === 'completado') {
+          setExtraccion((job.resultado as ResultadoExtraccion | null) ?? null);
+          break;
+        }
         await new Promise((resolve) => window.setTimeout(resolve, 3000));
       }
       await cliente.invalidateQueries({ queryKey: ['comprobantes', ruc, periodo] });
@@ -133,7 +207,7 @@ export function ComprobantesPage() {
     onError: (fallo) => {
       mostrar({
         tono: 'error',
-        titulo: 'El análisis no se completó',
+        titulo: 'El proceso no se completó',
         detalle:
           fallo instanceof ApiError && fallo.esLimiteDeTasa
             ? 'El análisis admite 5 ejecuciones por minuto. Espera un momento.'
@@ -146,24 +220,17 @@ export function ComprobantesPage() {
 
   if (!esPeriodoValido(periodo)) return <NoEncontradaPage />;
 
-  async function exportar(
-    descarga: Descarga,
-    formato: FormatoExport,
-    libroPedido?: Libro,
-    destino?: string,
-  ) {
+  async function exportar(descarga: Descarga, formato: FormatoExport) {
     setExportando(descarga);
     try {
-      await exportarLote(ruc, periodo, formato, libroPedido, destino);
+      await exportarLote(ruc, periodo, formato, libro);
     } catch (fallo) {
       mostrar({
         tono: 'error',
         titulo: 'No se pudo exportar',
         detalle:
           fallo instanceof ApiError && fallo.esNoEncontrado
-            ? libroPedido
-              ? `El periodo no tiene comprobantes de ${libroPedido} que exportar.`
-              : 'El periodo no tiene comprobantes que exportar.'
+            ? `El periodo no tiene comprobantes de ${libro} que exportar.`
             : fallo instanceof Error
               ? fallo.message
               : 'Error inesperado.',
@@ -185,7 +252,20 @@ export function ComprobantesPage() {
     setArchivos(pdfs);
   }
 
+  function cambiarLibro(nuevo: Libro) {
+    if (nuevo === libro) return;
+    setLibro(nuevo);
+    setPagina(1);
+    setResultado(null);
+    setExtraccion(null);
+  }
+
   const filas = comprobantes.data ?? [];
+  const conDetalle = filas.filter((fila) => fila.detalle_sunat.length > 0).length;
+  const conPdf = filas.filter((fila) => fila.pdf_sunat?.ruta).length;
+  const conCuenta = filas.filter((fila) => presentarCuenta(fila.analisis)?.cuenta).length;
+  const notaPagina = filas.length === POR_PAGINA ? 'De esta página' : undefined;
+  const ragSinCuentas = rag.data !== undefined && !rag.data.listo;
 
   const columnas: readonly Columna<ComprobanteResponse>[] = [
     {
@@ -217,10 +297,9 @@ export function ComprobantesPage() {
       render: (fila) => fila.documento_contraparte || '—',
     },
     {
-      clave: 'cuenta_rag',
-      cabecera: 'Cuenta RAG',
-      monoespaciada: true,
-      render: (fila) => fila.analisis?.rag?.cuenta_base ?? '—',
+      clave: 'cuenta',
+      cabecera: 'Cuenta',
+      render: (fila) => <CuentaCelda fila={fila} />,
     },
     {
       clave: 'glosa_rag',
@@ -240,10 +319,19 @@ export function ComprobantesPage() {
       numerica: true,
       render: (fila) => formatearMoneda(fila.total, fila.moneda),
     },
+    ...(libro === 'compras'
+      ? [
+          {
+            clave: 'detraccion',
+            cabecera: 'Detracción',
+            render: (fila: ComprobanteResponse) => <DetraccionCelda fila={fila} />,
+          },
+        ]
+      : []),
     {
-      clave: 'detraccion',
-      cabecera: 'Detracción',
-      render: (fila) => <DetraccionCelda fila={fila} />,
+      clave: 'respaldo',
+      cabecera: 'Respaldo SOL',
+      render: (fila) => <RespaldoCelda fila={fila} />,
     },
     {
       clave: 'estado',
@@ -274,31 +362,41 @@ export function ComprobantesPage() {
         }
         acciones={
           <>
-            <DescargarPdfsButton ruc={ruc} periodo={periodo} libro={libro} />
-            {libro === 'compras' ? (
-              <DescargarDetraccionesButton ruc={ruc} periodo={periodo} />
-            ) : null}
+            <ButtonLink a="/periodos" variante="fantasma">
+              Volver a periodos
+            </ButtonLink>
+            <div className={estilos.libros} role="group" aria-label="Libro">
+              {LIBROS.map((opcion) => (
+                <Button
+                  key={opcion}
+                  pequeno
+                  pastilla
+                  variante={opcion === libro ? 'primario' : 'fantasma'}
+                  aria-pressed={opcion === libro}
+                  disabled={analizar.isPending}
+                  onClick={() => cambiarLibro(opcion)}
+                >
+                  {ETIQUETA_LIBRO[opcion]}
+                </Button>
+              ))}
+            </div>
             <Button
-              onClick={() => void exportar('excel:compras', 'excel', 'compras')}
-              cargando={exportando === 'excel:compras'}
+              onClick={() => void exportar('excel', 'excel')}
+              cargando={exportando === 'excel'}
               disabled={exportando !== null}
+              title={`Excel con la plantilla Contasis del ${NOMBRE_REGISTRO[libro].toLowerCase()}`}
             >
-              Registro de compras
-            </Button>
-            <Button
-              onClick={() => void exportar('excel:ventas', 'excel', 'ventas')}
-              cargando={exportando === 'excel:ventas'}
-              disabled={exportando !== null}
-            >
-              Registro de ventas
+              Excel · {NOMBRE_REGISTRO[libro]}
             </Button>
             <Button
               onClick={() => void exportar('pdf', 'pdf')}
               cargando={exportando === 'pdf'}
               disabled={exportando !== null}
+              title={`PDF del listado de ${libro} con el análisis IA`}
             >
-              Exportar PDF
+              PDF del análisis
             </Button>
+            <DescargarPdfsButton ruc={ruc} periodo={periodo} libro={libro} />
           </>
         }
       />
@@ -306,28 +404,44 @@ export function ComprobantesPage() {
       <div className={layout.pilaAmplia}>
         <Panel
           titulo="Procesar el periodo"
-          descripcion="Consulta los comprobantes en SUNAT, completa la glosa y las cuentas con RAG y ejecuta el análisis con IA. La tabla se actualiza al terminar."
-          acciones={
-            <SelectField
-              etiqueta="Libro"
-              value={libro}
-              disabled={analizar.isPending}
-              onChange={(evento) => {
-                setLibro(evento.target.value as Libro);
-                setPagina(1);
-              }}
-              opciones={[
-                { valor: 'compras', texto: 'Compras (RCE)' },
-                { valor: 'ventas', texto: 'Ventas (RVIE)' },
-              ]}
-            />
-          }
+          descripcion="Una sola pasada por el portal SOL: extrae el detalle de ítems y descarga el PDF de cada comprobante pendiente, asigna la cuenta contable con RAG y termina con el análisis IA. La tabla se actualiza al terminar."
         >
+          <div className={layout.rejillaMetricas}>
+            <MetricTile
+              etiqueta="Con detalle SOL"
+              valor={`${conDetalle} / ${filas.length}`}
+              nota={notaPagina}
+            />
+            <MetricTile
+              etiqueta="Con PDF guardado"
+              valor={`${conPdf} / ${filas.length}`}
+              nota={notaPagina}
+            />
+            <MetricTile
+              etiqueta="Con cuenta contable"
+              valor={`${conCuenta} / ${filas.length}`}
+              nota={notaPagina}
+            />
+          </div>
+
+          {ragSinCuentas ? (
+            <WarningState
+              titulo="El índice de cuentas del RAG está vacío"
+              texto="Mientras siga vacío, la clasificación terminará sin cuenta contable para todos los comprobantes. Indexa el plan Contasis y vuelve a ejecutar «Completar con GLOSA»: los comprobantes ya analizados sin cuenta se repasan solos."
+              accion={
+                <code className={estilos.comando}>
+                  uv run python scripts/indexar_rag_contable.py
+                </code>
+              }
+            />
+          ) : null}
+
           <div className={layout.fila}>
             <Button
               variante="primario"
               onClick={() => {
                 setResultado(null);
+                setExtraccion(null);
                 setDialogoAnalisis(true);
               }}
               cargando={analizar.isPending}
@@ -335,9 +449,9 @@ export function ComprobantesPage() {
             >
               Completar con GLOSA
             </Button>
-            <ButtonLink a="/periodos" variante="fantasma">
-              Volver a periodos
-            </ButtonLink>
+            <span className={layout.textoSecundario}>
+              Sobre {libro}. Cambia de libro en la cabecera.
+            </span>
           </div>
 
           {jobActivo ? (
@@ -358,37 +472,73 @@ export function ComprobantesPage() {
           ) : null}
         </Panel>
 
-        {resultado ? (
+        {resultado || extraccion ? (
           <Panel
-            titulo="Resultado del análisis"
+            titulo="Resultado de la última corrida"
             descripcion="Un fallo en un comprobante concreto no detiene la corrida: queda marcado como error de análisis y se cuenta aparte."
           >
             <div className={layout.rejillaMetricas}>
-              <MetricTile
-                etiqueta="Encontrados"
-                valor={formatearEntero(resultado.total_encontradas)}
-                nota="Comprobantes pendientes de análisis"
-              />
-              <MetricTile
-                etiqueta="Procesados"
-                valor={formatearEntero(resultado.procesadas)}
-                nota="Clasificados correctamente"
-              />
-              <MetricTile
-                etiqueta="Errores"
-                valor={formatearEntero(resultado.errores)}
-                nota="Se pueden reintentar"
-              />
-              <MetricTile
-                etiqueta="Sin datos"
-                valor={formatearEntero(resultado.sin_datos)}
-                nota="La IA no encontró información suficiente"
-              />
+              {extraccion ? (
+                <>
+                  <MetricTile
+                    etiqueta="Detalle extraído"
+                    valor={`${formatearEntero(extraccion.con_detalle)} / ${formatearEntero(extraccion.procesados)}`}
+                    nota={
+                      extraccion.pendientes > 0
+                        ? `${formatearEntero(extraccion.pendientes)} quedaron para otra vuelta`
+                        : 'Comprobantes visitados en el portal SOL'
+                    }
+                  />
+                  <MetricTile
+                    etiqueta="PDF descargado"
+                    valor={`${formatearEntero(extraccion.descargados_pdf)} / ${formatearEntero(extraccion.procesados)}`}
+                    nota={
+                      extraccion.sin_pdf > 0
+                        ? `${formatearEntero(extraccion.sin_pdf)} sin PDF; se reintentan en la próxima corrida`
+                        : 'En la misma pasada que el detalle'
+                    }
+                  />
+                  <MetricTile
+                    etiqueta="Cuenta asignada (RAG)"
+                    valor={formatearEntero(extraccion.enriquecidos_rag)}
+                    nota={
+                      extraccion.errores_rag > 0
+                        ? `${formatearEntero(extraccion.errores_rag)} con error de RAG`
+                        : undefined
+                    }
+                  />
+                </>
+              ) : null}
+              {resultado ? (
+                <>
+                  <MetricTile
+                    etiqueta="Analizados con IA"
+                    valor={`${formatearEntero(resultado.procesadas)} / ${formatearEntero(resultado.total_encontradas)}`}
+                    nota="Pendientes o sin cuenta al iniciar"
+                  />
+                  <MetricTile
+                    etiqueta="Errores"
+                    valor={formatearEntero(resultado.errores)}
+                    nota="Se pueden reintentar"
+                  />
+                  <MetricTile
+                    etiqueta="Sin datos"
+                    valor={formatearEntero(resultado.sin_datos)}
+                    nota="La IA no encontró información suficiente"
+                  />
+                </>
+              ) : null}
             </div>
           </Panel>
         ) : null}
 
-        {libro === 'compras' ? <NpdPanel ruc={ruc} periodo={periodo} /> : null}
+        {libro === 'compras' ? (
+          <NpdPanel
+            ruc={ruc}
+            periodo={periodo}
+            acciones={<DescargarDetraccionesButton ruc={ruc} periodo={periodo} />}
+          />
+        ) : null}
 
         <Panel titulo="Listado">
           {comprobantes.isPending ? (
@@ -418,7 +568,7 @@ export function ComprobantesPage() {
           {comprobantes.data ? (
             <>
               <DataTable
-                leyenda={`Comprobantes de compras del periodo ${formatearPeriodo(periodo)}`}
+                leyenda={`Comprobantes de ${libro} del periodo ${formatearPeriodo(periodo)}`}
                 leyendaOculta
                 columnas={columnas}
                 filas={filas}
@@ -459,7 +609,7 @@ export function ComprobantesPage() {
       <Dialog
         abierto={dialogoAnalisis}
         titulo="Completar con GLOSA"
-        texto="Primero completa los datos con SUNAT y RAG. Al terminar, analiza con IA los comprobantes pendientes o con errores."
+        texto={`Sobre ${libro}. Entra al portal SOL una vez por comprobante pendiente: extrae el detalle de ítems y descarga su PDF; después asigna la cuenta con RAG y analiza con IA los que sigan pendientes o sin cuenta.`}
         onCerrar={() => setDialogoAnalisis(false)}
         acciones={
           <>
@@ -499,8 +649,8 @@ export function ComprobantesPage() {
 
           {analizar.isPending ? (
             <p className={layout.textoSecundario} role="status" aria-live="polite">
-              El análisis es sincrónico y puede tardar varios minutos según el número de
-              comprobantes. No cierres esta pestaña.
+              El proceso puede tardar varios minutos según el número de comprobantes. El avance
+              se ve en el panel «Procesar el periodo»; no cierres esta pestaña.
             </p>
           ) : null}
         </div>

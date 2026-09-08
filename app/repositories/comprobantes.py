@@ -325,6 +325,69 @@ async def guardar_detalle_sunat(
     )
 
 
+def _filtro_pendiente_sunat(empresa_id: str, periodo: str, libro: Libro) -> dict[str, Any]:
+    # Un comprobante está pendiente del portal si le falta el detalle de ítems
+    # **o** el PDF. Las dos cosas salen de la misma consulta en SOL, así que
+    # abrir el navegador dos veces (una por cada cosa) era pagar el mismo
+    # recorrido dos veces.
+    return {
+        "empresa_id": empresa_id,
+        "periodo": periodo,
+        "libro": libro.value,
+        "$or": [
+            {"detalle_sunat": {"$exists": False}},
+            {"pdf_sunat": {"$exists": False}},
+        ],
+    }
+
+
+async def listar_pendientes_sunat(
+    db: AsyncIOMotorDatabase,
+    empresa_id: str,
+    periodo: str,
+    libro: Libro,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    cursor = _col(db).find(_filtro_pendiente_sunat(empresa_id, periodo, libro))
+    return await cursor.to_list(length=limit or settings.SUNAT_MAX_COMPROBANTES)
+
+
+async def contar_pendientes_sunat(
+    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, libro: Libro
+) -> int:
+    """Cuántos siguen sin detalle o sin PDF, ignorando el tope del listado."""
+    return await _col(db).count_documents(_filtro_pendiente_sunat(empresa_id, periodo, libro))
+
+
+async def listar_analizados_sin_cuenta(
+    db: AsyncIOMotorDatabase,
+    empresa_id: str,
+    periodo: str,
+    libro: Libro | None = None,
+    limit: int = 1000,
+) -> list[dict[str, Any]]:
+    """Comprobantes ya analizados a los que el RAG no les dio cuenta contable.
+
+    Pasa cuando el índice de cuentas estaba vacío al clasificar: el análisis
+    termina «bien» pero sin cuenta, y como el estado ya es `analizado` nunca
+    volvía a entrar en la cola. Se devuelven aparte para que la siguiente
+    corrida los repase una vez indexado el plan.
+    """
+    filtro: dict[str, Any] = {
+        "empresa_id": empresa_id,
+        "periodo": periodo,
+        "estado_procesamiento": EstadoProcesamiento.ANALIZADO.value,
+        "$or": [
+            {"metadata_procesada.rag.cuenta_base": {"$in": [None, ""]}},
+            {"metadata_procesada.rag.cuenta_base": {"$exists": False}},
+        ],
+    }
+    if libro is not None:
+        filtro["libro"] = libro.value
+    cursor = _col(db).find(filtro).sort([("_id", -1)])
+    return await cursor.to_list(length=limit)
+
+
 def _filtro_sin_pdf(empresa_id: str, periodo: str, libro: Libro) -> dict[str, Any]:
     # Mismo razonamiento que `_filtro_sin_detalle`: la bandeja del portal
     # depende del libro, así que la descarga tampoco puede mezclarlos.

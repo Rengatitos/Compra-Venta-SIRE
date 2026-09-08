@@ -292,6 +292,36 @@ export interface CargaResponse {
   cuentas: number;
 }
 
+/* — RAG (app/schemas/rag.py) — */
+
+/** `GET /rag/estado`. Filas por índice del RAG contable. */
+export interface EstadoRag {
+  cuentas: number;
+  historicos: number;
+  reglas: number;
+  /** `true` en cuanto hay cuentas indexadas; sin ellas la cuenta sale vacía. */
+  listo: boolean;
+}
+
+/* — extracción (app/services/detalle_service.py) — */
+
+/**
+ * `resultado` del job `extraccion_detalles` cuando termina. La misma pasada
+ * por el portal SOL extrae el detalle de ítems, descarga el PDF y clasifica
+ * con RAG.
+ */
+export interface ResultadoExtraccion {
+  procesados: number;
+  con_detalle: number;
+  sin_detalle: number;
+  descargados_pdf: number;
+  sin_pdf: number;
+  /** Los que el tope de `SUNAT_MAX_COMPROBANTES` dejó para otra vuelta. */
+  pendientes: number;
+  enriquecidos_rag: number;
+  errores_rag: number;
+}
+
 /* — PDFs (app/api/v1/routes/pdfs.py) — */
 
 /** `resultado` del job `descarga_pdfs` cuando termina. */
