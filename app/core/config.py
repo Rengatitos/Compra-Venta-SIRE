@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     SUNAT_PDF_TIMEOUT_MS: int = 20000
 
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
-    OLLAMA_CHAT_MODEL: str = "gemma3:4b"
+    OLLAMA_CHAT_MODEL: str = "gemma4:e2b"
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
     RAG_TOP_K_RULES: int = 6
     RAG_TOP_K_ACCOUNTS: int = 8

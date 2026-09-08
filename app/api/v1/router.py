@@ -14,6 +14,7 @@ from app.api.v1.routes import (
     periodos,
     plan_cuentas,
     propuesta,
+    rag,
     referencias,
 )
 
@@ -28,6 +29,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(empresas.router, prefix="/empresas", tags=["Empresas"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
+api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 
 api_router.include_router(
     referencias.router,

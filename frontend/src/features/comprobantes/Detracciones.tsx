@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 
 import {
   consultarDetracciones,
@@ -153,7 +154,16 @@ export function DetraccionCelda({ fila }: { fila: ComprobanteResponse }) {
   return <>{fila.detraccion ? 'Sí' : 'No'}</>;
 }
 
-export function NpdPanel({ ruc, periodo }: { ruc: string; periodo: string }) {
+export function NpdPanel({
+  ruc,
+  periodo,
+  acciones,
+}: {
+  ruc: string;
+  periodo: string;
+  /** Acciones del panel, p. ej. el botón que consulta y descarga los NPD. */
+  acciones?: ReactNode;
+}) {
   const [seleccionado, setSeleccionado] = useState<NpdPeriodo | null>(null);
   const { mostrar } = useToast();
   const consulta = useQuery({
@@ -227,6 +237,7 @@ export function NpdPanel({ ruc, periodo }: { ruc: string; periodo: string }) {
     <Panel
       titulo="NPD del periodo"
       descripcion="Números de Pago de Detracciones registrados en el mes. Selecciona un número para ver su detalle."
+      acciones={acciones}
     >
       {consulta.isPending ? <p role="status">Cargando NPD…</p> : null}
       {consulta.isError ? (
