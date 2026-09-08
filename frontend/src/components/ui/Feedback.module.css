@@ -19,6 +19,12 @@
   border-color: var(--color-danger-border);
 }
 
+.estadoAviso {
+  background-color: var(--color-warning-bg);
+  border-style: solid;
+  border-color: var(--color-warning-border);
+}
+
 .tituloEstado {
   font-size: var(--text-body-md);
   font-weight: var(--weight-medium);

@@ -20,7 +20,7 @@ limiter = Limiter(key_func=get_remote_address)
     "",
     response_model=JobAceptado,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Extraer el detalle de los comprobantes desde SUNAT",
+    summary="Extraer el detalle y el PDF de los comprobantes desde SUNAT",
 )
 @limiter.limit("5/minute")
 async def iniciar_extraccion(

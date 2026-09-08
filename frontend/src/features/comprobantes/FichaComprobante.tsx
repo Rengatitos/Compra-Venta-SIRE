@@ -16,7 +16,11 @@ import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
 import type { AnalisisIA, ComprobanteResponse, LineaDetalle } from '@/types/api';
 
-import { presentarEstadoComprobante, presentarResultadoIA } from './estadoComprobante';
+import {
+  presentarCuenta,
+  presentarEstadoComprobante,
+  presentarResultadoIA,
+} from './estadoComprobante';
 import estilos from './FichaComprobante.module.css';
 import { TablaDetalleSunat } from './TablaDetalleSunat';
 
@@ -86,13 +90,24 @@ function textoCrudo(valor: unknown): string {
 
 function FichaAnalisis({ analisis }: { analisis: AnalisisIA }) {
   const resultado = presentarResultadoIA(analisis.resultado);
+  const cuenta = presentarCuenta(analisis);
 
   return (
     <dl className={layout.definiciones}>
       <Dato termino="Resultado">
         {resultado ? <Badge tono={resultado.tono}>{resultado.texto}</Badge> : '—'}
       </Dato>
-      <Dato termino="Cuenta contable">{analisis.cuenta_contable ?? '—'}</Dato>
+      <Dato termino="Cuenta contable">
+        {cuenta?.cuenta ?? (
+          <>
+            <Badge tono="aviso">Sin cuenta</Badge>
+            {cuenta?.motivo ? (
+              <span className={layout.textoSecundario}> Falta: {cuenta.motivo}.</span>
+            ) : null}
+          </>
+        )}
+      </Dato>
+      <Dato termino="Contrapartida">{cuenta?.contrapartida ?? '—'}</Dato>
       <Dato termino="Centro de costos">{analisis.centro_costos ?? '—'}</Dato>
       <Dato termino="Condición IGV">{analisis.condicion_igv ?? '—'}</Dato>
       <Dato termino="Confianza">{analisis.confianza ?? '—'}</Dato>
@@ -106,8 +121,6 @@ function FichaAnalisis({ analisis }: { analisis: AnalisisIA }) {
         {analisis.rag?.codigo_comprobante ?? '—'}
       </Dato>
       <Dato termino="Código identidad RAG">{analisis.rag?.codigo_identidad ?? '—'}</Dato>
-      <Dato termino="Cuenta base RAG">{analisis.rag?.cuenta_base ?? '—'}</Dato>
-      <Dato termino="Cuenta total RAG">{analisis.rag?.cuenta_total ?? '—'}</Dato>
       <Dato termino="Glosa para Excel">{analisis.rag?.glosa ?? '—'}</Dato>
     </dl>
   );
@@ -208,6 +221,11 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
           <Dato termino="Vencimiento">{formatearFecha(datos.fecha_vencimiento)}</Dato>
           <Dato termino="Libro">{datos.libro}</Dato>
           <Dato termino="Origen">{datos.origen}</Dato>
+          <Dato termino="PDF de SUNAT">
+            {datos.pdf_sunat?.ruta
+              ? `Guardado · ${Math.max(1, Math.round(datos.pdf_sunat.bytes / 1024))} KB`
+              : 'Sin descargar'}
+          </Dato>
         </dl>
       </Seccion>
 
@@ -258,7 +276,7 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
         ) : (
           <EmptyState
             titulo="Este comprobante aún no se ha analizado"
-            texto="Cierra la ficha y lanza «Analizar con IA» para el periodo."
+            texto="Cierra la ficha y lanza «Completar con GLOSA» para el periodo."
           />
         )}
       </Seccion>

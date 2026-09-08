@@ -23,25 +23,39 @@ async def extraer(
     reportar: Reportador,
 ) -> dict[str, Any]:
     empresa_id = str(empresa["_id"])
-    pendientes = await repo_comprobantes.listar_sin_detalle(db, empresa_id, periodo, libro)
+    ruc = empresa["ruc"]
+
+    # Una sola visita al portal por comprobante: se lleva el detalle de ítems
+    # **y** el PDF. Entra en la lista todo lo que le falte cualquiera de las
+    # dos cosas; lo que ya tenga se respeta y no se vuelve a escribir.
+    pendientes = await repo_comprobantes.listar_pendientes_sunat(db, empresa_id, periodo, libro)
 
     if not pendientes:
-        await reportar(0, 0, "No hay comprobantes pendientes de detalle")
-        return {"procesados": 0, "con_detalle": 0}
+        await reportar(0, 0, "No hay comprobantes pendientes de detalle ni de PDF")
+        return {
+            "procesados": 0,
+            "con_detalle": 0,
+            "sin_detalle": 0,
+            "descargados_pdf": 0,
+            "sin_pdf": 0,
+            "pendientes": 0,
+            "enriquecidos_rag": 0,
+            "errores_rag": 0,
+        }
 
     total = len(pendientes)
 
     # El listado corta en `SUNAT_MAX_COMPROBANTES`. Decirlo aquí evita que un
     # periodo grande parezca terminado cuando sólo se hizo la primera tanda.
     faltan = (
-        await repo_comprobantes.contar_sin_detalle(db, empresa_id, periodo, libro) - total
+        await repo_comprobantes.contar_pendientes_sunat(db, empresa_id, periodo, libro) - total
     )
     if faltan > 0:
         await reportar(
             0, total, f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta"
         )
     else:
-        await reportar(0, total, f"Extrayendo detalle de {total} comprobantes")
+        await reportar(0, total, f"Extrayendo detalle y PDF de {total} comprobantes")
 
     # El scraping corre en un hilo aparte (Playwright es síncrono) y avisa desde
     # ahí. Motor está atado al loop, así que el reporte tiene que volver a él;
@@ -67,9 +81,18 @@ async def extraer(
     # lista, lo ya recorrido queda en la base en vez de perderse con el resto.
     guardados: set[str] = set()
     por_serie = {doc.get("serie_numero", ""): doc for doc in pendientes}
+    # Los que entraron sólo por el PDF ya tienen detalle: se cuenta como
+    # hecho y no se reescribe.
+    con_detalle_previo = {
+        serie for serie, doc in por_serie.items() if doc.get("detalle_sunat") is not None
+    }
+    con_pdf_previo = {
+        serie for serie, doc in por_serie.items() if doc.get("pdf_sunat") is not None
+    }
+    pdfs_guardados: dict[str, int] = {}
 
     def guardar(serie_numero: str, detalle: list) -> None:
-        if not detalle:
+        if not detalle or serie_numero in con_detalle_previo:
             return
         try:
             futuro = asyncio.run_coroutine_threadsafe(
@@ -82,6 +105,47 @@ async def extraer(
             logger.debug("No se pudo guardar el detalle: el loop está cerrado")
             return
         guardados.add(serie_numero)
+        futuro.add_done_callback(_registrar_fallo)
+
+    def guardar_pdf(serie_numero: str, contenido: bytes) -> None:
+        doc = por_serie.get(serie_numero)
+        if doc is None or not contenido or serie_numero in con_pdf_previo:
+            return
+
+        # Mismo reparto que `pdf_service`: el archivo se escribe aquí, en el
+        # hilo del scraper (I/O de disco, no toca el loop); a Mongo sólo va el
+        # puntero, y ese sí vuelve al loop.
+        try:
+            destino = almacen_pdf.guardar(
+                ruc,
+                libro,
+                periodo,
+                doc.get("tipo_cp"),
+                doc.get("serie", ""),
+                doc.get("numero", ""),
+                contenido,
+            )
+        except (OSError, ValueError):
+            logger.exception("No se pudo guardar el PDF serie_numero=%s", serie_numero)
+            return
+
+        try:
+            futuro = asyncio.run_coroutine_threadsafe(
+                repo_comprobantes.guardar_pdf_sunat(
+                    db,
+                    empresa_id,
+                    periodo,
+                    libro,
+                    serie_numero,
+                    almacen_pdf.relativa(destino),
+                    len(contenido),
+                ),
+                loop,
+            )
+        except RuntimeError:
+            logger.debug("No se pudo guardar el puntero del PDF: el loop está cerrado")
+            return
+        pdfs_guardados[serie_numero] = len(contenido)
         futuro.add_done_callback(_registrar_fallo)
 
     def guardar_xml(serie_numero: str, contenido_xml: bytes) -> None:
@@ -128,6 +192,8 @@ async def extraer(
         libro=libro,
         progreso=avisar,
         al_extraer=guardar,
+        descargar_pdf=True,
+        al_descargar=guardar_pdf,
         al_descargar_xml=guardar_xml,
     )
 
@@ -135,12 +201,14 @@ async def extraer(
     # se llegó a agendar.
     con_detalle = len(guardados)
     for serie_numero, detalle in resultados.items():
-        if not detalle or serie_numero in guardados:
+        if not detalle or serie_numero in guardados or serie_numero in con_detalle_previo:
             continue
         await repo_comprobantes.guardar_detalle_sunat(
             db, empresa_id, periodo, libro, serie_numero, detalle
         )
         con_detalle += 1
+    con_detalle += len(con_detalle_previo)
+    con_pdf = len(pdfs_guardados) + len(con_pdf_previo)
 
     # El detalle extraído es la glosa de entrada del RAG. Cada comprobante se
     # aísla: una caída temporal de Render no borra el scraping ni impide que los
@@ -152,7 +220,10 @@ async def extraer(
     async def enriquecer(documento: dict[str, Any]) -> None:
         nonlocal enriquecidos, errores_rag
         serie_numero = documento.get("serie_numero", "")
-        detalle = resultados.get(serie_numero) or []
+        # Los que ya tenían detalle (entraron por el PDF) también se repasan:
+        # si el índice de cuentas estaba vacío la primera vez, es su
+        # oportunidad de recibir cuenta.
+        detalle = resultados.get(serie_numero) or documento.get("detalle_sunat") or []
         if not detalle:
             return
         try:
@@ -166,28 +237,37 @@ async def extraer(
             errores_rag += 1
             logger.exception("Error enriqueciendo con RAG serie_numero=%s", serie_numero)
 
-    if resultados:
+    if resultados or con_detalle_previo:
         await reportar(total, total, "Clasificando códigos contables con RAG")
         await asyncio.gather(*(enriquecer(documento) for documento in pendientes))
 
     sin_detalle = total - con_detalle
+    sin_pdf = total - con_pdf
 
-    await reportar(total, total, "Extracción y clasificación RAG finalizadas")
+    await reportar(
+        total,
+        total,
+        f"Listo: {con_detalle} de {total} con detalle, {con_pdf} de {total} con PDF",
+    )
     logger.info(
         "Detalle extraído ruc=%s periodo=%s libro=%s "
-        "procesados=%s con_detalle=%s sin_detalle=%s faltan=%s",
+        "procesados=%s con_detalle=%s sin_detalle=%s pdfs=%s sin_pdf=%s faltan=%s",
         empresa.get("ruc"),
         periodo,
         libro.value,
         total,
         con_detalle,
         sin_detalle,
+        len(pdfs_guardados),
+        sin_pdf,
         max(faltan, 0),
     )
     return {
         "procesados": total,
         "con_detalle": con_detalle,
         "sin_detalle": sin_detalle,
+        "descargados_pdf": len(pdfs_guardados),
+        "sin_pdf": sin_pdf,
         "pendientes": max(faltan, 0),
         "enriquecidos_rag": enriquecidos,
         "errores_rag": errores_rag,

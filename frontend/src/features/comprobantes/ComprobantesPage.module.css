@@ -1,0 +1,42 @@
+/* Selector de libro en la cabecera: un grupo con la pinta de un control
+   segmentado, para que se lea como «una elección» y no como dos acciones. */
+.libros {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+}
+
+/* Celda de cuenta: la cuenta base arriba y la contrapartida debajo, en
+   pequeño. La base es lo que el contador busca; la contrapartida es contexto. */
+.cuenta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.contrapartida {
+  font-size: var(--text-label-md);
+  color: var(--color-text-secondary);
+}
+
+.respaldo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* Bloque de comando dentro del aviso: se copia tal cual. */
+.comando {
+  display: inline-block;
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  background-color: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}

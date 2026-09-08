@@ -87,6 +87,16 @@ async def procesar_lote(
         db, empresa_id, periodo, libro
     )
 
+    # Los ya analizados pero sin cuenta contable vuelven a la cola. Es el
+    # rastro que deja clasificar con el índice de cuentas vacío: el estado
+    # quedaba en `analizado` y la cuenta en blanco para siempre, aunque el
+    # plan se indexara después.
+    vistos = {documento["_id"] for documento in pendientes}
+    sin_cuenta = await repo_comprobantes.listar_analizados_sin_cuenta(
+        db, empresa_id, periodo, libro
+    )
+    pendientes.extend(doc for doc in sin_cuenta if doc["_id"] not in vistos)
+
     resultados: list[str] = []
     for documento in pendientes:
         documento_id = documento["_id"]

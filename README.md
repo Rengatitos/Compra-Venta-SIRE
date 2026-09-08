@@ -74,7 +74,7 @@ Documentación interactiva en `http://127.0.0.1:9007/docs`.
 | `URL_SIRE_PROPUESTA_VENTAS` | Plantilla de URL del RVIE (ventas), mismo placeholder | Sí (para ventas) |
 | `SIRE_PER_PAGE` / `SIRE_MAX_PAGINAS` | Tamaño de página al descargar la propuesta y tope de páginas (default `100` / `50`) | No |
 | `OLLAMA_BASE_URL` | URL de la instancia local de Ollama | No |
-| `OLLAMA_CHAT_MODEL` / `OLLAMA_EMBED_MODEL` | Modelos locales de chat y embeddings | No |
+| `OLLAMA_CHAT_MODEL` / `OLLAMA_EMBED_MODEL` | Modelos locales de chat y embeddings (default `gemma4:e2b` / `nomic-embed-text`) | No |
 | `CORS_ORIGINS` | Orígenes permitidos, separados por comas | No |
 | `SUNAT_DATA_DIR` | Raíz de los PDFs descargados del portal SOL (default `data`, relativo al repo) | No |
 | `SUNAT_MAX_PDFS` | Tope de PDFs por trabajo de descarga (default `100`) | No |
@@ -94,11 +94,30 @@ uv sync --dev
 uv run playwright install chromium
 ```
 
+La clasificación con IA corre en local, así que hace falta [Ollama](https://ollama.com/download)
+con los dos modelos que declara `.env`:
+
+```bash
+ollama pull gemma4:e2b && ollama pull nomic-embed-text
+```
+
 ```bash
 uv run uvicorn app.main:app --host 0.0.0.0 --port 9007 --reload
 ```
 
 Playwright solo hace falta para el endpoint de extracción de detalle.
+
+El RAG contable elige la cuenta entre lo que haya en `rag_account_plan_index` y
+`rag_historical_index`. Esas colecciones no se crean solas: sin ellas la clasificación
+termina «bien» pero con la cuenta en blanco, y la pantalla de comprobantes lo avisa. Se
+indexan una vez (Ollama tiene que estar arriba, usa `nomic-embed-text`):
+
+```bash
+uv run python scripts/indexar_rag_contable.py
+```
+
+Los comprobantes que quedaron analizados sin cuenta se repasan solos en la siguiente
+corrida de «Completar con GLOSA». El estado de los índices se consulta en `GET /api/v1/rag/estado`.
 
 ## Frontend
 
@@ -127,8 +146,11 @@ uv run ruff check app tests
 
 ## PDFs de los comprobantes
 
-El trabajo de descarga guarda el PDF de cada comprobante bajo `SUNAT_DATA_DIR`, con la
-estructura que espera el auditor:
+La extracción de detalle (`POST …/libros/{libro}/detalle`, el botón «Completar con GLOSA»)
+descarga el PDF de cada comprobante en la misma visita al portal SOL en la que lee sus ítems,
+y entra en la lista todo comprobante al que le falte cualquiera de las dos cosas. El trabajo
+de sólo PDFs de abajo sigue disponible para repasar los que se quedaron sin respaldo.
+Ambos guardan el PDF bajo `SUNAT_DATA_DIR`, con la estructura que espera el auditor:
 
 ```
 data/{ruc}/{libro}/{año}/{mes}/{facturas|boletas|notas_credito|notas_debito}/{serie}-{numero}.pdf

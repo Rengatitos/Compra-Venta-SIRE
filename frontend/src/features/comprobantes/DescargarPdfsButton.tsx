@@ -1,13 +1,19 @@
 import { useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
 
-import { obtenerJob } from '@/api/jobs';
-import { descargarZipPdfs, iniciarDescargaPdfs } from '@/api/pdfs';
+import { descargarZipPdfs } from '@/api/pdfs';
 import { Button } from '@/components/ui/Button';
-import { useJobs } from '@/features/jobs/useJobs';
 import { useToast } from '@/hooks/useToast';
+import { ApiError } from '@/lib/http';
 import type { Libro } from '@/types/domain';
 
+/**
+ * Baja el ZIP con los PDFs que ya están guardados en el servidor.
+ *
+ * Ya no entra al portal SOL: los PDFs se descargan dentro de «Completar con
+ * GLOSA», en la misma pasada que extrae el detalle de cada comprobante. Este
+ * botón sólo empaqueta lo que esa pasada dejó en disco, junto con el
+ * `manifiesto.csv` que lo cruza con el registro.
+ */
 export function DescargarPdfsButton({
   ruc,
   periodo,
@@ -17,69 +23,30 @@ export function DescargarPdfsButton({
   periodo: string;
   libro: Libro;
 }) {
-  const { seguir } = useJobs();
   const { mostrar } = useToast();
-  const [avance, setAvance] = useState('');
   const descarga = useMutation({
-    mutationFn: async () => {
-      setAvance('Consultando SUNAT…');
-      let aceptado = await iniciarDescargaPdfs(ruc, periodo, libro);
-      seguir(aceptado.job_id);
-      for (;;) {
-        const job = await obtenerJob(aceptado.job_id);
-        setAvance(job.progreso.mensaje || 'Esperando turno en SUNAT…');
-        if (job.estado === 'fallido')
-          throw new Error(job.error || 'SUNAT no pudo completar la descarga.');
-        if (job.estado === 'completado') {
-          if (
-            Number(job.resultado?.pendientes ?? 0) > 0 &&
-            Number(job.resultado?.sin_pdf ?? 0) === 0 &&
-            Number(job.resultado?.descargados ?? 0) > 0
-          ) {
-            await new Promise((resolve) => window.setTimeout(resolve, 12000));
-            aceptado = await iniciarDescargaPdfs(ruc, periodo, libro);
-            seguir(aceptado.job_id);
-            continue;
-          }
-          const faltantes =
-            Number(job.resultado?.sin_pdf ?? 0) + Number(job.resultado?.pendientes ?? 0);
-          setAvance('Preparando ZIP…');
-          await descargarZipPdfs(ruc, periodo, libro);
-          mostrar({
-            tono: faltantes ? 'neutro' : 'exito',
-            titulo: faltantes
-              ? 'ZIP descargado con PDFs pendientes'
-              : 'ZIP de SUNAT descargado',
-            detalle: faltantes
-              ? `${faltantes} comprobantes siguen sin PDF. Puedes volver a intentar la descarga. Consulta manifiesto.csv dentro del ZIP.`
-              : `PDFs de ${libro} del periodo ${periodo}.`,
-          });
-          return;
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 3000));
-      }
-    },
-    onError: (error) =>
+    mutationFn: () => descargarZipPdfs(ruc, periodo, libro),
+    onError: (fallo) => {
+      const vacio = fallo instanceof ApiError && fallo.esNoEncontrado;
       mostrar({
-        tono: 'error',
-        titulo: 'No se pudo descargar el ZIP de SUNAT',
-        detalle: error instanceof Error ? error.message : 'Error inesperado.',
-      }),
+        tono: vacio ? 'neutro' : 'error',
+        titulo: vacio ? 'Todavía no hay PDFs guardados' : 'No se pudo descargar el ZIP',
+        detalle: vacio
+          ? `Ejecuta «Completar con GLOSA» sobre ${libro}: descarga el PDF de cada comprobante junto con su detalle.`
+          : fallo instanceof Error
+            ? fallo.message
+            : 'Error inesperado.',
+      });
+    },
   });
 
   return (
-    <div>
-      <Button
-        variante="azul"
-        cargando={descarga.isPending}
-        onClick={() => descarga.mutate()}
-        title={`Descargar todos los PDFs de SUNAT de ${libro} del periodo ${periodo}`}
-      >
-        {descarga.isPending
-          ? 'Descargando PDFs de SUNAT…'
-          : 'Descargar comprobantes SUNAT (ZIP)'}
-      </Button>
-      {descarga.isPending ? <p role="status">{avance} Mantén esta página abierta.</p> : null}
-    </div>
+    <Button
+      cargando={descarga.isPending}
+      onClick={() => descarga.mutate()}
+      title={`ZIP con los PDFs de SUNAT de ${libro} del periodo ${periodo} y su manifiesto`}
+    >
+      ZIP de PDFs SUNAT
+    </Button>
   );
 }

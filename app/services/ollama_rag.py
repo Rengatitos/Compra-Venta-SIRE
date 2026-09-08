@@ -130,6 +130,27 @@ async def recuperar(db, coleccion: str, consulta: str, k: int, filtro=None) -> l
     return salida
 
 
+async def estado_indices(db) -> dict:
+    """Cuántas filas tiene cada índice del RAG.
+
+    El clasificador sólo puede devolver cuentas que existan en
+    `rag_account_plan_index`; con la colección vacía toda cuenta sale en
+    blanco sin que nada lo explique. Esto es lo que permite decirlo en la
+    pantalla en vez de mostrar un guion.
+    """
+    cuentas, historicos, reglas = await asyncio.gather(
+        db[NOMBRE_COL_RAG_ACCOUNTS].estimated_document_count(),
+        db[NOMBRE_COL_RAG_HISTORICAL].estimated_document_count(),
+        db[NOMBRE_COL_RAG_RULES].estimated_document_count(),
+    )
+    return {
+        "cuentas": int(cuentas),
+        "historicos": int(historicos),
+        "reglas": int(reglas),
+        "listo": int(cuentas) > 0,
+    }
+
+
 def normalizar_comprobante(documento: dict, empresa: dict) -> dict:
     detalle = documento.get("detalle_sunat") or []
     return {
