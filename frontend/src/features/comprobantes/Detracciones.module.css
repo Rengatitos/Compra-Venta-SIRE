@@ -1,0 +1,21 @@
+.enlace {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.campos {
+  overflow-wrap: anywhere;
+}
+
+.campos dt {
+  font-weight: 600;
+}
+
+.campos dd {
+  margin: 0 0 0.75rem;
+}

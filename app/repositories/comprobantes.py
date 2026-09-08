@@ -39,6 +39,18 @@ _CAMPOS_MONTO = (
 )
 
 
+async def listar_todos_compras(db, empresa_id, periodo):
+    return await _col(db).find({"empresa_id": empresa_id, "periodo": periodo,
+                               "libro": Libro.COMPRAS.value}).to_list(length=None)
+
+
+async def guardar_detracciones(db, empresa_id, documento_id, registros, consultado_en):
+    await _col(db).update_one(
+        {"_id": documento_id, "empresa_id": empresa_id},
+        {"$set": {"detracciones": registros, "detracciones_consultado_en": consultado_en}},
+    )
+
+
 def _col(db: AsyncIOMotorDatabase):
     return db[NOMBRE_COL_COMPROBANTES]
 

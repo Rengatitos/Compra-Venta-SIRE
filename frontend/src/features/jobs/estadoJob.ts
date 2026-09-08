@@ -26,6 +26,7 @@ export function presentarEstadoJob(estado: EstadoJob): Presentacion {
 const TIPOS: Record<TipoJob, string> = {
   extraccion_detalles: 'Detalle SUNAT y códigos RAG',
   descarga_pdfs: 'Descarga de PDFs',
+  detracciones: 'Consulta de detracciones',
 };
 
 export function presentarTipoJob(tipo: string): string {

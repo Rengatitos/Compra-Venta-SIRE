@@ -16,6 +16,7 @@ import { CampoAccion, SelectField } from '@/components/ui/Field';
 import type { Opcion } from '@/components/ui/Field';
 import { Panel } from '@/components/ui/Panel';
 import { useRuc } from '@/features/auth/useAuth';
+import { useJobs } from '@/features/jobs/useJobs';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useToast } from '@/hooks/useToast';
 import {
@@ -72,6 +73,7 @@ function primerPeriodoLibre(registrados: ReadonlySet<string>): string {
 }
 
 export function PeriodosPage() {
+  const { seguir } = useJobs();
   useDocumentTitle('Periodos');
 
   const ruc = useRuc();
@@ -159,6 +161,7 @@ export function PeriodosPage() {
       for (const libro of LIBROS) {
         try {
           const respuesta = await sincronizarPropuesta(ruc, periodo, libro);
+          if (respuesta.datos?.detracciones_job_id) seguir(respuesta.datos.detracciones_job_id);
           resultados.push({ libro, datos: respuesta.datos ?? undefined });
         } catch (fallo) {
           resultados.push({

@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -8,7 +8,7 @@ from app.api.v1.deps import empresa_actual, libro_valido, periodo_valido
 from app.db.database import get_db
 from app.domain.comprobante import Libro
 from app.schemas.generic import StatusResponse
-from app.services import propuesta_service
+from app.services import detracciones_service, propuesta_service
 from app.services.sunat.auth import ErrorSunat
 
 router = APIRouter()
@@ -24,6 +24,7 @@ limiter = Limiter(key_func=get_remote_address)
 @limiter.limit("10/minute")
 async def sincronizar_propuesta(
     request: Request,
+    background_tasks: BackgroundTasks,
     periodo: str = Depends(periodo_valido),
     libro: Libro = Depends(libro_valido),
     empresa: dict = Depends(empresa_actual),
@@ -41,6 +42,10 @@ async def sincronizar_propuesta(
     except ErrorSunat as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    if libro == Libro.COMPRAS and resultado.get("nuevos", 0) + resultado.get("actualizados", 0):
+        job = await detracciones_service.encolar(db, empresa, periodo, background_tasks)
+        resultado["detracciones_job_id"] = job.job_id
+
     return {
         "estado": "exito",
         "mensaje": resultado.pop("mensaje"),
@@ -56,6 +61,7 @@ async def sincronizar_propuesta(
 @limiter.limit("10/minute")
 async def importar_archivo_propuesta(
     request: Request,
+    background_tasks: BackgroundTasks,
     archivo: UploadFile = File(...),
     periodo: str = Depends(periodo_valido),
     empresa: dict = Depends(empresa_actual),
@@ -69,4 +75,7 @@ async def importar_archivo_propuesta(
         )
     except ErrorSunat as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if resultado.get("filas_archivo", 0):
+        job = await detracciones_service.encolar(db, empresa, periodo, background_tasks)
+        resultado["detracciones_job_id"] = job.job_id
     return {"estado": "exito", "mensaje": resultado.pop("mensaje"), "datos": resultado}

@@ -45,6 +45,7 @@ function comprobante(parcial: Partial<ComprobanteResponse> = {}): ComprobanteRes
     total: 118,
     estado_procesamiento: 'sire_recibido',
     analisis: null,
+    detraccion: false,
     detalle_sunat: [],
     pdf_sunat: null,
     documentos_modificados: [],
