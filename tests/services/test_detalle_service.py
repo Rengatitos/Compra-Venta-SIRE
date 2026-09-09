@@ -78,6 +78,7 @@ def _correr(
         al_extraer=None,
         al_descargar=None,
         al_descargar_xml=None,
+        al_extraer_leyenda=None,
         **resto,
     ):
         libros_pedidos.append(libro)

@@ -44,10 +44,26 @@ class Settings(BaseSettings):
     # Techo de espera de cada paso de Playwright. Subirlo sólo si SUNAT va
     # lento: multiplica el coste de cada comprobante que falla.
     SUNAT_SCRAPER_TIMEOUT_MS: int = 15000
-    # Techo aparte para decidir que SUNAT no tiene el comprobante. Cuando sí
-    # lo tiene, el enlace aparece en menos de un segundo, así que esperar el
-    # timeout general sólo alargaba los que faltan.
-    SUNAT_TIMEOUT_BUSQUEDA_MS: int = 8000
+    # Techo para esperar la respuesta de la búsqueda. Ya no significa "cuánto
+    # esperar antes de darlo por inexistente": los que el portal no tiene se
+    # descartan al instante por su propio aviso (`SUNAT_TEXTOS_SIN_RESULTADOS`),
+    # así que este plazo sólo lo agotan los emisores lentos. Con los 8000 de
+    # antes, los bancos —BBVA y BCP tardan sobre 9 s— se contaban como ausentes
+    # y se quedaban sin detalle ni PDF.
+    SUNAT_TIMEOUT_BUSQUEDA_MS: int = 25000
+    # Avisos con los que el portal dice que no hay resultados. Se comparan como
+    # subcadena y sin distinguir mayúsculas contra el texto del iframe.
+    #
+    # Conviene quedarse corto: un aviso que no casa sólo cuesta esperar el techo
+    # de arriba, mientras que uno demasiado amplio da por ausente un comprobante
+    # que sí está, que es exactamente el fallo que esto viene a corregir. Por eso
+    # tampoco se documenta en `.env.example`: al ser un tipo compuesto,
+    # pydantic-settings lo lee como JSON y un valor a mano tumbaría el arranque.
+    SUNAT_TEXTOS_SIN_RESULTADOS: tuple[str, ...] = (
+        "no se encontraron",
+        "no existen datos",
+        "no hay información",
+    )
     # Comprobantes que se piden como máximo en una extracción. Antes era un
     # `limit=100` escondido en el repositorio que recortaba el trabajo sin
     # decir nada.

@@ -110,7 +110,7 @@ class TestDespachoPorSerie:
 
         def falso_consultar_ose(*_a, **_k):
             ose_llamado.append(True)
-            return [{"cantidad": "2.00"}], b"%PDF"
+            return [{"cantidad": "2.00"}], b"%PDF", ["TARJETA DE DEBITO"]
 
         class ContextoFalso:
             def __enter__(self):
@@ -166,6 +166,7 @@ class TestDespachoPorSerie:
 
         xml_descargados = []
         detalles_extraidos = []
+        leyendas = {}
 
         res = scraping_sunat._scrape_detalles(
             "20608997106",
@@ -174,6 +175,7 @@ class TestDespachoPorSerie:
             comprobantes,
             al_extraer=lambda s, d: detalles_extraidos.append(s),
             al_descargar_xml=lambda s, x: xml_descargados.append(s),
+            al_extraer_leyenda=leyendas.setdefault,
         )
 
         assert len(sol_llamado) == 1
@@ -182,3 +184,5 @@ class TestDespachoPorSerie:
         assert "F001-43318" in res
         assert xml_descargados == ["E001-1929"]
         assert detalles_extraidos == ["E001-1929", "F001-43318"]
+        # La leyenda sólo existe en el popup: SEE-SOL la trae dentro del XML.
+        assert leyendas == {"F001-43318": ["TARJETA DE DEBITO"]}
