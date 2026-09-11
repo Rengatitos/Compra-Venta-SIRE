@@ -9,7 +9,7 @@ API en FastAPI (Python 3.12) que automatiza la gestión contable del Registro de
 1. Registrar empresas (credenciales de un RUC ante SUNAT Operaciones en Línea).
 2. Crear periodos fiscales y sincronizar la propuesta de comprobantes de compra desde la API oficial SIRE de SUNAT.
 3. Opcionalmente, hacer scraping del detalle de ítems de cada comprobante directamente del portal de SUNAT, como un job asíncrono — la API SIRE no expone ese detalle línea por línea.
-4. Clasificar contablemente cada comprobante con inteligencia artificial, usando como contexto normativa contable general y, opcionalmente, referencias subidas por la propia empresa.
+4. Extraer la glosa de SUNAT y permitir su edición manual.
 5. Consultar, editar y exportar en Excel o PDF los comprobantes ya procesados.
 6. Exponer analíticas agregadas para uno o varios RUCs a la vez, pensado para ser consumido por un sistema externo de contabilidad.
 
@@ -17,7 +17,7 @@ El repositorio se llama Sire; el paquete Python es `app`.
 
 ## Stack tecnológico
 
-FastAPI servido con Uvicorn (un solo worker en producción, para ahorrar RAM). MongoDB vía el driver asíncrono Motor, en una única base lógica. Autenticación con un JWT propio (el token identifica una empresa, no una persona). Las contraseñas SOL se cifran de forma reversible con Fernet, no se hashean, porque se necesitan en texto plano para autenticar contra SUNAT. Límites de tasa con `slowapi` en los endpoints más sensibles. Clasificación con Gemini usando búsqueda de contexto por similitud en memoria, sin una base de datos vectorial dedicada. Scraping con Playwright, limitado a la extracción de detalle de ítems de comprobantes ya sincronizados, ejecutado como job asíncrono. Exportación a Excel y PDF con `openpyxl` y `reportlab`.
+FastAPI servido con Uvicorn (un solo worker en producción, para ahorrar RAM). MongoDB vía el driver asíncrono Motor, en una única base lógica. Autenticación con un JWT propio (el token identifica una empresa, no una persona). Las contraseñas SOL se cifran de forma reversible con Fernet, no se hashean, porque se necesitan en texto plano para autenticar contra SUNAT. Límites de tasa con `slowapi` en los endpoints más sensibles. Scraping con Playwright, limitado a la extracción de detalle de ítems de comprobantes ya sincronizados, ejecutado como job asíncrono. Exportación a Excel y PDF con `openpyxl` y `reportlab`.
 
 ## Inicio
 
@@ -38,12 +38,10 @@ FastAPI servido con Uvicorn (un solo worker en producción, para ahorrar RAM). M
 - [Maestro de cuentas](endpoints/plan-cuentas.md)
 - [Propuesta SIRE](endpoints/propuesta.md)
 - [Comprobantes](endpoints/comprobantes.md)
-- [Análisis IA](endpoints/analisis.md)
 - [Detalle SUNAT (asíncrono)](endpoints/detalle.md)
 - [PDFs de comprobantes (asíncrono)](endpoints/pdfs.md)
 - [Auditoría](endpoints/auditoria.md)
 - [Jobs](endpoints/jobs.md)
-- [Referencias](endpoints/referencias.md)
 - [Analytics](endpoints/analytics.md)
 
 ## Flujo de negocio
@@ -54,7 +52,6 @@ Recorrido end-to-end, en orden:
 2. [Crear periodo](flujo/02-periodos.md)
 3. [Sincronización de la propuesta SIRE](flujo/03-sincronizacion-propuesta.md)
 4. [Extracción de detalle (scraping, asíncrono)](flujo/04-extraccion-detalle.md)
-5. [Análisis con IA](flujo/05-analisis-ia.md)
 6. [Consulta y exportación de comprobantes](flujo/06-consulta-exportacion.md)
 7. [Analytics](flujo/07-analytics.md)
 
@@ -66,8 +63,6 @@ Todas las colecciones viven en una sola base lógica de MongoDB. No hay un ODM: 
 - [periodos](modelo-datos/periodos.md)
 - [comprobantes](modelo-datos/comprobantes.md)
 - [jobs](modelo-datos/jobs.md)
-- [vector_global](modelo-datos/vector-global.md)
-- [vector_usuarios](modelo-datos/vector-usuarios.md)
 - [Índices creados en el arranque](modelo-datos/indices.md)
 
 ## Fuera de alcance hoy

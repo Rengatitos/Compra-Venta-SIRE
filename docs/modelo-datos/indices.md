@@ -8,7 +8,5 @@ Todos estos índices se crean durante el [ciclo de vida](../arquitectura/ciclo-d
 | `periodos` | único sobre `(empresa_id, periodo)` | [periodos.crear_indices](../../app/repositories/periodos.py:15) |
 | `comprobantes` | `(empresa_id, periodo)`; único (`uniq_comprobante`) sobre `(empresa_id, periodo, libro, origen, tipo_cp, serie, numero)` | [comprobantes.crear_indices](../../app/repositories/comprobantes.py:35) |
 | `jobs` | único sobre `job_id`; `(ruc, periodo)` | [jobs.crear_indices](../../app/repositories/jobs.py:15) |
-| `vector_global` | `metadata.documento` | [vectores.crear_indices](../../app/repositories/vectores.py:22) |
-| `vector_usuarios` | `(empresa_id, metadata.documento)` | [vectores.crear_indices](../../app/repositories/vectores.py:22) |
 
 Ver [modelo de datos — comprobantes](comprobantes.md) para el detalle de por qué `uniq_comprobante` es la pieza que hace innecesaria una rutina de deduplicación en el arranque.

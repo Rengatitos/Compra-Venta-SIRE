@@ -48,7 +48,6 @@ Cada comprobante pendiente requiere navegar un formulario del portal SOL con Pla
 
 7. El progreso se reporta a través del callback `reportar` que [jobs_service.ejecutar](../../app/services/jobs_service.py:34) inyecta, actualizando `progreso.actual`/`progreso.total` en la colección `jobs` conforme avanza. Al terminar, el job pasa a `completado` con el resultado `{"procesados": N, "con_detalle": M, "pendientes": P}`, o a `fallido` con el mensaje de la excepción si algo se rompe. `pendientes` es lo que quedó fuera por el tope de `SUNAT_MAX_COMPROBANTES`.
 
-Este detalle, cuando existe, se incorpora al texto que recibe la IA en el [flujo de análisis](05-analisis-ia.md).
 
 ## Rendimiento
 

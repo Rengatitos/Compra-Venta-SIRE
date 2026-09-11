@@ -14,7 +14,7 @@ const NO: Presentacion = { tono: 'neutro', texto: 'No' };
  * Qué respaldo tiene un comprobante para la auditoría. Se presenta como tres
  * respuestas independientes en vez de un estado único porque las tres se
  * consiguen por caminos distintos —la propuesta, el scraping del portal y la
- * clasificación de la IA— y al auditor le importa cuál falta, no un promedio.
+ * extracción de glosa— y al auditor le importa cuál falta, no un promedio.
  */
 export function tieneDetalle(comprobante: ComprobanteResponse): Presentacion {
   return comprobante.detalle_sunat.length > 0 ? SI : NO;
@@ -25,8 +25,7 @@ export function tienePdf(comprobante: ComprobanteResponse): Presentacion {
 }
 
 export function tieneGlosa(comprobante: ComprobanteResponse): Presentacion {
-  const analisis = comprobante.analisis;
-  const glosa = analisis?.rag?.glosa || analisis?.descripcion;
+  const glosa = comprobante.glosa;
   return glosa ? SI : NO;
 }
 

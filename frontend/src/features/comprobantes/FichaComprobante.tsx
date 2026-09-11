@@ -6,21 +6,15 @@ import { Link } from 'react-router';
 import { actualizarDescripcion } from '@/api/comprobantes';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { DataTable } from '@/components/ui/DataTable';
-import type { Columna } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/Feedback';
 import { TextAreaField } from '@/components/ui/Field';
 import { useToast } from '@/hooks/useToast';
 import { formatearFecha, formatearMoneda } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
-import type { AnalisisIA, ComprobanteResponse, LineaDetalle } from '@/types/api';
+import type { ComprobanteResponse } from '@/types/api';
 
-import {
-  presentarCuenta,
-  presentarEstadoComprobante,
-  presentarResultadoIA,
-} from './estadoComprobante';
+import { presentarEstadoComprobante } from './estadoComprobante';
 import estilos from './FichaComprobante.module.css';
 import { TablaDetalleSunat } from './TablaDetalleSunat';
 
@@ -55,7 +49,6 @@ function hayDesglose(datos: ComprobanteResponse): boolean {
   );
 }
 
-
 function Seccion({
   titulo,
   acciones,
@@ -80,52 +73,6 @@ function Seccion({
   );
 }
 
-/** `cantidad` e `importe` llegan como `Any` desde el backend: puede ser cualquier cosa. */
-function textoCrudo(valor: unknown): string {
-  if (valor === null || valor === undefined || valor === '') return '—';
-  if (typeof valor === 'number' || typeof valor === 'boolean') return String(valor);
-  if (typeof valor === 'string') return valor;
-  return JSON.stringify(valor);
-}
-
-function FichaAnalisis({ analisis }: { analisis: AnalisisIA }) {
-  const resultado = presentarResultadoIA(analisis.resultado);
-  const cuenta = presentarCuenta(analisis);
-
-  return (
-    <dl className={layout.definiciones}>
-      <Dato termino="Resultado">
-        {resultado ? <Badge tono={resultado.tono}>{resultado.texto}</Badge> : '—'}
-      </Dato>
-      <Dato termino="Cuenta contable">
-        {cuenta?.cuenta ?? (
-          <>
-            <Badge tono="aviso">Sin cuenta</Badge>
-            {cuenta?.motivo ? (
-              <span className={layout.textoSecundario}> Falta: {cuenta.motivo}.</span>
-            ) : null}
-          </>
-        )}
-      </Dato>
-      <Dato termino="Contrapartida">{cuenta?.contrapartida ?? '—'}</Dato>
-      <Dato termino="Centro de costos">{analisis.centro_costos ?? '—'}</Dato>
-      <Dato termino="Condición IGV">{analisis.condicion_igv ?? '—'}</Dato>
-      <Dato termino="Confianza">{analisis.confianza ?? '—'}</Dato>
-      <Dato termino="Documentos de respaldo">
-        {analisis.documentos === null ? '—' : analisis.documentos ? 'Sí' : 'No'}
-      </Dato>
-      <Dato termino="Observaciones" className={estilos.observaciones}>
-        {analisis.observaciones ?? '—'}
-      </Dato>
-      <Dato termino="Código comprobante RAG">
-        {analisis.rag?.codigo_comprobante ?? '—'}
-      </Dato>
-      <Dato termino="Código identidad RAG">{analisis.rag?.codigo_identidad ?? '—'}</Dato>
-      <Dato termino="Glosa para Excel">{analisis.rag?.glosa ?? '—'}</Dato>
-    </dl>
-  );
-}
-
 interface Props {
   datos: ComprobanteResponse;
   ruc: string;
@@ -142,9 +89,9 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
   const serieNumero = datos.serie_numero;
   const estado = presentarEstadoComprobante(datos.estado_procesamiento);
 
-  // El campo editable arranca con lo que la IA haya escrito.
+  // El campo editable arranca con la glosa extraída.
   useEffect(() => {
-    setDescripcion(datos.analisis?.descripcion ?? '');
+    setDescripcion(datos.glosa ?? '');
   }, [datos]);
 
   const guardar = useMutation({
@@ -169,34 +116,6 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
     evento.preventDefault();
     guardar.mutate(descripcion.trim());
   }
-
-  const columnasDetalle: readonly Columna<LineaDetalle>[] = [
-    {
-      clave: 'producto',
-      cabecera: 'Producto',
-      cabeceraDeFila: true,
-      anchoMinimo: '16rem',
-      render: (linea) => linea.producto ?? '—',
-    },
-    {
-      clave: 'categoria_contable',
-      cabecera: 'Categoría',
-      render: (linea) => linea.categoria_contable ?? '—',
-    },
-    {
-      clave: 'cantidad',
-      cabecera: 'Cantidad',
-      numerica: true,
-      render: (linea) => textoCrudo(linea.cantidad),
-    },
-    {
-      clave: 'importe',
-      cabecera: 'Importe',
-      numerica: true,
-      render: (linea) => textoCrudo(linea.importe),
-    },
-    { clave: 'razon', cabecera: 'Razón', render: (linea) => linea.razon ?? '—' },
-  ];
 
   return (
     <>
@@ -270,17 +189,6 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
         </dl>
       </Seccion>
 
-      <Seccion titulo="Clasificación de la IA">
-        {datos.analisis ? (
-          <FichaAnalisis analisis={datos.analisis} />
-        ) : (
-          <EmptyState
-            titulo="Este comprobante aún no se ha analizado"
-            texto="Cierra la ficha y lanza «Completar con GLOSA» para el periodo."
-          />
-        )}
-      </Seccion>
-
       <Seccion titulo="Descripción">
         <form className={layout.pila} onSubmit={alGuardar}>
           <TextAreaField
@@ -290,7 +198,7 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
             onChange={(evento) => setDescripcion(evento.target.value)}
             maxLength={500}
             rows={4}
-            ayuda="Texto libre para el equipo contable. Se guarda dentro del análisis sin tocar el resto de campos de la IA."
+            ayuda="Texto libre para el equipo contable. Se guarda como glosa del comprobante."
           />
           <div className={layout.filaFin}>
             <Button type="submit" cargando={guardar.isPending}>
@@ -299,18 +207,6 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
           </div>
         </form>
       </Seccion>
-
-      {datos.analisis && datos.analisis.detalle.length > 0 ? (
-        <Seccion titulo="Líneas clasificadas">
-          <DataTable
-            leyenda={`Líneas clasificadas por la IA para ${serieNumero}`}
-            leyendaOculta
-            columnas={columnasDetalle}
-            filas={datos.analisis.detalle}
-            claveDeFila={(linea) => `${linea.producto ?? ''}-${textoCrudo(linea.importe)}`}
-          />
-        </Seccion>
-      ) : null}
 
       <Seccion titulo="Detalle extraído de SUNAT">
         <TablaDetalleSunat

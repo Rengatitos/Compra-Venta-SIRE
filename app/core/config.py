@@ -70,15 +70,7 @@ class Settings(BaseSettings):
     # tarda más que leer la tabla de ítems que ya está en el DOM.
     SUNAT_PDF_TIMEOUT_MS: int = 20000
 
-    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
-    OLLAMA_CHAT_MODEL: str = "gemma4:e2b"
-    OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
-    RAG_TOP_K_RULES: int = 6
-    RAG_TOP_K_ACCOUNTS: int = 8
-    RAG_TOP_K_HISTORICAL: int = 6
-    RAG_CONFIDENCE_THRESHOLD: float = 0.80
 
-    RAG_MAX_CONCURRENCY: int = 5
 
     # Orígenes permitidos por CORS. Se acepta tanto la lista separada por comas
     # que documenta `.env.example` como una lista JSON.

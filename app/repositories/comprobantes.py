@@ -278,18 +278,6 @@ async def contar_sin_detalle(
     return await _col(db).count_documents(_filtro_sin_detalle(empresa_id, periodo, libro))
 
 
-async def guardar_analisis(
-    db: AsyncIOMotorDatabase,
-    documento_id: Any,
-    metadata: dict[str, Any],
-    estado: EstadoProcesamiento,
-) -> None:
-    await _col(db).update_one(
-        {"_id": documento_id},
-        {"$set": {"metadata_procesada": metadata, "estado_procesamiento": estado.value}},
-    )
-
-
 async def actualizar_estado(
     db: AsyncIOMotorDatabase, documento_id: Any, estado: EstadoProcesamiento
 ) -> None:
@@ -298,10 +286,8 @@ async def actualizar_estado(
     )
 
 
-async def guardar_metadata(
-    db: AsyncIOMotorDatabase, documento_id: Any, metadata: dict[str, Any]
-) -> None:
-    await _col(db).update_one({"_id": documento_id}, {"$set": {"metadata_procesada": metadata}})
+async def guardar_glosa(db: AsyncIOMotorDatabase, documento_id, glosa: str) -> None:
+    await _col(db).update_one({"_id": documento_id}, {"$set": {"glosa": glosa}})
 
 
 async def guardar_detalle_sunat(
@@ -357,35 +343,6 @@ async def contar_pendientes_sunat(
 ) -> int:
     """Cuántos siguen sin detalle o sin PDF, ignorando el tope del listado."""
     return await _col(db).count_documents(_filtro_pendiente_sunat(empresa_id, periodo, libro))
-
-
-async def listar_analizados_sin_cuenta(
-    db: AsyncIOMotorDatabase,
-    empresa_id: str,
-    periodo: str,
-    libro: Libro | None = None,
-    limit: int = 1000,
-) -> list[dict[str, Any]]:
-    """Comprobantes ya analizados a los que el RAG no les dio cuenta contable.
-
-    Pasa cuando el índice de cuentas estaba vacío al clasificar: el análisis
-    termina «bien» pero sin cuenta, y como el estado ya es `analizado` nunca
-    volvía a entrar en la cola. Se devuelven aparte para que la siguiente
-    corrida los repase una vez indexado el plan.
-    """
-    filtro: dict[str, Any] = {
-        "empresa_id": empresa_id,
-        "periodo": periodo,
-        "estado_procesamiento": EstadoProcesamiento.ANALIZADO.value,
-        "$or": [
-            {"metadata_procesada.rag.cuenta_base": {"$in": [None, ""]}},
-            {"metadata_procesada.rag.cuenta_base": {"$exists": False}},
-        ],
-    }
-    if libro is not None:
-        filtro["libro"] = libro.value
-    cursor = _col(db).find(filtro).sort([("_id", -1)])
-    return await cursor.to_list(length=limit)
 
 
 def _filtro_sin_pdf(empresa_id: str, periodo: str, libro: Libro) -> dict[str, Any]:

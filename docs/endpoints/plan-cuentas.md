@@ -2,7 +2,6 @@
 
 El plan contable (PCGE) de la empresa, tal como lo exporta Contasis. Es el catálogo con el que se interpreta cada código de cuenta del registro.
 
-No confundirlo con `app/resources/rag_contasis/plan_cuentas.csv`, que es un **corpus de recuperación** estático y común a todas las empresas, indexado en `rag_account_plan_index` para la clasificación con IA. El maestro de esta colección es un dato de negocio **por empresa** y no se reindexa al subirlo.
 
 ## `POST /api/v1/empresas/{ruc}/plan-cuentas`
 

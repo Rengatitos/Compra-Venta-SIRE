@@ -27,7 +27,7 @@ import layout from '@/styles/layouts.module.css';
 import type { AnalyticsSummary, ComprobanteResponse } from '@/types/api';
 
 import estilos from './Dashboard.module.css';
-import { DistribucionIA, SerieDiaria, TopContrapartes } from './graficos';
+import { SerieDiaria, TopContrapartes } from './graficos';
 
 /**
  * Los totales van siempre en soles: lo que viene en moneda extranjera se
@@ -85,7 +85,7 @@ export function DashboardPage() {
     <>
       <PageHeader
         titulo="Panel del periodo"
-        descripcion="Totales, ritmo diario, concentración por proveedor y avance de la clasificación con IA."
+        descripcion="Totales, ritmo diario, concentración por proveedor y avance de la extracción SUNAT."
         acciones={
           periodo !== null ? (
             <div className={estilos.selector}>
@@ -126,7 +126,6 @@ export function DashboardPage() {
       ) : null}
 
       {periodo !== null ? <PanelDelPeriodo ruc={ruc} rucs={rucs} periodo={periodo} /> : null}
-
     </>
   );
 }
@@ -235,11 +234,11 @@ function PanelDelPeriodo({ ruc, rucs, periodo }: PropsPanel) {
               nota={notaMoneda('Crédito fiscal potencial', resumen)}
             />
             <MetricTile
-              etiqueta="Clasificados"
+              etiqueta="Con detalle SUNAT"
               valor={formatearPorcentaje(cobertura)}
               nota={`${formatearEntero(resumen.procesadas)} de ${formatearEntero(
                 totalAnalisis,
-              )} analizados`}
+              )} con detalle`}
             />
           </div>
 
@@ -262,28 +261,6 @@ function PanelDelPeriodo({ ruc, rucs, periodo }: PropsPanel) {
                   </Panel>
                 </div>
 
-                <div className={estilos.entrada} style={{ ['--indice' as string]: 1 }}>
-                  <Panel
-                    titulo="Clasificación de la IA"
-                    descripcion="Solo cuenta los comprobantes que ya pasaron por el análisis."
-                    interactivo
-                  >
-                    {datos.ai_classification.length > 0 ? (
-                      <DistribucionIA datos={datos.ai_classification} />
-                    ) : (
-                      <EmptyState
-                        titulo="Nada analizado todavía"
-                        texto="Lanza el análisis con IA para ver la distribución contable."
-                        accion={
-                          <Link to={`/periodos/${encodeURIComponent(periodo)}`}>
-                            Analizar el periodo
-                          </Link>
-                        }
-                      />
-                    )}
-                  </Panel>
-                </div>
-
                 <div className={estilos.entrada} style={{ ['--indice' as string]: 2 }}>
                   <Panel
                     titulo="Principales contrapartes"
@@ -302,7 +279,9 @@ function PanelDelPeriodo({ ruc, rucs, periodo }: PropsPanel) {
               <Panel
                 titulo="Últimos comprobantes"
                 acciones={
-                  <Link to={`/periodos/${encodeURIComponent(periodo)}`}>Ver el listado completo</Link>
+                  <Link to={`/periodos/${encodeURIComponent(periodo)}`}>
+                    Ver el listado completo
+                  </Link>
                 }
               >
                 <DataTable

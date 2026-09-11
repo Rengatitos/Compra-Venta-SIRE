@@ -4,7 +4,7 @@
 
 [obtener_reporte](../../app/api/v1/routes/auditoria.py:118). La tabla comparativa que pide el auditor.
 
-El auditor pide tres cosas. Dos ya existían: la **glosa detallada** la produce el RAG ([ollama_rag.py](../../app/services/ollama_rag.py)) y los **PDFs en ZIP** los sirve [pdfs.md](pdfs.md). Este endpoint arma la tercera: la tabla comparativa **con fuentes**.
+El auditor pide tres cosas. Dos ya existían: la **glosa detallada** se obtiene del detalle SUNAT y los **PDFs en ZIP** los sirve [pdfs.md](pdfs.md). Este endpoint arma la tercera: la tabla comparativa **con fuentes**.
 
 Lo que la hace un reporte de auditoría y no un listado más es el bloque `fuentes`: por cada comprobante dice de dónde salió cada dato. Sin eso no se puede distinguir un importe que declaró SUNAT en la propuesta de uno que se leyó del portal o del PDF, que es justo lo que hay que poder rastrear.
 

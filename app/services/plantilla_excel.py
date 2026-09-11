@@ -17,18 +17,14 @@ dólares se convierte multiplicando por su tipo de cambio, y el importe
 original en dólares va aparte, en la columna «EQUIVALENTE EN DOLARES
 AMERICANOS». Ver `_Conversion` más abajo.
 
-Del análisis IA viajan la cuenta contable y la glosa; si el clasificador RAG
-(`app/services/ollama_rag.py`) llegó a una cuenta o glosa propias, ganan a las
-del análisis general (ver `_rag`). El centro de costos no viaja nunca: la
-plantilla pide el *código* del catálogo de Contasis (9 caracteres) y la IA
-devuelve un nombre descriptivo, así que escribirlo recortado inventaría
-códigos que colisionan entre sí.
+La glosa viene del detalle SUNAT o de la edición manual. La cuenta base y
+el centro de costos quedan vacíos.
 
 Otras columnas se llenan con una regla en vez de con un dato de SUNAT, porque
 así aparecen en el 100 % de los registros reales con los que se comparó esta
 exportación: la condición de pago (CON/CRE, según haya vencimiento posterior a
-la emisión), la cuenta contable total (4212 en compras, 1212 en ventas — o la
-que haya resuelto el RAG para esta empresa) y el porcentaje de IGV (la tasa
+la emisión), la cuenta contable total (4212 en compras, 1212 en ventas) y el
+porcentaje de IGV (la tasa
 declarada o, en su defecto, la general — en todas las filas, también las
 exoneradas).
 """
@@ -87,10 +83,10 @@ CONDICION_CONTADO = "CON"
 CONDICION_CREDITO = "CRE"
 
 # Cuenta contable del total del comprobante (columna AH en compras, AD en
-# ventas), cuando el RAG no resolvió una propia para la empresa. Constante en
+# ventas). Constante en
 # los cuatro registros reales con los que se comparó esta exportación: PCGE
 # 42.1.2 (proveedores) y 12.1.2 (clientes) — son también el valor por defecto
-# que usa `ollama_rag.clasificar` cuando no encuentra un precedente.
+# de la plantilla contable.
 CUENTA_TOTAL: dict[Libro, str] = {Libro.COMPRAS: "4212", Libro.VENTAS: "1212"}
 
 _plantilla: bytes | None = None
@@ -315,53 +311,17 @@ def auditar_conversion(comprobantes: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _analisis(comprobante: dict[str, Any]) -> dict[str, Any]:
-    analisis = comprobante.get("analisis")
-    return analisis if isinstance(analisis, dict) else {}
-
-
-def _rag(comprobante: dict[str, Any]) -> dict[str, Any]:
-    """Clasificación del RAG contable (`app/services/ollama_rag.py`), si corrió.
-
-    Cuando existe, sus cuentas y su glosa son más precisas que las del
-    análisis general —vienen de precedentes de la propia empresa, no sólo de
-    una descripción— así que ganan a los campos planos del análisis.
-    """
-    rag = _analisis(comprobante).get("rag")
-    return rag if isinstance(rag, dict) else {}
-
-
 def _glosa(comprobante: dict[str, Any]) -> str | None:
-    """Descripción corta de la operación para la columna de glosa, en mayúsculas.
-
-    La glosa del RAG gana si existe. Si no, con un único ítem su nombre es la
-    mejor glosa posible y casi siempre cabe entera; con varios, describir sólo
-    el primero engañaría, así que se usa el resumen que hace la IA del
-    comprobante completo. Siempre en mayúsculas, como la escriben los
-    contadores en los cuatro registros reales revisados.
-    """
-    glosa_rag = _recortar(_rag(comprobante).get("glosa"), MAX_GLOSA)
-    if glosa_rag:
-        return glosa_rag.upper()
-
-    analisis = _analisis(comprobante)
-    detalle = analisis.get("detalle")
-    if isinstance(detalle, list) and len(detalle) == 1 and isinstance(detalle[0], dict):
-        glosa = _recortar(detalle[0].get("producto"), MAX_GLOSA)
-        if glosa:
-            return glosa.upper()
-    glosa = _recortar(analisis.get("descripcion"), MAX_GLOSA)
+    glosa = _recortar(comprobante.get("glosa"), MAX_GLOSA)
     return glosa.upper() if glosa else None
 
 
 def _cuenta_contable(comprobante: dict[str, Any]) -> str | None:
-    cuenta = _rag(comprobante).get("cuenta_base") or _analisis(comprobante).get("cuenta_contable")
-    return _recortar(cuenta, MAX_CUENTA_CONTABLE)
+    return None
 
 
 def _cuenta_total(comprobante: dict[str, Any], libro: Libro) -> str:
-    """Cuenta contable del total: la que resolvió el RAG, o la general del libro."""
-    return _texto(_rag(comprobante).get("cuenta_total")) or CUENTA_TOTAL[libro]
+    return CUENTA_TOTAL[libro]
 
 
 def _tasa_igv(comprobante: dict[str, Any]) -> float | int:
@@ -437,7 +397,6 @@ def _fila_compras(
     destino: str | None = None,
 ) -> dict[str, Any]:
     emision, vencimiento = _fechas(comprobante)
-    rag = _rag(comprobante)
 
     destino_efectivo = (destino or comprobante.get("destino_compras") or "").lower()
     base_gravada = comprobante.get("base_imponible_dg") or comprobante.get("base_imponible")
@@ -473,11 +432,11 @@ def _fila_compras(
     return {
         "A": emision,
         "B": vencimiento,
-        "C": _texto(rag.get("codigo_comprobante") or comprobante.get("tipo_cp")),
+        "C": _texto(comprobante.get("tipo_cp")),
         "D": _texto(comprobante.get("serie")),
         "F": _entero_o_texto(comprobante.get("numero")),
         "G": _entero_o_texto(
-            rag.get("codigo_identidad") or comprobante.get("tipo_doc_identidad")
+            comprobante.get("tipo_doc_identidad")
         ),
         "H": _entero_o_texto(comprobante.get("documento_contraparte")),
         "I": _texto(comprobante.get("razon_social")),
@@ -517,15 +476,14 @@ def _fila_compras(
 
 def _fila_ventas(comprobante: dict[str, Any], conversion: _Conversion) -> dict[str, Any]:
     emision, vencimiento = _fechas(comprobante)
-    rag = _rag(comprobante)
     return {
         "A": emision,
         "B": vencimiento,
-        "C": _texto(rag.get("codigo_comprobante") or comprobante.get("tipo_cp")),
+        "C": _texto(comprobante.get("tipo_cp")),
         "D": _texto(comprobante.get("serie")),
         "E": _entero_o_texto(comprobante.get("numero")),
         "F": _entero_o_texto(
-            rag.get("codigo_identidad") or comprobante.get("tipo_doc_identidad")
+            comprobante.get("tipo_doc_identidad")
         ),
         "G": _entero_o_texto(comprobante.get("documento_contraparte")),
         "H": _texto(comprobante.get("razon_social")),

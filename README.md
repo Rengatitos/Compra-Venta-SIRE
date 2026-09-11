@@ -1,6 +1,6 @@
 # Sire — API de automatización SIRE (SUNAT)
 
-API en FastAPI que automatiza la gestión del Registro de Compras Electrónico de SUNAT a través del SIRE: sincroniza la propuesta de comprobantes, extrae el detalle de ítems del portal SOL, clasifica contablemente con IA y exporta a Excel/PDF.
+API en FastAPI que automatiza la gestión del Registro de Compras Electrónico de SUNAT a través del SIRE: sincroniza la propuesta de comprobantes, extrae el detalle de ítems del portal SOL, conserva la glosa y exporta a Excel/PDF.
 
 El plan de desarrollo y las decisiones de arquitectura están en [PLAN.md](PLAN.md).
 
@@ -11,7 +11,7 @@ app/
   api/v1/          rutas y dependencias de la API versionada
   domain/          lógica pura: modelo canónico, normalizadores, catálogos
   repositories/    único punto de acceso a MongoDB
-  services/        orquestación: SUNAT, IA, scraping, exportación
+  services/        orquestación: SUNAT, scraping, exportación
   core/            configuración, autenticación, cifrado
   schemas/         modelos Pydantic de request/response
 tests/domain/      tests sin I/O
@@ -34,13 +34,11 @@ La identidad del recurso es el **RUC**, no el `_id` de Mongo. El sujeto sale del
 | `POST` `GET` | `/empresas` | Registrar empresa · listar (admin) |
 | `GET` `PUT` `DELETE` | `/empresas/{ruc}` | Consultar, actualizar y eliminar |
 | `POST` | `/empresas/{ruc}/token-sunat` | Renovar el token Bearer de SUNAT |
-| `GET` `POST` `DELETE` | `/empresas/{ruc}/referencias` | PDFs de referencia para el RAG |
 | `POST` `GET` `DELETE` | `/empresas/{ruc}/plan-cuentas` | Maestro de cuentas de la empresa (Excel de Contasis) |
 | `POST` `GET` | `/empresas/{ruc}/periodos` | Ciclo de vida del periodo |
 | `POST` | `…/periodos/{periodo}/libros/{libro}/propuesta` | Sincronizar la propuesta del SIRE |
 | `GET` `PATCH` | `…/periodos/{periodo}/comprobantes` | Consultar y editar comprobantes |
 | `GET` | `…/comprobantes/export` | Exportar a Excel o PDF |
-| `POST` | `…/libros/{libro}/analisis` | Clasificar con IA |
 | `POST` | `…/libros/{libro}/detalle` | Extraer detalle del portal SOL → `202` + `job_id` |
 | `POST` | `…/libros/{libro}/pdfs` | Descargar los PDFs del portal SOL → `202` + `job_id` |
 | `GET` | `…/libros/{libro}/pdfs/zip` | ZIP de los PDFs + `manifiesto.csv` |
@@ -73,8 +71,6 @@ Documentación interactiva en `http://127.0.0.1:9007/docs`.
 | `URL_SIRE_PROPUESTA` | Plantilla de URL del RCE (compras) con el placeholder `{PERIODO}` | Sí |
 | `URL_SIRE_PROPUESTA_VENTAS` | Plantilla de URL del RVIE (ventas), mismo placeholder | Sí (para ventas) |
 | `SIRE_PER_PAGE` / `SIRE_MAX_PAGINAS` | Tamaño de página al descargar la propuesta y tope de páginas (default `100` / `50`) | No |
-| `OLLAMA_BASE_URL` | URL de la instancia local de Ollama | No |
-| `OLLAMA_CHAT_MODEL` / `OLLAMA_EMBED_MODEL` | Modelos locales de chat y embeddings (default `gemma4:e2b` / `nomic-embed-text`) | No |
 | `CORS_ORIGINS` | Orígenes permitidos, separados por comas | No |
 | `SUNAT_DATA_DIR` | Raíz de los PDFs descargados del portal SOL (default `data`, relativo al repo) | No |
 | `SUNAT_MAX_PDFS` | Tope de PDFs por trabajo de descarga (default `100`) | No |
@@ -94,12 +90,6 @@ uv sync --dev
 uv run playwright install chromium
 ```
 
-La clasificación con IA corre en local, así que hace falta [Ollama](https://ollama.com/download)
-con los dos modelos que declara `.env`:
-
-```bash
-ollama pull gemma4:e2b && ollama pull nomic-embed-text
-```
 
 ```bash
 uv run uvicorn app.main:app --host 0.0.0.0 --port 9007 --reload
@@ -107,17 +97,8 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 9007 --reload
 
 Playwright solo hace falta para el endpoint de extracción de detalle.
 
-El RAG contable elige la cuenta entre lo que haya en `rag_account_plan_index` y
-`rag_historical_index`. Esas colecciones no se crean solas: sin ellas la clasificación
-termina «bien» pero con la cuenta en blanco, y la pantalla de comprobantes lo avisa. Se
-indexan una vez (Ollama tiene que estar arriba, usa `nomic-embed-text`):
-
-```bash
-uv run python scripts/indexar_rag_contable.py
-```
-
-Los comprobantes que quedaron analizados sin cuenta se repasan solos en la siguiente
-corrida de «Completar con GLOSA». El estado de los índices se consulta en `GET /api/v1/rag/estado`.
+«Completar con GLOSA» extrae detalle, PDF y XML de SUNAT. La glosa se obtiene
+del detalle y puede editarse manualmente.
 
 ## Frontend
 

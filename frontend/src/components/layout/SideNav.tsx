@@ -14,7 +14,6 @@ const ENTRADAS: readonly Entrada[] = [
   { a: '/periodos', texto: 'Periodos' },
   { a: '/procesos', texto: 'Procesos' },
   { a: '/plan-cuentas', texto: 'Maestro de cuentas' },
-  { a: '/referencias', texto: 'Referencias' },
   { a: '/ajustes', texto: 'Ajustes' },
 ];
 

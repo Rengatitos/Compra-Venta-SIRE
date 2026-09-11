@@ -24,7 +24,7 @@ export function presentarEstadoJob(estado: EstadoJob): Presentacion {
  * el typecheck hasta que alguien le da un rótulo legible.
  */
 const TIPOS: Record<TipoJob, string> = {
-  extraccion_detalles: 'Detalle, PDF y cuentas RAG',
+  extraccion_detalles: 'Detalle y PDF SUNAT',
   descarga_pdfs: 'Descarga de PDFs',
   detracciones: 'Consulta de detracciones',
 };

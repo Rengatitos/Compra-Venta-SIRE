@@ -80,7 +80,7 @@ function SeguidorDeJob({ jobId, onDatos, onDescartar }: PropsSeguidor) {
       titulo: `${donde}: completado`,
       detalle: datos.tipo === 'detracciones'
         ? 'Las detracciones relacionadas ya están disponibles en el listado de comprobantes.'
-        : 'La vista previa ya incluye el detalle SUNAT y los códigos RAG disponibles.',
+        : 'La vista previa ya incluye el detalle y la glosa de SUNAT.',
     });
   }, [datos, mostrar, cliente]);
 

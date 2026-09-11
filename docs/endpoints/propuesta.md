@@ -33,6 +33,6 @@ Errores:
 
 Hasta ahora la sincronización solo registraba comprobantes cuya serie empezara con `F` o `E`, así que las boletas se perdían en el conteo de `descartados`. El registro de ventas es en su mayoría boletas (`B001`, `EB01`), de modo que el filtro desapareció de los dos libros: ahora se guarda todo lo que SUNAT devuelve.
 
-Dos consecuencias que conviene tener presentes: un periodo de compras puede crecer respecto a lo que había antes, y un periodo de ventas puede pasar de decenas a cientos de comprobantes, todos ellos encolados al análisis con IA. Ver `GEMINI_MIN_INTERVAL_SECONDS` en el [README](../../README.md) antes de lanzar el primer lote grande.
+Dos consecuencias que conviene tener presentes: un periodo de compras puede crecer respecto a lo que había antes, y un periodo de ventas puede pasar de decenas a cientos de comprobantes, disponibles para extraer su detalle y PDF desde SUNAT.
 
 Ver también [flujo de sincronización de la propuesta](../flujo/03-sincronizacion-propuesta.md).

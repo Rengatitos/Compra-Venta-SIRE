@@ -2,7 +2,7 @@
 
 El auditor pidió tres cosas: la glosa detallada de cada comprobante, los PDFs
 en ZIP y una tabla comparativa **con fuentes**. Las dos primeras ya existen (el
-RAG produce la glosa, `routes/pdfs.py` sirve el ZIP); esta ruta arma la tercera.
+detalle SUNAT produce la glosa, `routes/pdfs.py` sirve el ZIP); esta ruta arma la tercera.
 
 Lo que la hace un reporte de auditoría y no un listado más es el bloque
 `fuentes`: por cada comprobante dice de dónde salió cada dato. Sin eso el
@@ -102,7 +102,6 @@ def _fila(documento: dict) -> dict:
     datos = serializar(documento)
     pdf = documento.get("pdf_sunat") or {}
     analisis = datos.get("analisis") or {}
-    rag = analisis.get("rag") or {}
     detalle = datos.get("detalle_sunat") or []
     importe_detalle = _importe_del_detalle(detalle)
     total = datos.get("total") or 0.0
@@ -127,9 +126,9 @@ def _fila(documento: dict) -> dict:
         "lineas_detalle": len(detalle),
         "detalle_sunat": detalle,
         # La glosa: lo primero que pidió el auditor.
-        "glosa": rag.get("glosa") or analisis.get("descripcion") or "",
-        "cuenta_base": rag.get("cuenta_base") or analisis.get("cuenta_contable") or "",
-        "cuenta_total": rag.get("cuenta_total") or "",
+        "glosa": datos.get("glosa") or "",
+        "cuenta_base": "",
+        "cuenta_total": "",
         "observaciones": analisis.get("observaciones") or "",
         # Las fuentes: lo que hace rastreable cada fila.
         "fuentes": _fuentes({**documento, "detalle_sunat": detalle}),

@@ -43,18 +43,6 @@ async def top_contrapartes(
     return await analytics_service.get_top_contrapartes(ids, periodo, limit, libro, db)
 
 
-@router.get("/ai-classification", summary="Distribución de la clasificación por IA")
-async def ai_classification(
-    periodo: str,
-    rucs: str | None = None,
-    libro: Libro = Query(Libro.COMPRAS),
-    db=Depends(get_db),
-    _: dict = Depends(token_dashboard),
-):
-    ids = await analytics_service.get_target_empresa_ids(rucs, db)
-    return await analytics_service.get_ai_classification(ids, periodo, libro, db)
-
-
 @router.get("/comprobantes-por-dia", summary="Comprobantes agrupados por día")
 async def comprobantes_por_dia(
     periodo: str,
@@ -87,10 +75,9 @@ async def dashboard_data(
 ):
     ids = await analytics_service.get_target_empresa_ids(rucs, db)
 
-    resumen, contrapartes, clasificacion, por_dia, listado = await asyncio.gather(
+    resumen, contrapartes, por_dia, listado = await asyncio.gather(
         analytics_service.get_summary(ids, periodo, libro, db),
         analytics_service.get_top_contrapartes(ids, periodo, 5, libro, db),
-        analytics_service.get_ai_classification(ids, periodo, libro, db),
         analytics_service.get_comprobantes_by_day(ids, periodo, libro, db),
         analytics_service.get_comprobantes_list(ids, periodo, libro, db),
     )
@@ -98,7 +85,6 @@ async def dashboard_data(
     return {
         "summary": resumen,
         "top_contrapartes": contrapartes,
-        "ai_classification": clasificacion,
         "comprobantes_por_dia": por_dia,
         "comprobantes": listado,
     }

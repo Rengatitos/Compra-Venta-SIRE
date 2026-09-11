@@ -227,9 +227,7 @@ async def actualizar_comprobante(
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
 
     if datos.descripcion is not None:
-        metadata = dict(fila.get("metadata_procesada") or {})
-        metadata["descripcion"] = datos.descripcion
-        await repo_comprobantes.guardar_metadata(db, fila["_id"], metadata)
+        await repo_comprobantes.guardar_glosa(db, fila["_id"], datos.descripcion)
 
     return {"mensaje": "Comprobante actualizado correctamente"}
 
