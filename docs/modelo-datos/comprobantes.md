@@ -37,6 +37,7 @@ SUNAT manda la tasa como fracción (`0.18`) y el modelo la guarda en puntos, as�
 | `estado_procesamiento` | str | `sire_recibido` → `analizado` \| `error_analisis` \| `sin_datos`. Ver [domain/comprobante.py — EstadoProcesamiento](../../app/domain/comprobante.py). Solo se establece al insertar (`$setOnInsert`); no se pisa en una resincronización. |
 | `metadata_procesada` | dict \| None | Salida completa del análisis IA (ver [flujo de análisis](../flujo/05-analisis-ia.md)). |
 | `detalle_sunat` | list \| None | Detalle de ítems extraído por scraping (ver [flujo de extracción de detalle](../flujo/04-extraccion-detalle.md)). Ausente hasta que se ejecuta ese job. |
+| `leyenda_sunat` | list \| None | Líneas del recuadro «LEYENDA» del popup, sin viñetas ni repeticiones. Es la glosa real de muchas FE recibidas: en una comisión bancaria el ítem dice sólo `CONCEPTO DE PAGO:COMISION` y la leyenda añade `TARJETA DE DEBITO`. Ausente en la mayoría de comprobantes, que no traen recuadro — por eso **no** entra en el filtro de pendientes del portal. |
 
 ## Por qué `Decimal128` y no `float`
 

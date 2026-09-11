@@ -91,3 +91,41 @@ def test_conserva_el_orden_y_solo_los_items():
     items = _parsear_filas(filas)
 
     assert [i["descripcion"] for i in items] == ["Cuaderno A4", "Borrador"]
+
+
+def test_una_descripcion_que_menciona_un_rotulo_sigue_siendo_item():
+    """Los tres casos reales que el filtro por subcadena descartaba o rozaba.
+
+    El primero es F245-40652: su única línea se perdía porque "DOMICILIO" está
+    en la lista para tumbar la fila "DOMICILIO FISCAL:" de la cabecera.
+    """
+    filas = [
+        ["1.00", "UNIDAD", "FLECASSMD0009",
+         "FLETE CASSINELLI PARA DESPACHO A DOMICILIO 24 HORAS HACIA ADELANTE",
+         "67.80", "80.00", "67.80", "0.00"],
+        ["1.00", "UNIDAD", "",
+         "COMISIONES 001105210100038008 COMISION DE MANTENIMIENTO / 000000167",
+         "14.00", "14.00", "14.00", "0.00"],
+        ["1.00", "UNIDAD", "", "CONCEPTO DE PAGO:COMISION",
+         "10.00", "10.00", "10.00", "0.00"],
+        # Y uno que sólo empieza como un rótulo.
+        ["3.00", "NIU", "P7", "TOTALIZADOR DIGITAL", "5.00", "5.90", "15.00", "0.00"],
+    ]
+
+    assert [i["descripcion"] for i in _parsear_filas(filas)] == [
+        "FLETE CASSINELLI PARA DESPACHO A DOMICILIO 24 HORAS HACIA ADELANTE",
+        "COMISIONES 001105210100038008 COMISION DE MANTENIMIENTO / 000000167",
+        "CONCEPTO DE PAGO:COMISION",
+        "TOTALIZADOR DIGITAL",
+    ]
+
+
+def test_descarta_los_totales_con_el_rotulo_entero():
+    filas = [
+        ["0.00", "", "", "Total valor venta gravado", "0.00", "0.00", "67.80", "0.00"],
+        ["0.00", "", "", "Sumatoria IGV", "0.00", "0.00", "12.20", "0.00"],
+        ["0.00", "", "", "Importe total", "0.00", "0.00", "80.00", "0.00"],
+        ["0.00", "", "", "Descuento Global *", "0.00", "0.00", "0.00", "0.00"],
+    ]
+
+    assert _parsear_filas(filas) == []
