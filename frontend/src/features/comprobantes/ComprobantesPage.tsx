@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { listarIncompletos } from '@/api/comprobantes';
 import { Link, useParams, useSearchParams } from 'react-router';
-
 import { obtenerJob } from '@/api/jobs';
 import {
   exportarLote,
@@ -325,9 +324,9 @@ export function ComprobantesPage() {
       },
     },
   ];
-
+ 
   return (
-    <>
+    <> 
       <PageHeader
         titulo={`Comprobantes · ${formatearPeriodo(periodo)}`}
         descripcion={
