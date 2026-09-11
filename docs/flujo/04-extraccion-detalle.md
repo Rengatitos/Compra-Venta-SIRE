@@ -42,7 +42,13 @@ Cada comprobante pendiente requiere navegar un formulario del portal SOL con Pla
 
 5. Si un comprobante falla, se reintenta una vez. Cuando el fallo es que la sesión SOL expiró (`_es_sesion_expirada`, que sólo da positivo si SUNAT devolvió el formulario de login), se vuelve a entrar antes del reintento; si ni así se recupera, se corta la vuelta y se devuelve lo ya extraído en lugar de perderlo.
 
-   Una búsqueda sin resultados (`ComprobanteNoEncontrado`) **no** se reintenta: SUNAT devolvería lo mismo y cada ronda cuesta un timeout completo. Es un caso normal —hay comprobantes que el portal no lista en la bandeja consultada—, no un error.
+   Pulsar Buscar tiene **tres** desenlaces y `_esperar_resultado` los separa sondeando el iframe cada 250 ms:
+
+   - aparece el enlace «Visualizar» y se sigue;
+   - el portal avisa de que no hay resultados (uno de los textos de `SUNAT_TEXTOS_SIN_RESULTADOS`) → `ComprobanteNoEncontrado`, que **no** se reintenta: SUNAT devolvería lo mismo. Es un caso normal —hay comprobantes que el portal no lista en la bandeja consultada—, no un error;
+   - se agota el plazo sin ninguna de las dos cosas → `BusquedaSinRespuesta`, que **sí** se reintenta.
+
+   Confundir los dos últimos era un fallo real: BBVA y BCP tardan unos 9 s en responder, pasaban del techo de 8 s que había antes y se registraban como «SUNAT no lo tiene», quedándose sin detalle y sin PDF pese a estar en el portal.
 
 6. Cada comprobante con detalle encontrado se guarda vía `guardar_detalle_sunat`, que solo agrega el campo `detalle_sunat` sin tocar el resto del documento. El filtro incluye el libro, por lo mismo del paso 1.
 
@@ -58,7 +64,7 @@ El recorrido costaba unos 15 s por comprobante, de los cuales ~10 s eran espera 
 - La tabla de ítems se lee con una sola llamada al navegador (`_JS_LEER_TABLA`) en lugar de un round-trip por fila, y se parsea en Python con `_parsear_filas`.
 - Las capturas de pantalla de diagnóstico solo se toman con `debug=True`; escribirlas en disco estaba en el camino caliente.
 
-El coste dominante que queda es la recarga del iframe entre comprobantes (~0,9 s de los ~2 s) y, en periodos con comprobantes que SUNAT no lista, los `SUNAT_TIMEOUT_BUSQUEDA_MS` de cada uno. Detectar el marcador de "sin resultados" del portal permitiría descartarlos al instante, pero hace falta capturar ese HTML sin que SUNAT corte la conexión por exceso de accesos.
+El coste dominante que queda es la recarga del iframe entre comprobantes (~0,9 s de los ~2 s). Los comprobantes que SUNAT no lista ya no cuestan un timeout completo cada uno: `_esperar_resultado` reconoce el aviso de "sin resultados" del portal y los descarta al instante. Eso es lo que permitió subir `SUNAT_TIMEOUT_BUSQUEDA_MS` a 25 s sin encarecer nada — ahora ese plazo sólo lo agotan los emisores que de verdad tardan.
 
 El guardado ocurre **conforme llega cada comprobante** (`al_extraer`), no al final: antes un tropiezo a mitad de la lista tiraba todo lo ya recorrido.
 
@@ -70,7 +76,8 @@ En [config.py](../../app/core/config.py):
 |---|---|---|
 | `SUNAT_SCRAPER_HEADLESS` | `True` | Ponerlo en `False` abre el navegador visible, útil para diagnosticar cambios del portal. |
 | `SUNAT_SCRAPER_TIMEOUT_MS` | `15000` | Techo de espera de cada paso de Playwright. |
-| `SUNAT_TIMEOUT_BUSQUEDA_MS` | `8000` | Cuánto esperar antes de dar un comprobante por inexistente. Cuando SUNAT sí lo tiene, el enlace aparece en menos de un segundo, así que este techo sólo lo pagan los que faltan. |
+| `SUNAT_TIMEOUT_BUSQUEDA_MS` | `25000` | Cuánto esperar una respuesta a la búsqueda. No es el plazo para darlo por inexistente: los ausentes salen al instante por el aviso del portal, así que este techo sólo lo agotan los emisores lentos (los bancos rondan los 9 s). |
+| `SUNAT_TEXTOS_SIN_RESULTADOS` | ver `config.py` | Avisos con los que el portal dice que no hay resultados; se comparan como subcadena y sin distinguir mayúsculas. Conviene quedarse corto: uno que no casa sólo cuesta esperar el techo de arriba, mientras que uno demasiado amplio da por ausente un comprobante que sí está. No se documenta en `.env.example` porque, al ser un tipo compuesto, pydantic-settings lo lee como JSON. |
 | `SUNAT_MAX_COMPROBANTES` | `100` | Cuántos se piden como máximo por extracción. Lo que sobra se reporta en `pendientes` y necesita otra vuelta. |
 
 ## Un job a la vez por empresa

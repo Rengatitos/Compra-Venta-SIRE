@@ -311,6 +311,32 @@ async def guardar_detalle_sunat(
     )
 
 
+async def guardar_leyenda_sunat(
+    db: AsyncIOMotorDatabase,
+    empresa_id: str,
+    periodo: str,
+    libro: Libro,
+    serie_numero: str,
+    leyenda: list[str],
+) -> None:
+    # Mismo filtro de cuatro claves que `guardar_detalle_sunat`, y por el mismo
+    # motivo: sin `libro`, un F001-1 que exista como venta y como compra recibe
+    # el dato en el documento equivocado.
+    #
+    # Ojo: `leyenda_sunat` no entra en `_filtro_pendiente_sunat`. La mayoría de
+    # los comprobantes no tiene recuadro de leyenda, así que exigirlo los
+    # dejaría pendientes del portal para siempre.
+    await _col(db).update_one(
+        {
+            "empresa_id": empresa_id,
+            "periodo": periodo,
+            "libro": libro.value,
+            "serie_numero": serie_numero,
+        },
+        {"$set": {"leyenda_sunat": leyenda}},
+    )
+
+
 def _filtro_pendiente_sunat(empresa_id: str, periodo: str, libro: Libro) -> dict[str, Any]:
     # Un comprobante está pendiente del portal si le falta el detalle de ítems
     # **o** el PDF. Las dos cosas salen de la misma consulta en SOL, así que

@@ -3,6 +3,7 @@ import io
 import logging
 import re
 import tempfile
+import time
 import zipfile
 from collections.abc import Callable
 from contextlib import ExitStack
@@ -153,6 +154,24 @@ class ComprobanteNoEncontrado(Exception):
     resto evita gastar una segunda ronda de timeout en cada comprobante que
     SUNAT no tiene en la bandeja consultada.
     """
+
+
+class BusquedaSinRespuesta(Exception):
+    """El portal no contestó a la búsqueda dentro del plazo.
+
+    Es hermana de `ComprobanteNoEncontrado`, no subclase: significan cosas
+    opuestas y confundirlas era el fallo. Un comprobante que sí existe pero cuya
+    consulta tarda —las de BBVA y BCP rondan los 9 s— se daba por ausente, y con
+    eso se quedaba sin detalle y sin PDF, además sin reintento. Separado, vencer
+    el plazo vuelve a ser un tropiezo reintentable como cualquier otro.
+    """
+
+    def __init__(self, serie_numero: str, timeout_ms: int) -> None:
+        self.serie_numero = serie_numero
+        self.timeout_ms = timeout_ms
+        super().__init__(
+            f"la búsqueda de {serie_numero} no respondió en {timeout_ms // 1000} s"
+        )
 
 
 class CriterioRechazado(Exception):
@@ -459,6 +478,12 @@ def _llenar(campo, valor: str) -> None:
 
 # Cabeceras y totales del comprobante. Comparten forma con las líneas de ítem,
 # así que el único modo de descartarlos es mirar la descripción.
+#
+# Se comparan anclados al principio (ver `_es_rotulo`) y no como subcadena
+# suelta: buscándolos en cualquier posición, "domicilio" —que está aquí sólo
+# para tumbar la fila "DOMICILIO FISCAL:"— se llevaba por delante el único ítem
+# de una factura de flete "PARA DESPACHO A DOMICILIO", y "ruc" hacía lo propio
+# con cualquier ESTRUCTURA o CRUCE.
 PALABRAS_EXCLUIR = {
     "cant.(a)", "u.m.", "código", "descripción", "valor unit.(b)",
     "precio unit.", "valor v.(a)*(b)", "icbper",
@@ -481,6 +506,23 @@ _COLUMNAS = (
 )
 
 
+def _es_rotulo(descripcion: str) -> bool:
+    """Si la descripción es una cabecera o un total en vez de un ítem.
+
+    El rótulo tiene que abrir la descripción y terminar donde acaba una palabra:
+    así "Total Venta" sigue siendo un total, pero un ítem que se llame
+    "TOTALIZADOR DIGITAL" ya no se confunde con uno.
+    """
+    texto = " ".join(descripcion.lower().split())
+    for rotulo in PALABRAS_EXCLUIR:
+        if not texto.startswith(rotulo):
+            continue
+        resto = texto[len(rotulo):]
+        if not resto or not resto[0].isalnum():
+            return True
+    return False
+
+
 def _parsear_filas(filas: list[list[str]]) -> list[dict]:
     """Convierte las celdas crudas del popup en líneas de detalle.
 
@@ -501,7 +543,7 @@ def _parsear_filas(filas: list[list[str]]) -> list[dict]:
             continue
 
         descripcion = celdas[3]
-        if any(p in descripcion.lower() for p in PALABRAS_EXCLUIR):
+        if _es_rotulo(descripcion):
             continue
 
         detalles.append(
@@ -520,6 +562,61 @@ _JS_LEER_TABLA = """() => Array.from(document.querySelectorAll('table tr'))
     .map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent))
     .filter(celdas => celdas.length > 0)"""
 
+
+
+# El recuadro «LEYENDA» del popup. En muchas FE recibidas es la glosa real: en
+# una comisión bancaria el ítem dice sólo "CONCEPTO DE PAGO:COMISION" y es la
+# leyenda la que cuenta que fue por "TARJETA DE DEBITO". Antes ni se leía.
+_JS_LEER_LEYENDA = """() => {
+    const esLeyenda = el =>
+        (el.textContent || '').trim().toUpperCase().startsWith('LEYENDA');
+    // El ultimo del orden del documento es el mas profundo: si el rotulo viene
+    // envuelto en celdas anidadas, interesa la de dentro.
+    const rotulo = Array.from(document.querySelectorAll('td, th, div, span'))
+        .filter(esLeyenda).pop();
+    if (!rotulo) return [];
+    // El salto de linea se pide por codigo y no como escape. Esta funcion vive
+    // dentro de una cadena de Python: cualquier escape lo consume el modulo al
+    // importarse, y el navegador recibiria la cadena partida en dos. Por eso
+    // aqui no hay ni una barra invertida, y un test lo vigila.
+    const SALTO = String.fromCharCode(10);
+    const porLineas = el => (el.innerText || '').split(SALTO);
+    // El recuadro suele ser una tabla propia, y entonces su texto empieza por el
+    // rotulo. Cuando no lo es, subir hasta la tabla se traeria el comprobante
+    // entero, asi que se cae a la fila del rotulo y las que la siguen.
+    const tabla = rotulo.closest('table');
+    if (tabla && esLeyenda(tabla)) {
+        return Array.from(tabla.querySelectorAll('tr')).flatMap(porLineas);
+    }
+    const fila = rotulo.closest('tr');
+    if (!fila) return porLineas(rotulo);
+    const lineas = [];
+    for (let f = fila; f; f = f.nextElementSibling) lineas.push(...porLineas(f));
+    return lineas;
+}"""
+
+_ROTULO_LEYENDA = "leyenda"
+
+
+def _parsear_leyenda(filas: list[str | None]) -> list[str]:
+    """Líneas útiles del recuadro «LEYENDA», sin viñetas ni repeticiones.
+
+    Se separa del scraping por lo mismo que `_parsear_filas`: es la parte con
+    reglas y así se prueba sin levantar un navegador. El portal pinta cada línea
+    con una viñeta "-" y cierra el recuadro con una vacía.
+    """
+    lineas: list[str] = []
+    for fila in filas or []:
+        if not fila:
+            continue
+        texto = " ".join(str(fila).split())
+        if texto.startswith("-"):
+            texto = " ".join(texto[1:].split())
+        if not texto or texto.lower() == _ROTULO_LEYENDA:
+            continue
+        if texto not in lineas:
+            lineas.append(texto)
+    return lineas
 
 
 _JS_ABRIR_CONSULTA = (
@@ -724,6 +821,69 @@ def _criterio_ruc(fac: dict, libro: Libro) -> str:
     return documento
 
 
+def _avisa_sin_resultados(iframe, textos: tuple[str, ...], timeout_ms: int) -> bool:
+    """Si el portal ya dijo que la búsqueda no tiene resultados."""
+    try:
+        cuerpo = iframe.locator("body").first.inner_text(timeout=timeout_ms)
+    except Exception:
+        # No poder leer el cuerpo no es un veredicto: decide el plazo.
+        return False
+    cuerpo = (cuerpo or "").lower()
+    return any(texto.lower() in cuerpo for texto in textos)
+
+
+def _esperar_resultado(
+    iframe,
+    serie_numero: str,
+    timeout_ms: int,
+    *,
+    textos_sin_resultados: tuple[str, ...] | None = None,
+    sondeo_ms: int = 250,
+    reloj: Callable[[], float] = time.monotonic,
+    dormir: Callable[[float], None] = time.sleep,
+):
+    """El enlace «Visualizar», sondeando hasta que haya veredicto.
+
+    Pulsar Buscar tiene tres desenlaces y esperar el enlace sólo distinguía dos:
+    o aparecía, o se agotaba el plazo. Ese segundo caso mezclaba «el portal avisa
+    de que no hay resultados» con «el portal aún no ha contestado», y lo segundo
+    se registraba como lo primero, que es lo que dejaba a los emisores lentos sin
+    detalle ni PDF.
+
+    Sondear en vez de esperar permite leer el aviso del portal en cuanto sale, y
+    por eso subir el plazo no encarece los comprobantes ausentes: ésos ya no lo
+    agotan, salen al instante por su propio mensaje.
+
+    `textos_sin_resultados` se resuelve en cada llamada y no en la firma, para
+    que ajustar la configuración no exija reimportar el módulo.
+    """
+    textos = (
+        settings.SUNAT_TEXTOS_SIN_RESULTADOS
+        if textos_sin_resultados is None
+        else textos_sin_resultados
+    )
+    enlace = iframe.locator(SEL_VISUALIZAR).first
+    limite = reloj() + timeout_ms / 1000
+    paso = sondeo_ms / 1000
+
+    while True:
+        try:
+            if enlace.count() > 0:
+                return enlace
+        except Exception:
+            # El iframe se recarga entre comprobantes y ahí `count()` revienta
+            # con "frame detached". No decide nada: se vuelve a mirar.
+            pass
+
+        if _avisa_sin_resultados(iframe, textos, sondeo_ms):
+            raise ComprobanteNoEncontrado(serie_numero)
+
+        if reloj() >= limite:
+            raise BusquedaSinRespuesta(serie_numero, timeout_ms)
+
+        dormir(paso)
+
+
 def _buscar(
     iframe,
     fac: dict,
@@ -737,7 +897,8 @@ def _buscar(
     buscar. Duplicarlos garantizaba que las dos copias divergieran en cuanto el
     portal cambiara un `id`.
 
-    Lanza `ComprobanteNoEncontrado` si la búsqueda no devuelve resultados.
+    Lanza `ComprobanteNoEncontrado` si el portal avisa de que no hay resultados
+    y `BusquedaSinRespuesta` si no contesta a tiempo.
     """
     serie_num = fac.get("serie_numero", "")
     fecha_emision = fac.get("fecha_emision")
@@ -803,15 +964,7 @@ def _buscar(
 
     iframe.locator(SEL_BUSCAR).first.click(force=True)
 
-    btn_visualizar = iframe.locator(SEL_VISUALIZAR).first
-    # Cuando el comprobante existe, el enlace aparece en menos de un segundo.
-    # Esperar aquí el timeout general sólo alargaba los que SUNAT no tiene.
-    try:
-        btn_visualizar.wait_for(state="attached", timeout=timeout_busqueda_ms)
-    except Exception as sin_resultados:
-        raise ComprobanteNoEncontrado(serie_num) from sin_resultados
-
-    return btn_visualizar
+    return _esperar_resultado(iframe, serie_num, timeout_busqueda_ms)
 
 
 def _capturar_pdf(popup, context, timeout_ms: int, log, serie_num: str, headless: bool):
@@ -874,12 +1027,12 @@ def _consultar_uno(
     libro: Libro,
     timeout_ms: int,
     log,
-    timeout_busqueda_ms: int = 8000,
+    timeout_busqueda_ms: int = 25000,
     descargar_pdf: bool = False,
     headless: bool = True,
     timeout_pdf_ms: int | None = None,
-) -> tuple[list[dict], bytes | None]:
-    """Líneas del comprobante y, si se pidió, su PDF. Lanza si algo falla.
+) -> tuple[list[dict], bytes | None, list[str]]:
+    """Líneas del comprobante, su PDF si se pidió, y su leyenda. Lanza si falla.
 
     El PDF se captura aquí y no en una segunda pasada porque llegar a este
     punto ya costó login, bandeja, búsqueda y apertura del popup: repetirlo
@@ -907,6 +1060,14 @@ def _consultar_uno(
 
         detalles = _parsear_filas(popup.evaluate(_JS_LEER_TABLA))
 
+        try:
+            leyenda = _parsear_leyenda(popup.evaluate(_JS_LEER_LEYENDA))
+        except Exception as fallo:
+            # La leyenda es un extra: no es el motivo de la visita y perderla no
+            # justifica renunciar al detalle y al PDF ya conseguidos.
+            log(f"{serie_num}: no se pudo leer la leyenda: {fallo}")
+            leyenda = []
+
         pdf = None
         if descargar_pdf:
             pdf = _capturar_pdf(
@@ -918,7 +1079,7 @@ def _consultar_uno(
                 headless,
             )
 
-        return detalles, pdf
+        return detalles, pdf, leyenda
     finally:
         # Sin esto un fallo a media lectura deja la pestaña abierta y las va
         # acumulando durante todo el job.
@@ -1018,11 +1179,12 @@ def _scrape_detalles(
     progreso: Callable[[int, str], None] | None = None,
     timeout_ms: int = 15000,
     al_extraer: Callable[[str, list[dict]], None] | None = None,
-    timeout_busqueda_ms: int = 8000,
+    timeout_busqueda_ms: int = 25000,
     descargar_pdf: bool = False,
     al_descargar: Callable[[str, bytes], None] | None = None,
     timeout_pdf_ms: int | None = None,
     al_descargar_xml: Callable[[str, bytes], None] | None = None,
+    al_extraer_leyenda: Callable[[str, list[str]], None] | None = None,
 ) -> dict:
     """`progreso(hechos, serie_numero)` se llama al empezar cada comprobante.
 
@@ -1033,6 +1195,9 @@ def _scrape_detalles(
     Con `descargar_pdf` se captura además el PDF de cada comprobante y se
     entrega por `al_descargar(serie_numero, contenido)`. Va apagado por defecto
     para que el camino de la extracción de detalle no cambie de coste.
+
+    `al_extraer_leyenda(serie_numero, lineas)` se llama sólo cuando el popup
+    trae recuadro de leyenda, que es la minoría de los comprobantes.
     """
     # `print` no llegaba a logs/automat_api.log (ese handler sólo recoge el
     # módulo `logging`), así que el rastro por comprobante se perdía justo
@@ -1101,6 +1266,9 @@ def _scrape_detalles(
                 # el comprobante por perdido.
                 for intento in (1, 2):
                     try:
+                        # Sólo el popup trae leyenda; en SEE-SOL la glosa
+                        # viene dentro del XML y la lee `cpe_xml`.
+                        leyenda: list[str] = []
                         if _es_serie_sol(fac.get("serie", "")):
                             _abrir_modulo_see_sol(page, iframe, timeout_ms)
                             detalles, pdf, xml = _consultar_uno_see_sol(
@@ -1118,7 +1286,7 @@ def _scrape_detalles(
                                 al_descargar_xml(serie_num, xml)
                         else:
                             _abrir_consulta(page, iframe, timeout_ms)
-                            detalles, pdf = _consultar_uno(
+                            detalles, pdf, leyenda = _consultar_uno(
                                 page,
                                 context,
                                 iframe,
@@ -1135,6 +1303,8 @@ def _scrape_detalles(
                         log(f"{serie_num}: {len(detalles)} items extraidos")
                         if al_extraer:
                             al_extraer(serie_num, detalles)
+                        if leyenda and al_extraer_leyenda:
+                            al_extraer_leyenda(serie_num, leyenda)
                         # Un comprobante sin PDF no es un fallo del trabajo: se
                         # queda sin respaldo y se vuelve a intentar en la
                         # siguiente vuelta, porque el puntero no se guarda.
@@ -1154,6 +1324,14 @@ def _scrape_detalles(
                             f"{fuente}"
                         )
                         break
+                    except BusquedaSinRespuesta as sin_respuesta:
+                        # No es que falte: el portal no contestó. Se reintenta y,
+                        # si vuelve a callarse, se dice con un mensaje propio en
+                        # vez de apuntarlo como ausente en la bandeja.
+                        if intento == 2:
+                            log(f"{serie_num}: {sin_respuesta}")
+                            break
+                        log(f"Reintentando {serie_num}: {sin_respuesta}")
                     except Exception as e:
                         if intento == 2:
                             log(f"Error procesando {serie_num}: {e}")
@@ -1206,6 +1384,7 @@ async def obtener_detalles(
     al_descargar: Callable[[str, bytes], None] | None = None,
     timeout_pdf_ms: int | None = None,
     al_descargar_xml: Callable[[str, bytes], None] | None = None,
+    al_extraer_leyenda: Callable[[str, list[str]], None] | None = None,
 ) -> dict:
     password_cifrada = empresa.get("password")
     if not password_cifrada:
@@ -1246,6 +1425,7 @@ async def obtener_detalles(
             al_descargar=al_descargar,
             timeout_pdf_ms=timeout_pdf_ms,
             al_descargar_xml=al_descargar_xml,
+            al_extraer_leyenda=al_extraer_leyenda,
         )
     )
 

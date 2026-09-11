@@ -104,6 +104,21 @@ async def extraer(
         guardados.add(serie_numero)
         futuro.add_done_callback(_registrar_fallo)
 
+    def guardar_leyenda(serie_numero: str, leyenda: list) -> None:
+        if not leyenda:
+            return
+        try:
+            futuro = asyncio.run_coroutine_threadsafe(
+                repo_comprobantes.guardar_leyenda_sunat(
+                    db, empresa_id, periodo, libro, serie_numero, leyenda
+                ),
+                loop,
+            )
+        except RuntimeError:
+            logger.debug("No se pudo guardar la leyenda: el loop está cerrado")
+            return
+        futuro.add_done_callback(_registrar_fallo)
+
     def guardar_pdf(serie_numero: str, contenido: bytes) -> None:
         doc = por_serie.get(serie_numero)
         if doc is None or not contenido or serie_numero in con_pdf_previo:
@@ -192,6 +207,7 @@ async def extraer(
         descargar_pdf=True,
         al_descargar=guardar_pdf,
         al_descargar_xml=guardar_xml,
+        al_extraer_leyenda=guardar_leyenda,
     )
 
     # Red de seguridad por si algún aviso se perdió: reintenta sólo lo que no
