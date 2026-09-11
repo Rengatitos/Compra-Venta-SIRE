@@ -103,6 +103,7 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
         queryKey: ['comprobante', ruc, periodo, serieNumero],
       });
       await cliente.invalidateQueries({ queryKey: ['comprobantes', ruc, periodo] });
+      await cliente.invalidateQueries({ queryKey: ['reporte-asociado', ruc, periodo] });
     },
     onError: (fallo) => {
       mostrar({

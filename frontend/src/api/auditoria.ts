@@ -1,6 +1,11 @@
-import { pedir, segmento } from '@/lib/http';
+import { descargar, pedir, segmento } from '@/lib/http';
 import type { ReporteResponse } from '@/types/api';
 import type { Libro } from '@/types/domain';
+
+export interface EstadoReporteAsociado {
+  habilitado: boolean;
+  pendientes: number;
+}
 
 /**
  * `GET …/libros/{libro}/auditoria/reporte`. La tabla comparativa que pidió el
@@ -16,5 +21,21 @@ export function obtenerReporte(
   return pedir<ReporteResponse>(
     `/empresas/${segmento(ruc)}/periodos/${segmento(periodo)}/libros/${segmento(libro)}` +
       '/auditoria/reporte',
+  );
+}
+
+export function obtenerEstadoReporteAsociado(
+  ruc: string,
+  periodo: string,
+): Promise<EstadoReporteAsociado> {
+  return pedir<EstadoReporteAsociado>(
+    `/empresas/${segmento(ruc)}/periodos/${segmento(periodo)}/reporte-asociado/estado`,
+  );
+}
+
+export function descargarReporteAsociado(ruc: string, periodo: string): Promise<void> {
+  return descargar(
+    `/empresas/${segmento(ruc)}/periodos/${segmento(periodo)}/reporte-asociado`,
+    `reporte_asociado_${periodo}.zip`,
   );
 }

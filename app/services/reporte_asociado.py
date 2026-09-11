@@ -1,17 +1,23 @@
 """Libro conjunto y control de numeración por registro, emisor, tipo y serie."""
 import io
 import re
+import tempfile
+import zipfile
 from collections import defaultdict, Counter
 from copy import copy
+from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Font
 
 from app.domain.comprobante import Libro
+from app.services import almacen_pdf
 from app.repositories import comprobantes
 from app.services.comprobante_service import serializar_lote
 from app.services.glosa import obtener_glosa
 from app.services.plantilla_excel import excel_plantilla
+from app.services.revision_comprobantes import anulado
 
 MESES = ('ENERO FEBRERO MARZO ABRIL MAYO JUNIO JULIO AGOSTO SEPTIEMBRE OCTUBRE NOVIEMBRE DICIEMBRE').split()
 
@@ -36,7 +42,8 @@ async def registros(db, empresa, periodo):
 def estado(registros):
     filas = [f for grupo in registros.values() for f in grupo]
     pendientes = sum(not bool(obtener_glosa(f)) for f in filas)
-    return {'habilitado': bool(filas) and pendientes == 0, 'pendientes': pendientes}
+    libros_completos = all(registros.get(libro) for libro in (Libro.COMPRAS, Libro.VENTAS))
+    return {'habilitado': libros_completos and pendientes == 0, 'pendientes': pendientes}
 
 
 def excel(registros, periodo, ruc):
@@ -69,18 +76,35 @@ def excel(registros, periodo, ruc):
     for col in 'ABCDEFGHIJK':
         control.column_dimensions[col].width = 24
     for libro in (Libro.VENTAS, Libro.COMPRAS):
-        original = load_workbook(excel_plantilla(serializar_lote(registros[libro]), libro)).worksheets[0]
+        filas = [fila for fila in registros[libro] if not anulado(fila)]
+        original = load_workbook(excel_plantilla(serializar_lote(filas), libro)).worksheets[0]
         hoja = wb.create_sheet('Registro de ventas' if libro == Libro.VENTAS else 'Registro de compras')
-        for fila in original:
-            for celda in fila:
-                destino = hoja.cell(celda.row, celda.column, celda.value)
-                destino._style = copy(celda._style)
-        for clave, dimension in original.column_dimensions.items():
-            hoja.column_dimensions[clave] = copy(dimension)
-        for clave, dimension in original.row_dimensions.items():
-            hoja.row_dimensions[clave] = copy(dimension)
         for rango in original.merged_cells.ranges:
             hoja.merge_cells(str(rango))
+        for fila in original:
+            for celda in fila:
+                if isinstance(celda, MergedCell):
+                    continue
+                destino = hoja.cell(celda.row, celda.column, celda.value)
+                destino.font = copy(celda.font)
+                destino.fill = copy(celda.fill)
+                destino.border = copy(celda.border)
+                destino.alignment = copy(celda.alignment)
+                destino.number_format = celda.number_format
+                destino.protection = copy(celda.protection)
+        for clave, dimension in original.column_dimensions.items():
+            destino = hoja.column_dimensions[clave]
+            destino.width = dimension.width
+            destino.hidden = dimension.hidden
+            destino.bestFit = dimension.bestFit
+            destino.outlineLevel = dimension.outlineLevel
+            destino.collapsed = dimension.collapsed
+        for clave, dimension in original.row_dimensions.items():
+            destino = hoja.row_dimensions[clave]
+            destino.height = dimension.height
+            destino.hidden = dimension.hidden
+            destino.outlineLevel = dimension.outlineLevel
+            destino.collapsed = dimension.collapsed
         hoja.freeze_panes = original.freeze_panes
     for fila in control:
         for celda in fila:
@@ -89,3 +113,24 @@ def excel(registros, periodo, ruc):
     salida = io.BytesIO()
     wb.save(salida)
     return salida.getvalue()
+
+
+def zip_reporte(registros, periodo, ruc, usuario):
+    """Crea el ZIP con el libro conjunto y los PDFs de ambos registros."""
+    ruta_temporal = tempfile.NamedTemporaryFile(suffix='.zip', delete=False).name
+    try:
+        with zipfile.ZipFile(ruta_temporal, 'w', zipfile.ZIP_DEFLATED) as archivo:
+            archivo.writestr(f'{nombre(usuario, periodo)}.xlsx', excel(registros, periodo, ruc))
+            for carpeta in ('comprobantes compra', 'comprobantes venta'):
+                archivo.writestr(f'{carpeta}/', '')
+            for libro, carpeta in (
+                (Libro.COMPRAS, 'comprobantes compra'),
+                (Libro.VENTAS, 'comprobantes venta'),
+            ):
+                base = almacen_pdf.raiz_periodo(ruc, libro, periodo)
+                for pdf in almacen_pdf.listar(ruc, libro, periodo):
+                    archivo.write(pdf, arcname=f'{carpeta}/{pdf.relative_to(base).as_posix()}')
+    except Exception:
+        Path(ruta_temporal).unlink(missing_ok=True)
+        raise
+    return ruta_temporal

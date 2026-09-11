@@ -13,6 +13,7 @@ from app.api.v1.routes import (
     periodos,
     plan_cuentas,
     propuesta,
+    reporte_asociado,
 )
 
 api_router = APIRouter()
@@ -63,5 +64,10 @@ api_router.include_router(
 api_router.include_router(
     auditoria.router,
     prefix="/empresas/{ruc}/periodos/{periodo}/libros/{libro}/auditoria",
+    tags=["Auditoría"],
+)
+api_router.include_router(
+    reporte_asociado.router,
+    prefix="/empresas/{ruc}/periodos/{periodo}",
     tags=["Auditoría"],
 )

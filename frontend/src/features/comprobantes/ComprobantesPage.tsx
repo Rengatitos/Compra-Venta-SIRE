@@ -2,6 +2,7 @@ import { formatearImporteComprobante } from '@/lib/importesComprobante';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { listarIncompletos } from '@/api/comprobantes';
+import { descargarReporteAsociado, obtenerEstadoReporteAsociado } from '@/api/auditoria';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { obtenerJob } from '@/api/jobs';
 import {
@@ -144,6 +145,21 @@ export function ComprobantesPage() {
     refetchInterval: jobActivo ? 5000 : false,
   });
 
+  const reporteAsociado = useQuery({
+    queryKey: ['reporte-asociado', ruc, periodo],
+    queryFn: () => obtenerEstadoReporteAsociado(ruc, periodo),
+    enabled: esPeriodoValido(periodo),
+  });
+
+  const descargarAsociado = useMutation({
+    mutationFn: () => descargarReporteAsociado(ruc, periodo),
+    onError: (fallo) => mostrar({
+      tono: 'error',
+      titulo: 'No se pudo descargar el reporte asociado',
+      detalle: fallo instanceof ApiError ? fallo.message : 'Error inesperado.',
+    }),
+  });
+
   const anulados = useQuery({
     queryKey: ['comprobantes', ruc, periodo, libro, 'anulados-sunat'],
     queryFn: () => listarAnuladosSunat(ruc, periodo, libro),
@@ -174,6 +190,7 @@ export function ComprobantesPage() {
         await new Promise((resolve) => window.setTimeout(resolve, 3000));
       }
       await cliente.invalidateQueries({ queryKey: ['comprobantes', ruc, periodo] });
+      await cliente.invalidateQueries({ queryKey: ['reporte-asociado', ruc, periodo] });
     },
     onSuccess: async () => {
       setDialogoExtraccion(false);
@@ -371,6 +388,19 @@ export function ComprobantesPage() {
               PDF del listado
             </Button>
             <DescargarPdfsButton ruc={ruc} periodo={periodo} libro={libro} />
+            <Button
+              variante="azul"
+              onClick={() => descargarAsociado.mutate()}
+              cargando={descargarAsociado.isPending}
+              disabled={!reporteAsociado.data?.habilitado || descargarAsociado.isPending}
+              title={
+                reporteAsociado.data?.habilitado
+                  ? 'Descarga el Excel y los comprobantes de compras y ventas'
+                  : 'Completa las glosas de compras y ventas para habilitar la descarga'
+              }
+            >
+              Descargar reporte y asociado
+            </Button>
           </>
         }
       />
