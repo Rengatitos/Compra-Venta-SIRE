@@ -32,6 +32,7 @@ exoneradas).
 from __future__ import annotations
 
 import io
+import re
 from copy import copy
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -39,6 +40,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.domain.comprobante import (
@@ -593,7 +595,9 @@ def excel_plantilla(
     destino: str | None = None,
 ) -> io.BytesIO:
     """Genera el registro del libro pedido sobre la plantilla oficial."""
-    auditoria = auditar_conversion(comprobantes)
+    from app.services.revision_comprobantes import anulado
+
+    auditoria = auditar_conversion([c for c in comprobantes if not anulado(c)])
     if auditoria["comprobantes_sin_tc"]:
         raise ErrorTipoCambio(auditoria["comprobantes_sin_tc"])
     wb = load_workbook(io.BytesIO(_bytes_plantilla()))
@@ -610,9 +614,17 @@ def excel_plantilla(
     prototipos = _prototipos(hoja)
     _limpiar_ejemplos(hoja)
 
+    # Columna adicional al final, sin desplazar las columnas de la plantilla.
+    columna_observacion = get_column_letter(hoja.max_column + 1)
+    hoja[f"{columna_observacion}2"] = "Observación"
+    hoja.merge_cells(f"{columna_observacion}2:{columna_observacion}3")
+    hoja[f"{columna_observacion}2"]._style = copy(hoja["I2"]._style)
+    hoja.column_dimensions[columna_observacion].width = 34
+
     columnas_fecha = _COLUMNAS_FECHA[libro]
     columnas_importe = _COLUMNAS_IMPORTE[libro]
 
+    anulados = []
     indice = PRIMERA_FILA_DATOS
     for comprobante in comprobantes:
         conversion = _conversion(comprobante)
@@ -621,6 +633,20 @@ def excel_plantilla(
             if libro == Libro.COMPRAS
             else _fila_ventas(comprobante, conversion)
         )
+        valores[columna_observacion] = comprobante.get("observacion") or None
+        descripciones_anulado = [
+            item["descripcion"]
+            for item in comprobante.get("detalle_sunat") or []
+            if isinstance(item, dict) and isinstance(item.get("descripcion"), str)
+            and re.search(r"\banulad[oa]s?\b", item["descripcion"], re.IGNORECASE)
+        ] if comprobante.get("origen") == "sire" else []
+        if descripciones_anulado:
+            descripcion = " / ".join(descripciones_anulado)
+            valores[columna_observacion] = " · ".join(filter(None, [
+                valores[columna_observacion], f"Descripción SUNAT: {descripcion}. Revisar Anulados",
+            ]))
+            anulados.append((comprobante, descripcion))
+            continue
         _escribir_fila(
             hoja,
             indice,
@@ -630,10 +656,39 @@ def excel_plantilla(
             columnas_importe,
             conversion.formato_importe,
         )
+        if descripciones_anulado:
+            from openpyxl.styles import PatternFill
+
+            hoja[f"{columna_observacion}{indice}"].fill = PatternFill(
+                "solid", fgColor="FEE2E2"
+            )
         indice += 1
 
-    if comprobantes:
+    if indice > PRIMERA_FILA_DATOS:
         _escribir_totales(hoja, indice, indice - 1, libro)
+
+    if anulados:
+        from openpyxl.styles import Font, PatternFill
+
+        revision = wb.create_sheet("Anulados")
+        revision.append(["Comprobante", "Emisión", "Contraparte", "RUC / Doc.", "Descripción SUNAT"])
+        for comprobante, descripcion in anulados:
+            revision.append([
+                comprobante.get("serie_numero"), comprobante.get("fecha_emision"),
+                comprobante.get("razon_social"), comprobante.get("documento_contraparte"),
+                descripcion,
+            ])
+        for celda in revision[1]:
+            celda.fill = PatternFill("solid", fgColor="B91C1C")
+            celda.font = Font(color="FFFFFF", bold=True)
+        for fila in revision.iter_rows(min_row=2):
+            for celda in fila:
+                celda.data_type = "s" if isinstance(celda.value, str) else celda.data_type
+            fila[4].fill = PatternFill("solid", fgColor="FEE2E2")
+        for columna, ancho in {"A": 24, "B": 20, "C": 45, "D": 20, "E": 65}.items():
+            revision.column_dimensions[columna].width = ancho
+        revision.freeze_panes = "A2"
+        revision.auto_filter.ref = revision.dimensions
 
     salida = io.BytesIO()
     wb.save(salida)

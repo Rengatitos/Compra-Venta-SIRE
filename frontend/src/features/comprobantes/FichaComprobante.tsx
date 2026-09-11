@@ -1,3 +1,4 @@
+import { formatearImporteComprobante } from '@/lib/importesComprobante';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
@@ -9,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/Feedback';
 import { TextAreaField } from '@/components/ui/Field';
 import { useToast } from '@/hooks/useToast';
-import { formatearFecha, formatearMoneda } from '@/lib/format';
+import { formatearFecha } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
 import type { ComprobanteResponse } from '@/types/api';
@@ -151,9 +152,9 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
       <Seccion titulo="Importes">
         <dl className={layout.definiciones}>
           <Dato termino="Base imponible">
-            {formatearMoneda(datos.base_imponible, datos.moneda)}
+            {formatearImporteComprobante(datos.base_imponible, datos)}
           </Dato>
-          <Dato termino="IGV">{formatearMoneda(datos.igv, datos.moneda)}</Dato>
+          <Dato termino="IGV">{formatearImporteComprobante(datos.igv, datos)}</Dato>
           {/*
             El desglose por destino solo aparece cuando hay algo que desglosar.
             En la inmensa mayoría de comprobantes todo va a «gravadas» y
@@ -162,30 +163,32 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
           {hayDesglose(datos) ? (
             <>
               <Dato termino="Gravadas (DG)">
-                {formatearMoneda(datos.base_imponible_dg, datos.moneda)} ·{' '}
-                {formatearMoneda(datos.igv_dg, datos.moneda)} de IGV
+                {formatearImporteComprobante(datos.base_imponible_dg, datos)} ·{' '}
+                {formatearImporteComprobante(datos.igv_dg, datos)} de IGV
               </Dato>
               <Dato termino="Gravadas y no gravadas (DGNG)">
-                {formatearMoneda(datos.base_imponible_dgng, datos.moneda)} ·{' '}
-                {formatearMoneda(datos.igv_dgng, datos.moneda)} de IGV
+                {formatearImporteComprobante(datos.base_imponible_dgng, datos)} ·{' '}
+                {formatearImporteComprobante(datos.igv_dgng, datos)} de IGV
               </Dato>
               <Dato termino="No gravadas (DNG)">
-                {formatearMoneda(datos.base_imponible_dng, datos.moneda)} ·{' '}
-                {formatearMoneda(datos.igv_dng, datos.moneda)} de IGV
+                {formatearImporteComprobante(datos.base_imponible_dng, datos)} ·{' '}
+                {formatearImporteComprobante(datos.igv_dng, datos)} de IGV
               </Dato>
             </>
           ) : null}
           {datos.porcentaje_igv !== null ? (
             <Dato termino="Tasa IGV">{datos.porcentaje_igv} %</Dato>
           ) : null}
-          <Dato termino="Exonerado">{formatearMoneda(datos.exonerado, datos.moneda)}</Dato>
-          <Dato termino="Inafecto">{formatearMoneda(datos.inafecto, datos.moneda)}</Dato>
-          <Dato termino="No gravado">{formatearMoneda(datos.no_gravado, datos.moneda)}</Dato>
-          <Dato termino="ICBPER">{formatearMoneda(datos.icbper, datos.moneda)}</Dato>
-          <Dato termino="Otros tributos">
-            {formatearMoneda(datos.otros_tributos, datos.moneda)}
+          <Dato termino="Exonerado">{formatearImporteComprobante(datos.exonerado, datos)}</Dato>
+          <Dato termino="Inafecto">{formatearImporteComprobante(datos.inafecto, datos)}</Dato>
+          <Dato termino="No gravado">
+            {formatearImporteComprobante(datos.no_gravado, datos)}
           </Dato>
-          <Dato termino="Total">{formatearMoneda(datos.total, datos.moneda)}</Dato>
+          <Dato termino="ICBPER">{formatearImporteComprobante(datos.icbper, datos)}</Dato>
+          <Dato termino="Otros tributos">
+            {formatearImporteComprobante(datos.otros_tributos, datos)}
+          </Dato>
+          <Dato termino="Total">{formatearImporteComprobante(datos.total, datos)}</Dato>
         </dl>
       </Seccion>
 

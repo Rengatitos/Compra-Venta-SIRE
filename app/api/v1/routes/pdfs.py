@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.background import BackgroundTask
@@ -15,11 +15,11 @@ from starlette.background import BackgroundTask
 from app.api.v1.deps import empresa_actual, empresa_id, libro_valido, periodo_valido
 from app.db.database import get_db
 from app.domain.comprobante import Libro
-from app.domain.jobs import TipoJob
+from app.domain.jobs import EstadoJob, TipoJob
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import periodos as repo_periodos
 from app.schemas.job import JobAceptado
-from app.services import almacen_pdf, jobs_service, pdf_service
+from app.services import almacen_pdf, jobs_service, pdf_service, zip_sunat_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -39,6 +39,47 @@ CABECERA_MANIFIESTO = (
     "ruta_pdf",
     "estado",
 )
+
+
+@router.post("/zip-completo", response_model=JobAceptado, status_code=202)
+@limiter.limit("5/minute")
+async def iniciar_zip_completo(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    periodo: str = Depends(periodo_valido),
+    empresa: dict = Depends(empresa_actual),
+    db=Depends(get_db),
+):
+    if not await repo_periodos.obtener(db, str(empresa["_id"]), periodo):
+        raise HTTPException(status_code=404, detail="Periodo no encontrado")
+    if await jobs_service.activo(db, empresa["ruc"], TipoJob.DESCARGA_PDFS, periodo=periodo):
+        raise HTTPException(status_code=409, detail="Ya hay una descarga de PDFs en curso")
+    job = await jobs_service.crear(db, TipoJob.DESCARGA_PDFS, empresa["ruc"], periodo)
+
+    async def tarea(reportar):
+        return await zip_sunat_service.preparar(db, empresa, periodo, job.job_id, reportar)
+
+    background_tasks.add_task(jobs_service.ejecutar, db, job.job_id, tarea, empresa["ruc"])
+    return {"job_id": job.job_id, "estado": job.estado.value,
+            "mensaje": "Descargando desde SUNAT los PDFs de compras y ventas"}
+
+
+@router.get("/zip-completo/{job_id}", response_class=FileResponse)
+async def descargar_zip_completo(
+    job_id: str,
+    periodo: str = Depends(periodo_valido),
+    empresa: dict = Depends(empresa_actual),
+    db=Depends(get_db),
+):
+    job = await jobs_service.obtener(db, job_id)
+    if not job or job.ruc != empresa["ruc"] or job.periodo != periodo:
+        raise HTTPException(status_code=404, detail="Descarga no encontrada")
+    if job.estado != EstadoJob.COMPLETADO or not (job.resultado or {}).get("zip_completo"):
+        raise HTTPException(status_code=409, detail="El ZIP aún no está disponible")
+    ruta = zip_sunat_service.ruta_archivo(empresa["ruc"], job.job_id)
+    if not ruta.is_file():
+        raise HTTPException(status_code=404, detail="El archivo ya no está disponible")
+    return FileResponse(ruta, media_type="application/zip", filename=job.resultado["nombre"])
 
 
 @router.post(

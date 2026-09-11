@@ -6,6 +6,7 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import settings
+from app.services.sunat.texto import corregir_codificacion
 from app.domain.comprobante import (
     Comprobante,
     EstadoProcesamiento,
@@ -182,6 +183,35 @@ async def eliminar_sire_no_incluidos(
     return resultado.deleted_count
 
 
+async def listar_anulados_sunat(db, empresa_id: str, periodo: str, libro: Libro):
+    return await _col(db).find({
+        "empresa_id": empresa_id,
+        "periodo": periodo,
+        "libro": libro.value,
+        "origen": Origen.SIRE.value,
+        "detalle_sunat.descripcion": {"$regex": r"\banulad[oa]s?\b", "$options": "i"},
+    }).to_list(length=None)
+
+
+async def cobertura_sunat(db, empresa_id: str, periodo: str, libro: Libro) -> dict[str, int]:
+    """Cobertura de todo el libro, independiente de la paginación del listado."""
+    filas = await _col(db).aggregate([
+        {"$match": {"empresa_id": empresa_id, "periodo": periodo, "libro": libro.value}},
+        {"$group": {
+            "_id": None,
+            "total": {"$sum": 1},
+            "con_detalle": {"$sum": {"$cond": [
+                {"$gt": [{"$size": {"$ifNull": ["$detalle_sunat", []]}}, 0]}, 1, 0,
+            ]}},
+            "con_pdf": {"$sum": {"$cond": [
+                {"$ne": [{"$ifNull": ["$pdf_sunat.ruta", ""]}, ""]}, 1, 0,
+            ]}},
+        }},
+        {"$project": {"_id": 0}},
+    ]).to_list(length=1)
+    return filas[0] if filas else {"total": 0, "con_detalle": 0, "con_pdf": 0}
+
+
 async def listar(
     db: AsyncIOMotorDatabase,
     empresa_id: str,
@@ -290,6 +320,34 @@ async def guardar_glosa(db: AsyncIOMotorDatabase, documento_id, glosa: str) -> N
     await _col(db).update_one({"_id": documento_id}, {"$set": {"glosa": glosa}})
 
 
+async def guardar_campos_contraparte(db, documento_id, campos):
+    if campos:
+        await _col(db).update_one({"_id": documento_id}, {"$set": {
+            f"contraparte_manual.{campo}": valor for campo, valor in campos.items()
+        }})
+
+
+async def guardar_contraparte_sunat(db, empresa_id: str, periodo: str, documento: dict) -> None:
+    datos = documento.get("_contraparte_sunat")
+    if not isinstance(datos, dict):
+        return
+    await _col(db).update_one(
+        {"_id": documento["_id"], "empresa_id": empresa_id,
+         "periodo": periodo, "libro": Libro.VENTAS.value},
+        {"$set": {"contraparte_sunat": datos, "contraparte_sunat_fuente": "SUNAT SOL",
+                  "contraparte_sunat_consultada": True}},
+    )
+
+
+async def marcar_consulta_glosa(db, empresa_id: str, periodo: str, libro: Libro, ids: list) -> None:
+    if ids:
+        await _col(db).update_many(
+            {"_id": {"$in": ids}, "empresa_id": empresa_id,
+             "periodo": periodo, "libro": libro.value},
+            {"$set": {"glosa_consultada": True}},
+        )
+
+
 async def guardar_detalle_sunat(
     db: AsyncIOMotorDatabase,
     empresa_id: str,
@@ -298,6 +356,12 @@ async def guardar_detalle_sunat(
     serie_numero: str,
     detalle: list[Any],
 ) -> None:
+    detalle = [
+        {**item, "descripcion": corregir_codificacion(item["descripcion"])}
+        if isinstance(item, dict) and isinstance(item.get("descripcion"), str)
+        else item
+        for item in detalle
+    ]
     # Sin `libro` en el filtro, un F001-1 que exista a la vez como venta y como
     # compra recibía el detalle en el documento equivocado.
     await _col(db).update_one(
@@ -342,7 +406,7 @@ def _filtro_pendiente_sunat(empresa_id: str, periodo: str, libro: Libro) -> dict
     # **o** el PDF. Las dos cosas salen de la misma consulta en SOL, así que
     # abrir el navegador dos veces (una por cada cosa) era pagar el mismo
     # recorrido dos veces.
-    return {
+    filtro = {
         "empresa_id": empresa_id,
         "periodo": periodo,
         "libro": libro.value,
@@ -351,6 +415,13 @@ def _filtro_pendiente_sunat(empresa_id: str, periodo: str, libro: Libro) -> dict
             {"pdf_sunat": {"$exists": False}},
         ],
     }
+    if libro is Libro.VENTAS:
+        filtro["$or"].append({
+            "contraparte_sunat_consultada": {"$ne": True},
+            "$or": [{campo: {"$in": [None, "", "-", "—", "0"]}}
+                    for campo in ("razon_social", "documento_contraparte")],
+        })
+    return filtro
 
 
 async def listar_pendientes_sunat(

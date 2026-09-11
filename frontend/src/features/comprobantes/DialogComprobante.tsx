@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { editarContraparte } from '@/api/comprobantes';
 import { useState } from 'react';
 
 import { exportarComprobante, obtenerComprobante } from '@/api/comprobantes';
@@ -21,6 +22,8 @@ interface Props {
 
 export function DialogComprobante({ ruc, periodo, serieNumero, onCerrar }: Props) {
   const { mostrar } = useToast();
+  const cliente = useQueryClient();
+  const [guardando, setGuardando] = useState(false);
   const [exportando, setExportando] = useState<FormatoExport | null>(null);
 
   const comprobante = useQuery({
@@ -103,7 +106,53 @@ export function DialogComprobante({ ruc, periodo, serieNumero, onCerrar }: Props
         )
       ) : null}
 
-      {datos ? <FichaComprobante datos={datos} ruc={ruc} periodo={periodo} /> : null}
+      {datos ? (
+        <>
+          <FichaComprobante datos={datos} ruc={ruc} periodo={periodo} />
+          <form
+            key={`${datos.serie_numero}-${datos.razon_social}-${datos.documento_contraparte}`}
+            onSubmit={(evento) => {
+              evento.preventDefault();
+              const campos = new FormData(evento.currentTarget);
+              void (async () => {
+                setGuardando(true);
+                try {
+                  await editarContraparte(
+                    ruc,
+                    periodo,
+                    datos.serie_numero,
+                    datos.libro === 'ventas' ? 'ventas' : 'compras',
+                    (campos.get('razon_social') as string) ?? '',
+                    (campos.get('documento_contraparte') as string) ?? '',
+                  );
+                  await cliente.invalidateQueries({ queryKey: ['comprobantes', ruc, periodo] });
+                  await comprobante.refetch();
+                  mostrar({ tono: 'exito', titulo: 'Datos actualizados' });
+                } catch {
+                  mostrar({ tono: 'error', titulo: 'No se pudieron guardar los datos' });
+                } finally {
+                  setGuardando(false);
+                }
+              })();
+            }}
+          >
+            <p>
+              Completar datos es opcional. El comprobante se incluye en el reporte aunque estos
+              campos estén vacíos.
+            </p>
+            <label>
+              Contraparte <input name="razon_social" defaultValue={datos.razon_social} />
+            </label>
+            <label>
+              RUC / Doc.{' '}
+              <input name="documento_contraparte" defaultValue={datos.documento_contraparte} />
+            </label>
+            <Button type="submit" cargando={guardando}>
+              Guardar datos
+            </Button>
+          </form>
+        </>
+      ) : null}
     </Dialog>
   );
 }

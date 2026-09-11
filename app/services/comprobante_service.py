@@ -6,7 +6,8 @@ from typing import Any
 
 from app.domain.catalogos import describe_comprobante
 from app.repositories._mongo import fecha_desde_bson, monto_a_float
-from app.services.glosa import obtener_glosa
+from app.services.glosa import observacion_glosa, obtener_glosa
+from app.services.sunat.contraparte import completar
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,11 @@ def _tiene_detraccion(documento: dict[str, Any]) -> bool:
 
 
 def serializar(documento: dict[str, Any]) -> dict[str, Any]:
+    documento = completar(documento)
+    documento.update({
+        campo: valor for campo, valor in (documento.get("contraparte_manual") or {}).items()
+        if campo in ("razon_social", "documento_contraparte")
+    })
     tipo_cp = documento.get("tipo_cp", "")
     salida: dict[str, Any] = {
         "serie_numero": documento.get("serie_numero", ""),
@@ -65,6 +71,7 @@ def serializar(documento: dict[str, Any]) -> dict[str, Any]:
         "estado_procesamiento": documento.get("estado_procesamiento", "pendiente"),
         "analisis": None,
         "glosa": obtener_glosa(documento),
+        "observacion": observacion_glosa(documento),
         "detalle_sunat": documento.get("detalle_sunat", []) or [],
         "detraccion": _tiene_detraccion(documento),
         "detracciones": documento.get("detracciones") or [],

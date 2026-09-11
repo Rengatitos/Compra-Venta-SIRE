@@ -60,6 +60,7 @@ class ComprobanteResponse(BaseModel):
     estado_procesamiento: str
     analisis: None = None
     glosa: str = ""
+    observacion: str = ""
     detalle_sunat: list[Any] = []
     # True cuando la propuesta SUNAT contiene indDetraccion="D".
     detraccion: bool = False
@@ -76,4 +77,6 @@ class ComprobanteResponse(BaseModel):
 
 
 class ComprobanteUpdate(BaseModel):
+    razon_social: str | None = None
+    documento_contraparte: str | None = None
     descripcion: str | None = None

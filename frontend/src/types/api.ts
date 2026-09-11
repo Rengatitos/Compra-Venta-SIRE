@@ -104,6 +104,7 @@ export interface PdfSunat {
 
 export interface ComprobanteResponse {
   glosa?: string;
+  observacion?: string;
   detracciones?: {
     tipo: 'pago' | 'npd';
     numero?: string;

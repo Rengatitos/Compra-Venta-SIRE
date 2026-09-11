@@ -5,11 +5,13 @@ import re
 import tempfile
 import time
 import zipfile
+from calendar import monthrange
 from collections.abc import Callable
 from contextlib import ExitStack
 from datetime import date, datetime
 from functools import partial
 from pathlib import Path
+from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
@@ -17,7 +19,7 @@ from playwright.sync_api import sync_playwright
 from app.core.config import settings
 from app.core.encryption import decrypt_password
 from app.domain.comprobante import Libro, normalizar_tipo_cp
-from app.services.sunat import cpe_xml
+from app.services.sunat import contraparte, see_sol
 
 load_dotenv()
 
@@ -558,6 +560,9 @@ def _parsear_filas(filas: list[list[str]]) -> list[dict]:
 # Una sola llamada al navegador en vez de un round-trip por fila: leer la tabla
 # celda a celda con `locator.nth(i)` costaba cientos de milisegundos en
 # comprobantes largos.
+_JS_LEER_CABECERA = """() => Array.from(document.querySelectorAll('table tr'))
+    .map(tr => Array.from(tr.cells).map(td => td.textContent))"""
+
 _JS_LEER_TABLA = """() => Array.from(document.querySelectorAll('table tr'))
     .map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent))
     .filter(celdas => celdas.length > 0)"""
@@ -702,21 +707,22 @@ _JS_DESCARGAR_PDF = """(args) => {
 }"""
 
 
-def _abrir_modulo_see_sol(page, iframe, timeout_ms: int) -> None:
-    """Deja cargado el módulo de consulta SEE-SOL en el iframe principal."""
-    page.evaluate(
-        f"""() => {{
-            const iframe = document.getElementById('iframeApplication');
-            if (iframe) {{
-                iframe.src = '{URL_SEE_SOL}';
-            }}
-        }}"""
-    )
-    try:
-        page.wait_for_timeout(500)
-        iframe.locator("body").wait_for(state="attached", timeout=timeout_ms)
-    except Exception:
-        pass
+def _abrir_modulo_see_sol(page, iframe, timeout_ms: int, boleta: bool = False) -> None:
+    """Entra por el men? para establecer la sesi?n del m?dulo correspondiente."""
+    codigo = "11.5.4.1.4" if boleta else "11.5.3.1.2"
+    titulo = "Consultar Boleta de Venta y Nota" if boleta else "Consultar Factura y Nota"
+    modulo = "ol-ti-itconscpemypebve" if boleta else "ol-ti-itconscpemype"
+    with page.expect_event(
+        "framenavigated",
+        predicate=lambda frame: f"/{modulo}/consultar.do" in frame.url,
+        timeout=timeout_ms,
+    ):
+        page.evaluate("""({codigo, titulo}) => {
+            if (typeof ejecuta !== 'function') throw new Error('Men? SOL no disponible');
+            ejecuta('MenuInternet.htm?action=iconExecute&code=' + codigo,
+                    false, titulo, '#nivel1_11', codigo);
+        }""", {"codigo": codigo, "titulo": titulo})
+    iframe.locator("body").wait_for(state="attached", timeout=timeout_ms)
 
 
 def _es_serie_sol(serie: str) -> bool:
@@ -1058,6 +1064,9 @@ def _consultar_uno(
         except Exception:
             log(f"{serie_num}: el popup no mostro ninguna tabla")
 
+        if libro is Libro.VENTAS:
+            fac["_contraparte_sunat"] = contraparte.receptor_html(
+                popup.evaluate(_JS_LEER_CABECERA))
         detalles = _parsear_filas(popup.evaluate(_JS_LEER_TABLA))
 
         try:
@@ -1090,81 +1099,84 @@ def _consultar_uno(
 
 
 
-def _consultar_uno_see_sol(
-    page,
-    context,
-    iframe,
-    fac: dict,
-    libro: Libro,
-    ruc_empresa: str,
-    timeout_ms: int,
-    log,
-    descargar_pdf: bool = False,
-) -> tuple[list[dict], bytes | None, bytes | None]:
-    """Descarga el XML y PDF de un comprobante emitido por SEE-SOL (series E/EB).
-
-    Devuelve (detalles, pdf_bytes, xml_bytes). Lanza ComprobanteNoEncontrado si
-    SUNAT no devuelve el archivo o devuelve una página de error HTML.
-    """
-    serie_num = fac.get("serie_numero", "")
-    ruc_em = _ruc_emisor(fac, libro, ruc_empresa)
+def _ruta_see_sol(fac: dict, libro: Libro) -> tuple[bool, str]:
     tipo = normalizar_tipo_cp(fac.get("tipo_cp"))
-    serie = str(fac.get("serie", "")).strip()
-    numero_crudo = fac.get("numero", "")
-    try:
-        numero = str(int(numero_crudo))
-    except (TypeError, ValueError):
-        numero = str(numero_crudo).strip()
+    boleta = tipo == TIPO_BOLETA or _modifica_una_boleta(fac)
+    if boleta:
+        tipos = {Libro.VENTAS: {"03": "17", "07": "20", "08": "22"},
+                 Libro.COMPRAS: {"03": "18"}}
+    else:
+        tipos = {Libro.VENTAS: {"01": "10", "07": "13", "08": "15"},
+                 Libro.COMPRAS: {"01": "11", "07": "14", "08": "16"}}
+    consulta = tipos[libro].get(tipo)
+    if consulta is None:
+        raise ValueError("Tipo de comprobante sin bandeja SEE-SOL configurada")
+    return boleta, consulta
 
-    args = {
-        "ruc": ruc_em,
-        "tipo": tipo,
-        "serie": serie,
-        "numero": numero,
+
+_JS_TABLAS_SEE_SOL = """() => Array.from(document.querySelectorAll('table.detalle'))
+    .map(table => Array.from(table.rows)
+        .filter(row => row.closest('table') === table)
+        .map(row => Array.from(row.cells).map(cell => cell.textContent)))"""
+
+
+def _consultar_uno_see_sol(
+    page, context, iframe, fac: dict, libro: Libro, ruc_empresa: str,
+    timeout_ms: int, log, descargar_pdf: bool = False, headless: bool = True,
+) -> tuple[list[dict], bytes | None, bytes | None]:
+    """Consulta la bandeja y lee el HTML asociado al id de la fila en esa sesi?n."""
+    boleta, tipo_consulta = _ruta_see_sol(fac, libro)
+    _abrir_modulo_see_sol(page, iframe, timeout_ms, boleta=boleta)
+    url = URL_SEE_SOL.replace('itconscpemype/', 'itconscpemypebve/') if boleta else URL_SEE_SOL
+    fecha = fac.get("fecha_emision")
+    if not isinstance(fecha, (date, datetime)):
+        raise ValueError("El comprobante SEE-SOL requiere fecha de emisi?n")
+    parametros = {
+        "action": "realizarConsulta", "buscarPor": "porPer", "estado": "0",
+        "fec_desde": fecha.replace(day=1).strftime("%d/%m/%Y"),
+        "fec_hasta": fecha.replace(day=monthrange(fecha.year, fecha.month)[1]).strftime("%d/%m/%Y"),
+        "tipoConsulta": tipo_consulta,
     }
-
-    log(f"Consultando SEE-SOL para {serie_num} (emisor={ruc_em} tipo={tipo} serie={serie} num={numero})")
-
-    # 1. Descarga del XML (empaquetado en ZIP por SUNAT)
-    xml_bytes = None
-    detalles = []
+    respuesta = context.request.get(url, params=parametros, timeout=timeout_ms)
+    if not respuesta.ok:
+        raise RuntimeError(f"Consulta SEE-SOL respondi? HTTP {respuesta.status}")
     try:
-        with context.expect_download(timeout=timeout_ms) as descarga_info:
-            iframe.locator("body").evaluate(_JS_DESCARGAR_FACTURA, args)
-        descarga = descarga_info.value
-        contenido_zip = Path(descarga.path()).read_bytes()
-
-        # Si SUNAT responde con un HTML de error (p.ej. 404 o sesión expirada)
-        if contenido_zip.strip().startswith(b"<!DOCTYPE") or contenido_zip.strip().startswith(b"<html"):
-            log(f"{serie_num}: SUNAT devolvió HTML en vez de ZIP para el XML")
-            raise ComprobanteNoEncontrado(serie_num)
-
-        xml_bytes = _extraer_xml_de_zip(contenido_zip)
-        detalles = cpe_xml.a_detalle(xml_bytes)
-        log(f"{serie_num}: XML descargado y mapeado ({len(detalles)} items)")
-    except ComprobanteNoEncontrado:
-        raise
-    except Exception as e:
-        log(f"{serie_num}: no se pudo obtener XML de SEE-SOL: {e}")
-        raise ComprobanteNoEncontrado(serie_num) from e
-
-    # 2. Descarga del PDF oficial si fue solicitado
-    pdf_bytes = None
-    if descargar_pdf:
-        try:
-            with context.expect_download(timeout=timeout_ms) as descarga_pdf_info:
-                iframe.locator("body").evaluate(_JS_DESCARGAR_PDF, args)
-            descarga_pdf = descarga_pdf_info.value
-            contenido_pdf = Path(descarga_pdf.path()).read_bytes()
-            if contenido_pdf.startswith(b"%PDF-"):
-                pdf_bytes = contenido_pdf
-                log(f"{serie_num}: PDF oficial descargado de SEE-SOL ({len(pdf_bytes)} bytes)")
-            else:
-                log(f"{serie_num}: el archivo descargado de SEE-SOL no es un PDF válido")
-        except Exception as e:
-            log(f"{serie_num}: no se pudo descargar PDF de SEE-SOL: {e}")
-
-    return detalles, pdf_bytes, xml_bytes
+        texto = respuesta.text()
+    except UnicodeDecodeError:
+        texto = respuesta.body().decode("cp1252")
+    filas = see_sol.leer_consulta(texto)
+    indice = see_sol.buscar_fila(
+        filas, ruc=_ruc_emisor(fac, libro, ruc_empresa),
+        tipo=normalizar_tipo_cp(fac.get("tipo_cp")),
+        serie=str(fac.get("serie", "")), numero=fac.get("numero", ""),
+    )
+    if indice is None:
+        raise ComprobanteNoEncontrado(fac.get("serie_numero", ""))
+    # El ?ndice s?lo pertenece a la ?ltima consulta de esta sesi?n: abrirlo
+    # inmediatamente, sin consultas paralelas que cambien el listado del servidor.
+    if libro is Libro.VENTAS:
+        fila = next(f for f in filas if str(f.get("id")) == indice)
+        fac["_contraparte_sunat"] = contraparte.receptor_listado(fila)
+    popup = context.new_page()
+    try:
+        respuesta_html = popup.goto(url + "?" + urlencode({
+            "action": "verImprimirFactura", "rowIndex": indice,
+        }), wait_until="domcontentloaded", timeout=timeout_ms)
+        if respuesta_html is None or not respuesta_html.ok:
+            raise RuntimeError("No se pudo abrir la impresi?n SEE-SOL")
+        if libro is Libro.VENTAS:
+            cabecera = contraparte.receptor_html(popup.evaluate(_JS_LEER_CABECERA))
+            fac["_contraparte_sunat"] = {**cabecera, **fac.get("_contraparte_sunat", {})}
+        detalles = see_sol.leer_detalles(popup.evaluate(_JS_TABLAS_SEE_SOL))
+        if not detalles:
+            raise ValueError("El HTML SEE-SOL no contiene l?neas de detalle reconocibles")
+        pdf = None
+        if descargar_pdf:
+            pdf = _capturar_pdf(popup, context, settings.SUNAT_PDF_TIMEOUT_MS,
+                                log, fac.get("serie_numero", ""), headless)
+        return detalles, pdf, None
+    finally:
+        popup.close()
 
 
 def _scrape_detalles(
@@ -1185,6 +1197,7 @@ def _scrape_detalles(
     timeout_pdf_ms: int | None = None,
     al_descargar_xml: Callable[[str, bytes], None] | None = None,
     al_extraer_leyenda: Callable[[str, list[str]], None] | None = None,
+    al_consultar: Callable[[dict], None] | None = None,
 ) -> dict:
     """`progreso(hechos, serie_numero)` se llama al empezar cada comprobante.
 
@@ -1266,17 +1279,16 @@ def _scrape_detalles(
                 # el comprobante por perdido.
                 for intento in (1, 2):
                     try:
-                        # Sólo el popup trae leyenda; en SEE-SOL la glosa
-                        # viene dentro del XML y la lee `cpe_xml`.
+                        # SEE-SOL aporta la glosa desde su tabla de impresión.
                         leyenda: list[str] = []
                         if _es_serie_sol(fac.get("serie", "")):
-                            _abrir_modulo_see_sol(page, iframe, timeout_ms)
                             detalles, pdf, xml = _consultar_uno_see_sol(
                                 page,
                                 context,
                                 iframe,
                                 fac,
                                 libro,
+                                headless=not headed,
                                 ruc_empresa=ruc,
                                 timeout_ms=timeout_ms,
                                 log=log,
@@ -1355,6 +1367,9 @@ def _scrape_detalles(
                         else:
                             log(f"Reintentando {serie_num}: {e}")
 
+                if al_consultar:
+                    al_consultar(fac)
+
             return resultados
 
         except SesionSolError:
@@ -1385,6 +1400,7 @@ async def obtener_detalles(
     timeout_pdf_ms: int | None = None,
     al_descargar_xml: Callable[[str, bytes], None] | None = None,
     al_extraer_leyenda: Callable[[str, list[str]], None] | None = None,
+    al_consultar: Callable[[dict], None] | None = None,
 ) -> dict:
     password_cifrada = empresa.get("password")
     if not password_cifrada:
@@ -1426,6 +1442,7 @@ async def obtener_detalles(
             timeout_pdf_ms=timeout_pdf_ms,
             al_descargar_xml=al_descargar_xml,
             al_extraer_leyenda=al_extraer_leyenda,
+            al_consultar=al_consultar,
         )
     )
 

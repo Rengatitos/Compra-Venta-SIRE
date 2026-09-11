@@ -1,9 +1,16 @@
+import { formatearImporteComprobante } from '@/lib/importesComprobante';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { listarIncompletos } from '@/api/comprobantes';
 import { Link, useParams, useSearchParams } from 'react-router';
 
 import { obtenerJob } from '@/api/jobs';
-import { exportarLote, listarComprobantes } from '@/api/comprobantes';
+import {
+  exportarLote,
+  listarComprobantes,
+  listarAnuladosSunat,
+  obtenerCoberturaSunat,
+} from '@/api/comprobantes';
 import { iniciarExtraccionDetalle } from '@/api/detalle';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/Badge';
@@ -21,12 +28,7 @@ import { useJobs } from '@/features/jobs/useJobs';
 import { NoEncontradaPage } from '@/features/shared/NoEncontradaPage';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useToast } from '@/hooks/useToast';
-import {
-  formatearEntero,
-  formatearFecha,
-  formatearMoneda,
-  formatearPeriodo,
-} from '@/lib/format';
+import { formatearEntero, formatearFecha, formatearPeriodo } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
 import type { ComprobanteResponse, JobResponse, ResultadoExtraccion } from '@/types/api';
@@ -82,6 +84,23 @@ export function ComprobantesPage() {
 
   const [libro, setLibro] = useState<Libro>('compras');
   const [pagina, setPagina] = useState(1);
+  const [verAnulados, setVerAnulados] = useState(false);
+  const [verIncompletos, setVerIncompletos] = useState(false);
+  const listadoRef = useRef<HTMLDivElement>(null);
+
+  function irAAnulados() {
+    setVerIncompletos(false);
+    setVerAnulados(true);
+    window.requestAnimationFrame(() => {
+      listadoRef.current?.focus({ preventScroll: true });
+      listadoRef.current?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'instant'
+          : 'smooth',
+        block: 'start',
+      });
+    });
+  }
   const [exportando, setExportando] = useState<Descarga | null>(null);
   const [dialogoExtraccion, setDialogoExtraccion] = useState(false);
   const [extraccion, setExtraccion] = useState<ResultadoExtraccion | null>(null);
@@ -118,6 +137,27 @@ export function ComprobantesPage() {
   // decir que está ahí: explica por qué esta extracción puede tardar en
   // arrancar.
   const otroLibro = jobsVivos.find((job) => job.libro !== libro);
+
+  const cobertura = useQuery({
+    queryKey: ['comprobantes', ruc, periodo, libro, 'cobertura-sunat'],
+    queryFn: () => obtenerCoberturaSunat(ruc, periodo, libro),
+    enabled: esPeriodoValido(periodo),
+    refetchInterval: jobActivo ? 5000 : false,
+  });
+
+  const anulados = useQuery({
+    queryKey: ['comprobantes', ruc, periodo, libro, 'anulados-sunat'],
+    queryFn: () => listarAnuladosSunat(ruc, periodo, libro),
+    enabled: esPeriodoValido(periodo),
+    refetchInterval: jobActivo ? 5000 : false,
+  });
+
+  const incompletos = useQuery({
+    queryKey: ['comprobantes', ruc, periodo, libro, 'incompletos'],
+    queryFn: () => listarIncompletos(ruc, periodo, libro),
+    enabled: esPeriodoValido(periodo),
+    refetchInterval: jobActivo ? 5000 : false,
+  });
 
   const extraer = useMutation({
     mutationFn: async () => {
@@ -184,10 +224,8 @@ export function ComprobantesPage() {
     setExtraccion(null);
   }
 
-  const filas = comprobantes.data ?? [];
-  const conDetalle = filas.filter((fila) => fila.detalle_sunat.length > 0).length;
-  const conPdf = filas.filter((fila) => fila.pdf_sunat?.ruta).length;
-  const notaPagina = filas.length === POR_PAGINA ? 'De esta página' : undefined;
+  const filas =
+    (verIncompletos ? incompletos.data : verAnulados ? anulados.data : comprobantes.data) ?? [];
 
   const columnas: readonly Columna<ComprobanteResponse>[] = [
     {
@@ -220,21 +258,43 @@ export function ComprobantesPage() {
     },
     {
       clave: 'glosa',
-      cabecera: 'Glosa',
+      cabecera: verAnulados ? 'Descripción SUNAT' : 'Glosa',
       anchoMinimo: '16rem',
-      render: (fila) => fila.glosa ?? '—',
+      render: (fila) =>
+        verAnulados ? (
+          <mark>
+            {fila.detalle_sunat
+              .map((item) =>
+                item &&
+                typeof item === 'object' &&
+                'descripcion' in item &&
+                typeof item.descripcion === 'string'
+                  ? item.descripcion
+                  : '',
+              )
+              .filter((descripcion) => /\banulad[oa]s?\b/i.test(descripcion ?? ''))
+              .join(' / ')}
+          </mark>
+        ) : (
+          (fila.glosa ?? '—')
+        ),
+    },
+    {
+      clave: 'observacion',
+      cabecera: 'Observación',
+      render: (fila) => fila.observacion || '—',
     },
     {
       clave: 'igv',
       cabecera: 'IGV',
       numerica: true,
-      render: (fila) => formatearMoneda(fila.igv, fila.moneda),
+      render: (fila) => formatearImporteComprobante(fila.igv, fila),
     },
     {
       clave: 'total',
       cabecera: 'Total',
       numerica: true,
-      render: (fila) => formatearMoneda(fila.total, fila.moneda),
+      render: (fila) => formatearImporteComprobante(fila.total, fila),
     },
     ...(libro === 'compras'
       ? [
@@ -317,20 +377,62 @@ export function ComprobantesPage() {
       />
 
       <div className={layout.pilaAmplia}>
+        {(incompletos.data?.length ?? 0) > 0 ? (
+          <button
+            type="button"
+            className={estilos.avisoIncompletos}
+            onClick={() => {
+              irAAnulados();
+              setVerAnulados(false);
+              setVerIncompletos(true);
+            }}
+          >
+            <strong>⚠ {incompletos.data?.length} comprobantes incompletos · Revisar →</strong>
+            <span>
+              Algunos comprobantes se encuentran pendientes de completar porque el proceso
+              automatizado no pudo recuperar ciertos campos relevantes. Revíselos en la sección
+              Incompletos. Si considera que completar estos campos no es relevante, omita este
+              mensaje. Se incluirán de todas formas en el reporte.
+            </span>
+          </button>
+        ) : null}
+        {(anulados.data?.length ?? 0) > 0 ? (
+          <div role="alert">
+            <Button variante="peligro" pastilla onClick={irAAnulados}>
+              <span aria-hidden="true">⚠</span>
+              {anulados.data?.length === 1
+                ? '1 comprobante reportado con descripción «Anulado»'
+                : `${anulados.data?.length} comprobantes reportados con descripción «Anulado»`}
+              <span>Revisar anulados →</span>
+            </Button>
+          </div>
+        ) : null}
         <Panel
           titulo="Procesar el periodo"
-          descripcion="Una sola pasada por el portal SOL: extrae el detalle de ítems y descarga el PDF de cada comprobante pendiente, conserva la glosa del detalle extraído. La tabla se actualiza al terminar."
+          descripcion={`Consulta el portal SOL para obtener el detalle, la glosa y el PDF de los comprobantes pendientes.${libro === 'ventas' ? ' También completa Contraparte y RUC / Doc. faltantes en SIRE cuando aparecen en el comprobante, aunque ya tenga glosa y PDF.' : ''} La tabla se actualiza al terminar.`}
         >
           <div className={layout.rejillaMetricas}>
             <MetricTile
               etiqueta="Con detalle SOL"
-              valor={`${conDetalle} / ${filas.length}`}
-              nota={notaPagina}
+              valor={
+                cobertura.data ? `${cobertura.data.con_detalle} / ${cobertura.data.total}` : '—'
+              }
+              nota={
+                cobertura.isError
+                  ? 'No se pudo consultar la cobertura'
+                  : 'Todo el registro del periodo'
+              }
             />
             <MetricTile
               etiqueta="Con PDF guardado"
-              valor={`${conPdf} / ${filas.length}`}
-              nota={notaPagina}
+              valor={
+                cobertura.data ? `${cobertura.data.con_pdf} / ${cobertura.data.total}` : '—'
+              }
+              nota={
+                cobertura.isError
+                  ? 'No se pudo consultar la cobertura'
+                  : 'Todo el registro del periodo'
+              }
             />
           </div>
 
@@ -372,32 +474,39 @@ export function ComprobantesPage() {
         {extraccion ? (
           <Panel
             titulo="Resultado de la última corrida"
-            descripcion="Detalle y PDFs obtenidos del portal SOL."
+            descripcion="Resultado de esta ejecución; los totales del periodo se muestran arriba."
           >
-            <div className={layout.rejillaMetricas}>
-              {extraccion ? (
-                <>
-                  <MetricTile
-                    etiqueta="Detalle extraído"
-                    valor={`${formatearEntero(extraccion.con_detalle)} / ${formatearEntero(extraccion.procesados)}`}
-                    nota={
-                      extraccion.pendientes > 0
-                        ? `${formatearEntero(extraccion.pendientes)} quedaron para otra vuelta`
-                        : 'Comprobantes visitados en el portal SOL'
-                    }
-                  />
-                  <MetricTile
-                    etiqueta="PDF descargado"
-                    valor={`${formatearEntero(extraccion.descargados_pdf)} / ${formatearEntero(extraccion.procesados)}`}
-                    nota={
-                      extraccion.sin_pdf > 0
-                        ? `${formatearEntero(extraccion.sin_pdf)} sin PDF; se reintentan en la próxima corrida`
-                        : 'En la misma pasada que el detalle'
-                    }
-                  />
-                </>
-              ) : null}
-            </div>
+            {extraccion.procesados === 0 ? (
+              <p className={layout.textoSecundario}>
+                No había comprobantes pendientes para procesar. Se conservan las glosas, los
+                detalles y los PDFs guardados anteriormente.
+              </p>
+            ) : (
+              <div className={layout.rejillaMetricas}>
+                {extraccion ? (
+                  <>
+                    <MetricTile
+                      etiqueta="Con detalle en esta tanda"
+                      valor={`${formatearEntero(extraccion.con_detalle)} / ${formatearEntero(extraccion.procesados)}`}
+                      nota={
+                        extraccion.pendientes > 0
+                          ? `${formatearEntero(extraccion.pendientes)} quedaron para otra vuelta`
+                          : 'Incluye los detalles guardados anteriormente'
+                      }
+                    />
+                    <MetricTile
+                      etiqueta="PDF nuevos descargados"
+                      valor={`${formatearEntero(extraccion.descargados_pdf)} / ${formatearEntero(extraccion.procesados)}`}
+                      nota={
+                        extraccion.sin_pdf > 0
+                          ? `${formatearEntero(extraccion.sin_pdf)} sin PDF; se reintentan en la próxima corrida`
+                          : 'Los PDFs ya guardados no se descargan de nuevo'
+                      }
+                    />
+                  </>
+                ) : null}
+              </div>
+            )}
           </Panel>
         ) : null}
 
@@ -409,63 +518,119 @@ export function ComprobantesPage() {
           />
         ) : null}
 
-        <Panel titulo="Listado">
-          {comprobantes.isPending ? (
-            <Skeleton lineas={6} etiqueta="Cargando comprobantes" />
-          ) : null}
+        <div ref={listadoRef} tabIndex={-1} className={estilos.destinoListado}>
+          <Panel titulo="Listado">
+            <div role="group" aria-label="Vista de comprobantes">
+              <Button
+                pequeno
+                aria-pressed={verIncompletos}
+                onClick={() => {
+                  setVerIncompletos(true);
+                  setVerAnulados(false);
+                }}
+              >
+                Incompletos ({incompletos.data?.length ?? 0})
+              </Button>
+              <Button
+                pequeno
+                aria-pressed={!verAnulados && !verIncompletos}
+                onClick={() => {
+                  setVerAnulados(false);
+                  setVerIncompletos(false);
+                }}
+              >
+                Todos
+              </Button>
+              <Button
+                pequeno
+                aria-pressed={verAnulados}
+                onClick={() => {
+                  setVerAnulados(true);
+                  setVerIncompletos(false);
+                }}
+              >
+                Anulados ({anulados.data?.length ?? 0})
+              </Button>
+            </div>
+            {verAnulados && anulados.isError ? (
+              <p role="alert">No se pudieron cargar los anulados de SUNAT.</p>
+            ) : null}
+            {verIncompletos && incompletos.isError ? (
+              <p role="alert">No se pudieron cargar los incompletos.</p>
+            ) : null}
+            {comprobantes.isPending ? (
+              <Skeleton lineas={6} etiqueta="Cargando comprobantes" />
+            ) : null}
 
-          {comprobantes.isError ? (
-            <ErrorState
-              titulo={
-                comprobantes.error instanceof ApiError && comprobantes.error.esNoEncontrado
-                  ? 'El periodo no existe para esta empresa'
-                  : 'No se pudieron cargar los comprobantes'
-              }
-              texto={
-                comprobantes.error instanceof ApiError
-                  ? comprobantes.error.message
-                  : 'Error inesperado.'
-              }
-              accion={
-                <Button pequeno onClick={() => void comprobantes.refetch()}>
-                  Reintentar
-                </Button>
-              }
-            />
-          ) : null}
-
-          {comprobantes.data ? (
-            <>
-              <DataTable
-                leyenda={`Comprobantes de ${libro} del periodo ${formatearPeriodo(periodo)}`}
-                leyendaOculta
-                columnas={columnas}
-                filas={filas}
-                claveDeFila={(fila) => fila.serie_numero}
-                vacio={
-                  <EmptyState
-                    titulo="Este periodo no tiene comprobantes"
-                    texto="Sincroniza la propuesta del SIRE desde la pantalla de periodos para traerlos."
-                    accion={<Link to="/periodos">Ir a periodos</Link>}
-                  />
+            {comprobantes.isError ? (
+              <ErrorState
+                titulo={
+                  comprobantes.error instanceof ApiError && comprobantes.error.esNoEncontrado
+                    ? 'El periodo no existe para esta empresa'
+                    : 'No se pudieron cargar los comprobantes'
+                }
+                texto={
+                  comprobantes.error instanceof ApiError
+                    ? comprobantes.error.message
+                    : 'Error inesperado.'
+                }
+                accion={
+                  <Button pequeno onClick={() => void comprobantes.refetch()}>
+                    Reintentar
+                  </Button>
                 }
               />
-              {filas.length > 0 ? (
-                <TableFooter
-                  recuento={`Mostrando ${(pagina - 1) * POR_PAGINA + 1}–${
-                    (pagina - 1) * POR_PAGINA + filas.length
-                  }`}
-                >
-                  <Pagination
-                    pagina={pagina}
-                    haySiguiente={filas.length === POR_PAGINA}
-                    onCambiar={setPagina}
-                  />
-                </TableFooter>
-              ) : null}
-            </>
-          ) : null}
-        </Panel>
+            ) : null}
+
+            {comprobantes.data ? (
+              <>
+                <DataTable
+                  leyenda={`Comprobantes de ${libro} del periodo ${formatearPeriodo(periodo)}`}
+                  leyendaOculta
+                  columnas={columnas}
+                  filas={filas}
+                  claveDeFila={(fila) => fila.serie_numero}
+                  vacio={
+                    <EmptyState
+                      titulo={
+                        verIncompletos
+                          ? 'Sin comprobantes incompletos'
+                          : verAnulados
+                            ? 'Sin descripciones de anulados'
+                            : 'Este periodo no tiene comprobantes'
+                      }
+                      texto={
+                        verIncompletos
+                          ? 'No hay campos pendientes de completar en los comprobantes consultados.'
+                          : verAnulados
+                            ? 'No se encontraron descripciones de anulados en los detalles obtenidos de SUNAT.'
+                            : 'Sincroniza la propuesta del SIRE desde la pantalla de periodos para traerlos.'
+                      }
+                      accion={
+                        verAnulados || verIncompletos ? undefined : (
+                          <Link to="/periodos">Ir a periodos</Link>
+                        )
+                      }
+                    />
+                  }
+                />
+                {filas.length > 0 && !verAnulados && !verIncompletos ? (
+                  <TableFooter
+                    recuento={`Mostrando ${(pagina - 1) * POR_PAGINA + 1}–${
+                      (pagina - 1) * POR_PAGINA + filas.length
+                    }`}
+                  >
+                    <Pagination
+                      pagina={pagina}
+                      haySiguiente={filas.length === POR_PAGINA}
+                      onCambiar={setPagina}
+                    />
+                  </TableFooter>
+                ) : null}
+              </>
+            ) : null}
+          </Panel>
+        </div>
       </div>
 
       <DialogComprobante
@@ -478,7 +643,7 @@ export function ComprobantesPage() {
       <Dialog
         abierto={dialogoExtraccion}
         titulo="Completar con GLOSA"
-        texto={`Sobre ${libro}. Entra al portal SOL una vez por comprobante pendiente: extrae el detalle de ítems y descarga su PDF y conserva la glosa.`}
+        texto={`Sobre ${libro}. Obtiene el detalle, la glosa y el PDF desde SOL.${libro === 'ventas' ? ' También consulta los datos de Contraparte y RUC / Doc. que falten en SIRE y aún no se hayan consultado en SOL. Si tampoco aparecen en el comprobante, quedan vacíos.' : ''}`}
         onCerrar={() => setDialogoExtraccion(false)}
         acciones={
           <>

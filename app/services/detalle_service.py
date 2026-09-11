@@ -198,6 +198,14 @@ async def extraer(
             return
         futuro.add_done_callback(_registrar_fallo)
 
+    consultados = []
+    complementos = []
+
+    def al_consultar(documento):
+        consultados.append(documento["_id"])
+        if libro is Libro.VENTAS and "_contraparte_sunat" in documento:
+            complementos.append(documento)
+
     resultados = await scraping_sunat.obtener_detalles(
         empresa,
         pendientes,
@@ -208,7 +216,14 @@ async def extraer(
         al_descargar=guardar_pdf,
         al_descargar_xml=guardar_xml,
         al_extraer_leyenda=guardar_leyenda,
+        al_consultar=al_consultar,
     )
+
+    await repo_comprobantes.marcar_consulta_glosa(
+        db, empresa_id, periodo, libro, consultados
+    )
+    for documento in complementos:
+        await repo_comprobantes.guardar_contraparte_sunat(db, empresa_id, periodo, documento)
 
     # Red de seguridad por si algún aviso se perdió: reintenta sólo lo que no
     # se llegó a agendar.

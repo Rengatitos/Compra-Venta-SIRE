@@ -13,6 +13,40 @@ export interface FiltroComprobantes {
   skip?: number;
 }
 
+export function listarAnuladosSunat(ruc: string, periodo: string, libro: Libro) {
+  return pedir<ComprobanteResponse[]>(`${base(ruc, periodo)}/anulados-sunat`, {
+    consulta: { libro },
+  });
+}
+
+export function listarIncompletos(ruc: string, periodo: string, libro: Libro) {
+  return pedir<ComprobanteResponse[]>(`${base(ruc, periodo)}/incompletos`, {
+    consulta: { libro },
+  });
+}
+
+export function editarContraparte(
+  ruc: string,
+  periodo: string,
+  serie: string,
+  libro: Libro,
+  razon_social: string,
+  documento_contraparte: string,
+) {
+  return pedir<MessageResponse>(`${base(ruc, periodo)}/${segmento(serie)}`, {
+    metodo: 'PATCH',
+    consulta: { libro },
+    cuerpo: { razon_social, documento_contraparte },
+  });
+}
+
+export function obtenerCoberturaSunat(ruc: string, periodo: string, libro: Libro) {
+  return pedir<{ total: number; con_detalle: number; con_pdf: number }>(
+    `${base(ruc, periodo)}/cobertura-sunat`,
+    { consulta: { libro } },
+  );
+}
+
 /** `404` si el periodo no existe para la empresa. */
 export function listarComprobantes(
   ruc: string,
