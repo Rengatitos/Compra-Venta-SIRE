@@ -12,13 +12,13 @@ const mocks = vi.hoisted(() => ({
   mostrar: vi.fn(),
 }));
 vi.mock('@/api/pdfs', () => ({
-  descargarZipPdfs: mocks.zip,
+  descargarZipSunatCompleto: mocks.zip,
 }));
 vi.mock('@/hooks/useToast', () => ({ useToast: () => ({ mostrar: mocks.mostrar }) }));
 
 beforeEach(() => {
   vi.resetAllMocks();
-  mocks.zip.mockResolvedValue(undefined);
+  mocks.zip.mockResolvedValue(0);
 });
 
 async function descargar() {
@@ -30,26 +30,35 @@ async function descargar() {
   await userEvent.click(screen.getByRole('button', { name: /ZIP de PDFs SUNAT/ }));
 }
 
-it('descarga el ZIP del periodo y libro sin entrar al portal SOL', async () => {
-  // La descarga de PDFs desde SUNAT vive en «Completar con GLOSA»: este botón
-  // sólo empaqueta lo que ya está en disco.
+it('descarga desde SUNAT ambos registros y comunica el resultado', async () => {
   await descargar();
   await waitFor(() =>
-    expect(mocks.zip).toHaveBeenCalledWith('20123456789', '202608', 'ventas'),
+    expect(mocks.zip).toHaveBeenCalledWith(
+      '20123456789',
+      '202608',
+      'ventas',
+      expect.any(Function),
+    ),
   );
-  expect(mocks.mostrar).not.toHaveBeenCalled();
+  await waitFor(() =>
+    expect(mocks.mostrar).toHaveBeenCalledWith(expect.objectContaining({ tono: 'exito' })),
+  );
 });
 
-it('explica qué hacer cuando todavía no hay PDFs', async () => {
-  mocks.zip.mockRejectedValue(new ApiError(404, 'No hay PDFs guardados'));
+it('avisa cuando SUNAT no entrega todos los PDFs', async () => {
+  mocks.zip.mockResolvedValue(2);
   await descargar();
   await waitFor(() =>
     expect(mocks.mostrar).toHaveBeenCalledWith(
-      expect.objectContaining({ tono: 'neutro', titulo: 'Todavía no hay PDFs guardados' }),
+      expect.objectContaining({
+        tono: 'neutro',
+        titulo: 'ZIP descargado con comprobantes faltantes',
+      }),
     ),
   );
   const aviso = mocks.mostrar.mock.calls[0]?.[0] as { detalle?: string } | undefined;
-  expect(aviso?.detalle).toContain('Completar con GLOSA');
+  expect(aviso?.detalle).toContain('2 PDFs');
+  expect(aviso?.detalle).toContain('faltantes.csv');
 });
 
 it('presenta como error cualquier otro fallo', async () => {

@@ -1,5 +1,5 @@
 """La extracción es una sola pasada por el portal SOL: por cada comprobante se
-lleva el detalle de ítems y el PDF, y al terminar clasifica con RAG. El avance
+lleva el detalle de ítems y el PDF, conservando los datos de SUNAT. El avance
 nace en el hilo de Playwright y tiene que llegar al job, que vive en el loop:
 es el punto donde antes se perdía y el trabajo se pasaba minutos en `0 / N`."""
 
@@ -63,9 +63,6 @@ def _correr(
         libros_pedidos.append(libro_pedido)
         punteros_pdf.append((serie_numero, ruta, bytes_))
 
-    async def guardar_metadata(db, documento_id, metadata) -> None:
-        return None
-
     async def clasificar(db, documento, empresa) -> dict:
         clasificados.append(documento["serie_numero"])
         return {}
@@ -111,9 +108,7 @@ def _correr(
     monkeypatch.setattr(repo, "guardar_detalle_sunat", guardar_detalle_sunat)
     monkeypatch.setattr(repo, "guardar_xml_sunat", guardar_xml_sunat)
     monkeypatch.setattr(repo, "guardar_pdf_sunat", guardar_pdf_sunat)
-    monkeypatch.setattr(repo, "guardar_metadata", guardar_metadata)
     monkeypatch.setattr(detalle_service.scraping_sunat, "obtener_detalles", obtener_detalles)
-    monkeypatch.setattr(detalle_service.ollama_rag, "clasificar", clasificar)
 
     async def principal():
         resultado = await detalle_service.extraer(None, EMPRESA, "202606", libro, reportar)
@@ -143,8 +138,6 @@ def test_reporta_el_avance_de_cada_comprobante(monkeypatch):
         "descargados_pdf": 3,
         "sin_pdf": 0,
         "pendientes": 0,
-        "enriquecidos_rag": 3,
-        "errores_rag": 0,
     }
 
     reportes = salida["reportes"]
@@ -172,7 +165,6 @@ def test_avisa_cuando_el_tope_recorta_el_trabajo(monkeypatch):
     salida = _correr(monkeypatch, PENDIENTES, total_en_bd=10)
 
     assert salida["resultado"]["pendientes"] == 7
-    assert salida["resultado"]["enriquecidos_rag"] == 3
     assert salida["reportes"][0] == (
         0,
         3,
@@ -231,7 +223,6 @@ def test_un_comprobante_sin_pdf_no_pierde_su_detalle(monkeypatch):
     assert salida["resultado"]["con_detalle"] == 3
     assert salida["resultado"]["descargados_pdf"] == 2
     assert salida["resultado"]["sin_pdf"] == 1
-    assert salida["resultado"]["enriquecidos_rag"] == 3
 
 
 def test_respeta_lo_que_el_comprobante_ya_tenia(monkeypatch):
@@ -263,9 +254,7 @@ def test_respeta_lo_que_el_comprobante_ya_tenia(monkeypatch):
     assert salida["resultado"]["con_detalle"] == 2
     assert salida["resultado"]["descargados_pdf"] == 1
     assert salida["resultado"]["sin_pdf"] == 0
-    # El que ya tenía detalle también pasa por el RAG: si la primera vez el
-    # índice de cuentas estaba vacío, es su oportunidad de recibir cuenta.
-    assert sorted(salida["clasificados"]) == ["F001-1", "F001-2"]
+    assert salida["clasificados"] == []
 
 
 def test_guarda_el_xml_si_el_scraper_lo_entrega(monkeypatch):

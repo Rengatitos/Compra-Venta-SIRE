@@ -9,7 +9,6 @@ import type {
   EstadoProcesamiento,
   FuenteDato,
   Libro,
-  ResultadoIA,
   TipoJob,
 } from './domain';
 
@@ -97,37 +96,6 @@ export interface PeriodoResponse {
 
 /* — comprobantes (app/schemas/comprobante.py) — */
 
-export interface LineaDetalle {
-  producto: string | null;
-  categoria_contable: string | null;
-  cantidad: unknown;
-  importe: unknown;
-  razon: string | null;
-}
-
-export interface AnalisisIA {
-  detalle: LineaDetalle[];
-  cuenta_contable: string | null;
-  centro_costos: string | null;
-  condicion_igv: string | null;
-  resultado: string | null;
-  confianza: string | null;
-  estado: string | null;
-  documentos: boolean | null;
-  descripcion: string | null;
-  observaciones: string | null;
-  rag: ClasificacionRAG | null;
-}
-
-export interface ClasificacionRAG {
-  codigo_comprobante: string | null;
-  codigo_identidad: string | null;
-  cuenta_base: string | null;
-  cuenta_total: string | null;
-  glosa: string | null;
-  respuesta_cuentas: string | null;
-}
-
 export interface PdfSunat {
   ruta: string;
   bytes: number;
@@ -135,6 +103,8 @@ export interface PdfSunat {
 }
 
 export interface ComprobanteResponse {
+  glosa?: string;
+  observacion?: string;
   detracciones?: {
     tipo: 'pago' | 'npd';
     numero?: string;
@@ -199,8 +169,8 @@ export interface ComprobanteResponse {
   total: number;
 
   estado_procesamiento: EstadoProcesamiento | (string & {});
-  /** Salida del análisis IA. El backend la llama `analisis`, no `metadata_procesada`. */
-  analisis: AnalisisIA | null;
+  /** Campo heredado; el backend devuelve siempre null. */
+  analisis: null;
   detalle_sunat: unknown[];
   /**
    * Respaldo descargado del portal SOL. `null` mientras no se haya corrido la
@@ -255,20 +225,6 @@ export interface ResultadoPropuesta {
   descartados: number;
 }
 
-/** `POST …/analisis`. */
-export interface ResultadoAnalisis {
-  total_encontradas: number;
-  procesadas: number;
-  errores: number;
-  sin_datos: number;
-  resultados: string[];
-}
-
-/** `POST …/referencias`. */
-export interface ResultadoReferencia {
-  chunks: number;
-}
-
 /* — plan de cuentas (app/schemas/plan_cuentas.py) — */
 
 export interface CuentaResponse {
@@ -292,23 +248,11 @@ export interface CargaResponse {
   cuentas: number;
 }
 
-/* — RAG (app/schemas/rag.py) — */
-
-/** `GET /rag/estado`. Filas por índice del RAG contable. */
-export interface EstadoRag {
-  cuentas: number;
-  historicos: number;
-  reglas: number;
-  /** `true` en cuanto hay cuentas indexadas; sin ellas la cuenta sale vacía. */
-  listo: boolean;
-}
-
 /* — extracción (app/services/detalle_service.py) — */
 
 /**
  * `resultado` del job `extraccion_detalles` cuando termina. La misma pasada
- * por el portal SOL extrae el detalle de ítems, descarga el PDF y clasifica
- * con RAG.
+ * por el portal SOL extrae el detalle de ítems, descarga el PDF y conserva la glosa.
  */
 export interface ResultadoExtraccion {
   procesados: number;
@@ -318,8 +262,6 @@ export interface ResultadoExtraccion {
   sin_pdf: number;
   /** Los que el tope de `SUNAT_MAX_COMPROBANTES` dejó para otra vuelta. */
   pendientes: number;
-  enriquecidos_rag: number;
-  errores_rag: number;
 }
 
 /* — PDFs (app/api/v1/routes/pdfs.py) — */
@@ -418,11 +360,6 @@ export interface ContraparteTop {
   total: number;
 }
 
-export interface ClasificacionIA {
-  name: ResultadoIA | (string & {});
-  value: number;
-}
-
 export interface ComprobantesPorDia {
   name: string;
   qty: number;
@@ -431,7 +368,6 @@ export interface ComprobantesPorDia {
 export interface DashboardData {
   summary: AnalyticsSummary;
   top_contrapartes: ContraparteTop[];
-  ai_classification: ClasificacionIA[];
   comprobantes_por_dia: ComprobantesPorDia[];
   comprobantes: ComprobanteResponse[];
 }

@@ -1,19 +1,11 @@
 import { useMutation } from '@tanstack/react-query';
+import { useState } from 'react';
 
-import { descargarZipPdfs } from '@/api/pdfs';
+import { descargarZipSunatCompleto } from '@/api/pdfs';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/hooks/useToast';
-import { ApiError } from '@/lib/http';
 import type { Libro } from '@/types/domain';
 
-/**
- * Baja el ZIP con los PDFs que ya están guardados en el servidor.
- *
- * Ya no entra al portal SOL: los PDFs se descargan dentro de «Completar con
- * GLOSA», en la misma pasada que extrae el detalle de cada comprobante. Este
- * botón sólo empaqueta lo que esa pasada dejó en disco, junto con el
- * `manifiesto.csv` que lo cruza con el registro.
- */
 export function DescargarPdfsButton({
   ruc,
   periodo,
@@ -24,29 +16,41 @@ export function DescargarPdfsButton({
   libro: Libro;
 }) {
   const { mostrar } = useToast();
+  const [avance, setAvance] = useState('');
   const descarga = useMutation({
-    mutationFn: () => descargarZipPdfs(ruc, periodo, libro),
-    onError: (fallo) => {
-      const vacio = fallo instanceof ApiError && fallo.esNoEncontrado;
+    mutationFn: () => descargarZipSunatCompleto(ruc, periodo, libro, setAvance),
+    onSuccess: (faltantes) => {
       mostrar({
-        tono: vacio ? 'neutro' : 'error',
-        titulo: vacio ? 'Todavía no hay PDFs guardados' : 'No se pudo descargar el ZIP',
-        detalle: vacio
-          ? `Ejecuta «Completar con GLOSA» sobre ${libro}: descarga el PDF de cada comprobante junto con su detalle.`
-          : fallo instanceof Error
-            ? fallo.message
-            : 'Error inesperado.',
+        tono: faltantes ? 'neutro' : 'exito',
+        titulo: faltantes
+          ? 'ZIP descargado con comprobantes faltantes'
+          : 'ZIP de compras y ventas descargado',
+        detalle: faltantes
+          ? `SUNAT no entregó ${faltantes} PDFs. Consulta faltantes.csv dentro del ZIP.`
+          : 'Incluye los PDFs obtenidos desde SUNAT de ambos registros.',
+      });
+    },
+    onError: (fallo) => {
+      mostrar({
+        tono: 'error',
+        titulo: 'No se pudo descargar el ZIP',
+        detalle: fallo instanceof Error ? fallo.message : 'Error inesperado.',
       });
     },
   });
 
   return (
-    <Button
-      cargando={descarga.isPending}
-      onClick={() => descarga.mutate()}
-      title={`ZIP con los PDFs de SUNAT de ${libro} del periodo ${periodo} y su manifiesto`}
-    >
-      ZIP de PDFs SUNAT
-    </Button>
+    <>
+      <Button
+        cargando={descarga.isPending}
+        onClick={() => descarga.mutate()}
+        title={`Descargar desde SUNAT los PDFs de compras y ventas del periodo ${periodo}`}
+      >
+        ZIP de PDFs SUNAT
+      </Button>
+      {descarga.isPending && (
+        <span role="status">{avance || 'Iniciando descarga desde SUNAT…'}</span>
+      )}
+    </>
   );
 }

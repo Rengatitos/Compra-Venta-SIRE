@@ -9,7 +9,7 @@ de SUNAT, no sobre un XML de un contribuyente concreto.
 
 El destino es el mismo contrato que produce el raspado del portal
 (`scraping_sunat._COLUMNAS`): exactamente ocho claves, todas `str`, cadena vacía
-cuando el dato no está. Lo consumen el reporte de auditoría, el RAG, la
+cuando el dato no está. Lo consumen el reporte de auditoría, la
 plantilla de Excel y la tabla del frontend, así que la forma no es negociable y
 un `None` o un número romperían a alguno de ellos.
 """
@@ -110,7 +110,7 @@ def _texto(elemento) -> str:
 
     Colapsa los blancos porque en el XML las descripciones traen saltos de
     línea y tabulaciones, y acaban en una celda de glosa del Excel y en el
-    prompt del RAG.
+    detalle del comprobante.
 
     No se reformatean los números: si SUNAT escribe `33.34` se guarda `"33.34"`
     tal cual. Los cuatro consumidores ya sanean el texto a número por su cuenta,

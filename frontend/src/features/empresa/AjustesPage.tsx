@@ -217,7 +217,7 @@ export function AjustesPage() {
 
         <Panel
           titulo="Eliminar la empresa"
-          descripcion="Borra en cascada los comprobantes, los periodos, las referencias indexadas y la propia empresa."
+          descripcion="Borra en cascada los comprobantes, los periodos y la propia empresa."
         >
           <div className={layout.filaFin}>
             <Button variante="peligro" onClick={() => setConfirmarBorrado(true)}>
@@ -230,7 +230,7 @@ export function AjustesPage() {
       <Dialog
         abierto={confirmarBorrado}
         titulo="¿Eliminar la empresa y todos sus datos?"
-        texto="Se borrarán comprobantes, periodos y referencias vectoriales. Esta acción no se puede deshacer y cerrará tu sesión."
+        texto="Se borrarán comprobantes y periodos. Esta acción no se puede deshacer y cerrará tu sesión."
         onCerrar={() => setConfirmarBorrado(false)}
         acciones={
           <>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from typing import Any
+from xml.sax.saxutils import escape
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
@@ -17,20 +18,11 @@ def _texto(valor: Any) -> str:
     return "" if valor is None else str(valor)
 
 
-def _resultado(valor: Any) -> str:
-    texto = _texto(valor).strip().upper()
-    return "NO DETERMINADO" if texto in {"", "NODETERMINADO"} else texto
-
-
 def _money(valor: Any) -> str:
     try:
         return f"{float(valor):.2f}"
     except (TypeError, ValueError):
         return _texto(valor)
-
-
-def _analisis(comprobante: dict[str, Any]) -> dict[str, Any]:
-    return comprobante.get("analisis") or {}
 
 
 def excel_de_comprobante(comprobante: dict[str, Any]) -> io.BytesIO:
@@ -77,12 +69,7 @@ def pdf_de_comprobante(comprobante: dict[str, Any]) -> io.BytesIO:
         fontSize=11, textColor=colors.HexColor("#1976d2"), spaceBefore=15, spaceAfter=8,
     )
     normal = estilos["Normal"]
-    cursiva = ParagraphStyle(
-        "Cursiva", parent=estilos["Normal"], fontName="Helvetica-Oblique",
-        textColor=colors.HexColor("#555555"),
-    )
 
-    analisis = _analisis(comprobante)
     moneda = comprobante.get("moneda", "PEN")
     total = _money(comprobante.get("total", 0))
 
@@ -104,21 +91,8 @@ def pdf_de_comprobante(comprobante: dict[str, Any]) -> io.BytesIO:
     )
     elementos.append(tabla_gen)
 
-    elementos.append(Paragraph("CLASIFICACIÓN CONTABLE", seccion))
-    tabla_clasif = Table(
-        [[
-            Paragraph(f"<b>Resultado:</b> {_resultado(analisis.get('resultado'))}", normal),
-            Paragraph(f"<b>Confianza:</b> {_texto(analisis.get('confianza')) or '0%'}", normal),
-        ]],
-        colWidths=[200, 300],
-    )
-    tabla_clasif.setStyle(
-        TableStyle([("ALIGN", (0, 0), (-1, -1), "LEFT"), ("VALIGN", (0, 0), (-1, -1), "TOP")])
-    )
-    elementos.append(tabla_clasif)
-    elementos.append(Spacer(1, 4))
-    observaciones = _texto(analisis.get("observaciones")) or "Sin observaciones detalladas."
-    elementos.append(Paragraph(f"<i>{observaciones}</i>", cursiva))
+    elementos.append(Paragraph("GLOSA", seccion))
+    elementos.append(Paragraph(escape(_texto(comprobante.get("glosa"))) or "Sin glosa", normal))
 
     documento = _texto(comprobante.get("documento_contraparte")) or "-"
     razon_social = _texto(comprobante.get("razon_social")) or "-"
@@ -165,29 +139,24 @@ def pdf_de_comprobante(comprobante: dict[str, Any]) -> io.BytesIO:
     elementos.append(tabla_montos)
 
     elementos.append(Paragraph("RESUMEN", seccion))
-    detalle = analisis.get("detalle")
+    detalle = comprobante.get("detalle_sunat")
 
     if detalle and isinstance(detalle, list):
         for idx, item in enumerate(detalle):
             if not isinstance(item, dict):
                 continue
-            producto = _texto(item.get("producto")) or "Item general / No especificado"
-            categoria = _texto(item.get("categoria_contable")) or "-"
+            producto = _texto(item.get("descripcion")) or "Item general / No especificado"
             cantidad = _texto(item.get("cantidad")) or "N/A"
-            importe = _money(item.get("importe", 0))
-            razon = _texto(item.get("razon"))
+            importe = _money(item.get("importe", item.get("valor_venta", 0)))
 
             filas = [
                 [Paragraph(f"<b>{producto}</b>", normal)],
                 [
                     Paragraph(
-                        f"{categoria} — Cant: {cantidad} — Importe: {moneda} {importe}", normal
+                        f"Cant: {cantidad} — Importe: {moneda} {importe}", normal
                     )
                 ],
             ]
-            if razon:
-                filas.append([Paragraph(f"<i>{razon}</i>", cursiva)])
-
             tabla_item = Table(filas, colWidths=[520])
             tabla_item.setStyle(
                 TableStyle([
@@ -200,7 +169,7 @@ def pdf_de_comprobante(comprobante: dict[str, Any]) -> io.BytesIO:
             if idx < len(detalle) - 1:
                 elementos.append(Spacer(1, 4))
     else:
-        elementos.append(Paragraph("No hay detalle analizado.", normal))
+        elementos.append(Paragraph("No hay detalle SUNAT.", normal))
 
     doc.build(elementos)
     salida.seek(0)
@@ -254,29 +223,22 @@ def pdf_de_lote(comprobantes: list[dict[str, Any]]) -> io.BytesIO:
     )
 
     for comprobante in comprobantes[:500]:
-        analisis = _analisis(comprobante)
+
         referencia = _texto(comprobante.get("serie_numero"))
         contraparte = _texto(comprobante.get("razon_social")) or "Contraparte desconocida"
-        observaciones = (
-            _texto(analisis.get("observaciones")) or "Sin observaciones detalladas registradas."
-        )
+        glosa = escape(_texto(comprobante.get("glosa"))) or "Sin glosa"
 
         elementos.append(Paragraph(f"<b>{referencia}</b> — {contraparte}", item_titulo))
         moneda = comprobante.get("moneda", "PEN")
         total = _money(comprobante.get("total"))
-        resultado = _resultado(analisis.get("resultado"))
-        confianza = _texto(analisis.get("confianza")) or "0%"
-        separador_campos = " &nbsp;&nbsp;|&nbsp;&nbsp; "
 
         elementos.append(
             Paragraph(
-                f"<b>Total:</b> {moneda} {total}{separador_campos}"
-                f"<b>Resultado:</b> {resultado}{separador_campos}"
-                f"<b>Confianza IA:</b> {confianza}",
+                f"<b>Total:</b> {moneda} {total}",
                 item_cuerpo,
             )
         )
-        elementos.append(Paragraph(f"<i>Justificación: {observaciones}</i>", item_obs))
+        elementos.append(Paragraph(f"<i>Glosa: {glosa}</i>", item_obs))
 
         separador = Table([[""]], colWidths=["100%"])
         separador.setStyle(

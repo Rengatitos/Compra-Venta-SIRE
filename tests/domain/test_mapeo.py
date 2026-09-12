@@ -7,7 +7,7 @@ from openpyxl import load_workbook
 from app.domain.comprobante import Comprobante, Libro, Origen
 from app.repositories.comprobantes import a_documento, desde_documento
 from app.services import export_service, plantilla_excel
-from app.services.comprobante_service import serializar, texto_para_ia
+from app.services.comprobante_service import serializar
 from app.services.sunat.propuesta import a_comprobante, pertenece_al_periodo
 
 PAYLOAD_SIRE = {
@@ -269,21 +269,13 @@ class TestSerializacion:
     def test_resuelve_la_descripcion_del_tipo(self):
         assert serializar(_documento_completo())["tipo_cp_descripcion"] == "FACTURA"
 
-    def test_expone_el_analisis_con_claves_en_minuscula(self):
-        analisis = serializar(_documento_completo())["analisis"]
-        assert analisis["resultado"] == "GASTO"
-        assert analisis["confianza"] == "95%"
+    def test_no_expone_resultados_antiguos_de_ia(self):
+        assert serializar(_documento_completo())["analisis"] is None
 
     def test_sin_analisis_devuelve_none(self):
         documento = a_documento(a_comprobante(PAYLOAD_SIRE, Libro.COMPRAS), "e", "202606")
         documento["estado_procesamiento"] = "sire_recibido"
         assert serializar(documento)["analisis"] is None
-
-    def test_texto_para_ia_incluye_lo_normalizado_y_lo_crudo(self):
-        texto = texto_para_ia(_documento_completo())
-        assert "FACTURA" in texto
-        assert "F001-123" in texto
-        assert "ELECTROCENTRO" in texto
 
 
 class TestExportacion:
@@ -446,9 +438,11 @@ class TestPlantillaContasis:
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
         assert hoja["AE4"].value == "CON"
 
-    def test_el_analisis_llena_cuenta_contable_y_glosa(self):
-        hoja = _hoja([serializar(_documento_completo())], Libro.COMPRAS)
-        assert hoja["AF4"].value == "6361"
+    def test_glosa_sunat_sin_cuenta_automatica(self):
+        documento = _documento_completo()
+        documento["detalle_sunat"] = [{"descripcion": "Energía eléctrica"}]
+        hoja = _hoja([serializar(documento)], Libro.COMPRAS)
+        assert hoja["AF4"].value is None
         # Siempre en mayúsculas, como la escriben los contadores.
         assert hoja["AS4"].value == "ENERGÍA ELÉCTRICA"
 
@@ -461,8 +455,8 @@ class TestPlantillaContasis:
             "detalle": [{"producto": "Venta de mercadería"}],
         }
         hoja = _hoja([serializar(documento)], Libro.VENTAS)
-        assert hoja["AB4"].value == "7011"
-        assert hoja["AM4"].value == "VENTA DE MERCADERÍA"
+        assert hoja["AB4"].value is None
+        assert hoja["AM4"].value is None
 
     def test_el_centro_de_costos_no_se_escribe(self):
         # La plantilla pide el código del catálogo de Contasis (9 caracteres) y
@@ -475,7 +469,7 @@ class TestPlantillaContasis:
         assert hoja["AI4"].value is None
         assert hoja["AJ4"].value is None
 
-    def test_el_rag_completa_cuentas_codigos_y_glosa_de_compras(self):
+    def test_ignora_clasificaciones_antiguas(self):
         documento = _documento_completo()
         documento["metadata_procesada"]["rag"] = {
             "codigo_comprobante": "07",
@@ -485,19 +479,19 @@ class TestPlantillaContasis:
             "glosa": "SERVICIO DE INTERNET",
         }
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["C4"].value == "07"
-        assert hoja["G4"].value == 1
-        assert hoja["AF4"].value == "6365095"
+        assert hoja["C4"].value == documento["tipo_cp"]
+        assert hoja["G4"].value == 6
+        assert hoja["AF4"].value is None
         assert hoja["AH4"].value == "4212"
-        assert hoja["AS4"].value == "SERVICIO DE INTERNET"
+        assert hoja["AS4"].value is None
 
-    def test_la_cuenta_total_del_rag_gana_a_la_general_del_libro(self):
+    def test_ignora_contrapartida_antigua(self):
         # El RAG puede resolver una cuenta propia de la empresa, distinta de
         # la 4212/1212 general: si la trae, es la que se escribe.
         documento = _documento_completo()
         documento["metadata_procesada"]["rag"] = {"cuenta_total": "42121"}
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["AH4"].value == "42121"
+        assert hoja["AH4"].value == "4212"
 
     def test_las_cuentas_que_la_ia_no_deduce_siguen_vacias(self):
         # La cuenta de otros tributos no la da ni el análisis ni el RAG; la
@@ -517,7 +511,7 @@ class TestPlantillaContasis:
             {"producto": "Servicio de mantenimiento preventivo y correctivo de la flota"},
             {"producto": "Repuestos varios"},
         ]
-        documento["metadata_procesada"]["descripcion"] = (
+        documento["glosa"] = (
             "Adquisición de servicios de mantenimiento preventivo y correctivo "
             "para la flota vehicular de la empresa durante el periodo"
         )
@@ -529,7 +523,7 @@ class TestPlantillaContasis:
 
     def test_con_un_solo_item_la_glosa_es_el_producto(self):
         documento = _documento_completo()
-        documento["metadata_procesada"]["descripcion"] = "Resumen largo del comprobante"
+        documento["detalle_sunat"] = [{"descripcion": "Energía eléctrica"}]
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
         assert hoja["AS4"].value == "ENERGÍA ELÉCTRICA"
 
@@ -540,9 +534,9 @@ class TestPlantillaContasis:
             {"producto": "Aceite de motor"},
             {"producto": "Filtro de aire"},
         ]
-        documento["metadata_procesada"]["descripcion"] = "Insumos de mantenimiento"
+        documento["detalle_sunat"] = [{"descripcion": "Aceite de motor"}, {"descripcion": "Filtro de aire"}]
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
-        assert hoja["AS4"].value == "INSUMOS DE MANTENIMIENTO"
+        assert hoja["AS4"].value == "ACEITE DE MOTOR / FILTRO DE AIRE"
 
     def test_sin_analisis_las_columnas_de_la_ia_quedan_vacias(self):
         documento = _documento_completo()

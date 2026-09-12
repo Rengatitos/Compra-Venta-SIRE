@@ -13,7 +13,7 @@ import pytest
 from app.domain.comprobante import Libro
 from app.repositories.comprobantes import a_documento
 from app.schemas.comprobante import ComprobanteResponse
-from app.services.comprobante_service import serializar, texto_para_ia
+from app.services.comprobante_service import serializar
 from app.services.sunat.propuesta import a_comprobante
 
 PAYLOAD = {
@@ -90,23 +90,3 @@ def test_sin_tasa_declarada_el_campo_es_nulo():
     payload = {k: v for k, v in PAYLOAD.items() if k != "porTasaIGV"}
     respuesta = ComprobanteResponse(**serializar(_documento(payload))).model_dump()
     assert respuesta["porcentaje_igv"] is None
-
-
-class TestTextoParaIA:
-    def test_incluye_la_tasa_y_el_desglose(self):
-        texto = texto_para_ia(_documento())
-        assert "Tasa de IGV declarada: 18.0%" in texto
-        assert "gravadas y no gravadas: 30.0 / 5.4" in texto
-
-    def test_sin_reparto_no_se_repite_la_base_tres_veces(self):
-        solo_dg = {
-            **PAYLOAD,
-            "montos": {
-                **PAYLOAD["montos"],
-                "mtoBIGravadaDGNG": 0.0,
-                "mtoIgvIpmDGNG": 0.0,
-                "mtoBIGravadaDNG": 0.0,
-                "mtoIgvIpmDNG": 0.0,
-            },
-        }
-        assert "Destino de la adquisición" not in texto_para_ia(_documento(solo_dg))

@@ -2,6 +2,8 @@ import { descargar, pedir, segmento } from '@/lib/http';
 import type { JobAceptado } from '@/types/api';
 import type { Libro } from '@/types/domain';
 
+import { obtenerJob } from './jobs';
+
 const base = (ruc: string, periodo: string, libro: Libro) =>
   `/empresas/${segmento(ruc)}/periodos/${segmento(periodo)}/libros/${segmento(libro)}/pdfs`;
 
@@ -28,4 +30,28 @@ export function iniciarDescargaPdfs(
  */
 export function descargarZipPdfs(ruc: string, periodo: string, libro: Libro): Promise<void> {
   return descargar(`${base(ruc, periodo, libro)}/zip`, `pdfs_${libro}_${periodo}.zip`);
+}
+
+export async function descargarZipSunatCompleto(
+  ruc: string,
+  periodo: string,
+  libro: Libro,
+  progreso: (mensaje: string) => void,
+): Promise<number> {
+  const ruta = `${base(ruc, periodo, libro)}/zip-completo`;
+  const aceptado = await pedir<JobAceptado>(ruta, { metodo: 'POST' });
+  progreso(aceptado.mensaje);
+  for (;;) {
+    const job = await obtenerJob(aceptado.job_id);
+    progreso(job.progreso.mensaje || 'Preparando los PDFs de compras y ventas…');
+    if (job.estado === 'fallido') throw new Error(job.error || 'La descarga desde SUNAT falló');
+    if (job.estado === 'completado') {
+      await descargar(
+        `${ruta}/${segmento(job.job_id)}`,
+        typeof job.resultado?.nombre === 'string' ? job.resultado.nombre : 'comprobantes.zip',
+      );
+      return Number(job.resultado?.sin_pdf || 0);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
 }

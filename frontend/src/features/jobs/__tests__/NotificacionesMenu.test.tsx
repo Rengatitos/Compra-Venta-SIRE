@@ -89,7 +89,7 @@ describe('menú de notificaciones', () => {
     await userEvent.click(screen.getByRole('button', { name: /Notificaciones/ }));
 
     const panel = await screen.findByRole('dialog', { name: 'Procesos recientes' });
-    expect(panel).toHaveTextContent('Detalle, PDF y cuentas RAG · Julio 2026');
+    expect(panel).toHaveTextContent('Detalle y PDF SUNAT · Julio 2026');
     expect(screen.getByRole('link', { name: /Ver historial de procesos/ })).toHaveAttribute(
       'href',
       '/procesos',

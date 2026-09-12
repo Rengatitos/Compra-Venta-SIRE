@@ -13,7 +13,6 @@ from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import empresas as repo_empresas
 from app.repositories import periodos as repo_periodos
 from app.repositories import plan_cuentas as repo_plan_cuentas
-from app.repositories import vectores as repo_vectores
 from app.schemas.empresa import EmpresaCreate, EmpresaResponse, EmpresaUpdate
 from app.schemas.generic import MessageResponse, StatusResponse
 from app.services.sunat.auth import credenciales_cliente, obtener_token
@@ -89,7 +88,6 @@ async def eliminar_empresa(empresa: dict = Depends(empresa_actual), db=Depends(g
 
     await repo_comprobantes.eliminar_de_empresa(db, empresa_id)
     await repo_periodos.eliminar_de_empresa(db, empresa_id)
-    await repo_vectores.eliminar_de_empresa(db, empresa_id)
     await repo_plan_cuentas.eliminar_de_empresa(db, empresa_id)
 
     if await repo_empresas.eliminar(db, empresa["_id"]) == 0:

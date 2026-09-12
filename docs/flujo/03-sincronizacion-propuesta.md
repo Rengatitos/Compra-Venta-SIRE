@@ -74,7 +74,7 @@ El bloque `totales` que acompaña a cada respuesta es el mejor control del mapeo
 
    Había un tercer filtro, `serie_aceptada`, que sólo dejaba pasar series `F` y `E` y por tanto tiraba las boletas. El registro de ventas es en su mayoría boletas (`B001`, `EB01`), así que desapareció de los dos libros: ahora se guarda todo lo que SUNAT devuelve.
 
-7. **Persistencia**, vía [repo_comprobantes.upsert](../../app/repositories/comprobantes.py:110). El filtro de identidad es `(empresa_id, periodo, libro, origen, tipo_cp, serie, numero)`. Los campos de identidad y el `estado_procesamiento` inicial solo se establecen si el documento es nuevo (`$setOnInsert`); el resto de los campos (contraparte, montos, datos crudos) se actualizan siempre, para que una resincronización refresque los datos sin perder el avance del análisis IA ya hecho.
+7. **Persistencia**, vía [repo_comprobantes.upsert](../../app/repositories/comprobantes.py:110). El filtro de identidad es `(empresa_id, periodo, libro, origen, tipo_cp, serie, numero)`. Los campos de identidad y el `estado_procesamiento` inicial solo se establecen si el documento es nuevo (`$setOnInsert`); el resto de los campos (contraparte, montos, datos crudos) se actualizan siempre, para que una resincronización refresque los datos sin perder el detalle y los archivos SUNAT ya extraídos.
 
 8. Si SUNAT responde `422`, se interpreta como "sin propuestas para ese periodo" — no es un error: el periodo se marca `sin_propuesta` y se devuelve `nuevos: 0`. Si la sincronización tiene éxito (con o sin comprobantes nuevos), el periodo se marca `sincronizado`.
 

@@ -1,28 +1,11 @@
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import { formatearEntero, formatearMontoCompacto } from '@/lib/format';
-import type { ClasificacionIA, ComprobantesPorDia, ContraparteTop } from '@/types/api';
+import type { ComprobantesPorDia, ContraparteTop } from '@/types/api';
 
 import estilos from './Dashboard.module.css';
 import { GraficoAccesible } from './GraficoAccesible';
-
-/**
- * Los colores vienen de los tokens: `var(--chart-n)` se resuelve en el SVG igual
- * que en cualquier otro elemento, así que no hay paleta duplicada en JS.
- */
-const SERIES = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)'];
 
 const EJE = {
   stroke: 'var(--chart-grid)',
@@ -110,43 +93,6 @@ export function TopContrapartes({ datos }: { datos: readonly ContraparteTop[] })
               isAnimationActive={!reducido}
             />
           </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </GraficoAccesible>
-  );
-}
-
-export function DistribucionIA({ datos }: { datos: readonly ClasificacionIA[] }) {
-  const reducido = usePrefersReducedMotion();
-
-  return (
-    <GraficoAccesible
-      leyenda="Distribución de comprobantes por clasificación de la IA"
-      encabezadoNombre="Clasificación"
-      encabezadoValor="Comprobantes"
-      filas={datos.map((fila) => ({
-        nombre: String(fila.name),
-        valor: formatearEntero(fila.value),
-      }))}
-    >
-      <div className={estilos.grafico}>
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={[...datos]}
-              dataKey="value"
-              nameKey="name"
-              innerRadius="58%"
-              outerRadius="82%"
-              paddingAngle={2}
-              stroke="var(--color-bg)"
-              isAnimationActive={!reducido}
-            >
-              {datos.map((fila, indice) => (
-                <Cell key={String(fila.name)} fill={SERIES[indice % SERIES.length]} />
-              ))}
-            </Pie>
-          </PieChart>
         </ResponsiveContainer>
       </div>
     </GraficoAccesible>

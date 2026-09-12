@@ -21,7 +21,7 @@ El Excel lo genera [plantilla_excel](../../app/services/plantilla_excel.py) y se
 
 ## `PATCH /api/v1/empresas/{ruc}/periodos/{periodo}/comprobantes/{serie_numero}`
 
-[actualizar_comprobante](../../app/api/v1/routes/comprobantes.py:90). Único campo editable: `descripcion`, que se fusiona dentro de `metadata_procesada` (la salida del análisis IA) sin pisar el resto de los campos generados por la IA.
+[actualizar_comprobante](../../app/api/v1/routes/comprobantes.py:90). Único campo editable: `descripcion`, que se guarda como `glosa` del comprobante sin modificar el detalle SUNAT.
 
 ## `GET /api/v1/empresas/{ruc}/periodos/{periodo}/comprobantes/{serie_numero}/export`
 

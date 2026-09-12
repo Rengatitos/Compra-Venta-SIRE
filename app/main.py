@@ -17,8 +17,6 @@ from app.repositories import empresas as repo_empresas
 from app.repositories import jobs as repo_jobs
 from app.repositories import periodos as repo_periodos
 from app.repositories import plan_cuentas as repo_plan_cuentas
-from app.repositories import vectores as repo_vectores
-from app.services import analisis_ia
 
 log_dir = Path(__file__).resolve().parents[1] / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
@@ -52,11 +50,9 @@ async def lifespan(app: FastAPI):
         await repo_comprobantes.crear_indices(db)
         await repo_jobs.crear_indices(db)
         await repo_plan_cuentas.crear_indices(db)
-        await repo_vectores.crear_indices(db)
     except PyMongoError:
         logger.exception("No se pudieron crear todos los índices; el servicio sigue activo")
 
-    await analisis_ia.cargar_vector(db)
 
     yield
 

@@ -29,11 +29,6 @@ const ComprobantesPage = lazy(() =>
 const ProcesosPage = lazy(() =>
   import('@/features/procesos/ProcesosPage').then((m) => ({ default: m.ProcesosPage })),
 );
-const ReferenciasPage = lazy(() =>
-  import('@/features/referencias/ReferenciasPage').then((m) => ({
-    default: m.ReferenciasPage,
-  })),
-);
 const AjustesPage = lazy(() =>
   import('@/features/empresa/AjustesPage').then((m) => ({ default: m.AjustesPage })),
 );
@@ -67,7 +62,6 @@ export function App() {
                 <Route path="periodos/:periodo/reporte" element={<ReportePage />} />
                 <Route path="procesos" element={<ProcesosPage />} />
                 <Route path="plan-cuentas" element={<PlanCuentasPage />} />
-                <Route path="referencias" element={<ReferenciasPage />} />
                 <Route path="ajustes" element={<AjustesPage />} />
                 <Route path="*" element={<NoEncontradaPage />} />
               </Route>

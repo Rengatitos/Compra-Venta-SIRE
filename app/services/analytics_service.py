@@ -99,7 +99,7 @@ async def get_summary(
             "$group": {
                 "_id": {
                     "$cond": [
-                        {"$gt": ["$metadata_procesada.resultado", None]},
+                        {"$gt": [{"$size": {"$ifNull": ["$detalle_sunat", []]}}, 0]},
                         "procesada",
                         "pendiente",
                     ]
@@ -155,36 +155,6 @@ async def get_top_contrapartes(
     ]
     filas = await _col(db).aggregate(pipeline).to_list(limit)
     return [{"name": f["_id"], "total": monto_a_float(f["total_monto"])} for f in filas]
-
-
-async def get_ai_classification(
-    empresa_ids: list[str], periodo: str, libro: Libro, db: AsyncIOMotorDatabase
-) -> list:
-    filtro = build_match_filter(
-        empresa_ids,
-        periodo,
-        libro,
-        extra={"metadata_procesada.resultado": {"$exists": True, "$ne": None}},
-    )
-    pipeline = [
-        {"$match": filtro},
-        {"$group": {"_id": "$metadata_procesada.resultado", "value": {"$sum": 1}}},
-    ]
-    filas = await _col(db).aggregate(pipeline).to_list(None)
-
-    conteos = {"GASTO": 0, "COSTO": 0, "MIXTO": 0, "OTROS": 0}
-    for item in filas:
-        nombre = str(item.get("_id", "")).upper()
-        if "GASTO" in nombre:
-            conteos["GASTO"] += item["value"]
-        elif "COSTO" in nombre:
-            conteos["COSTO"] += item["value"]
-        elif "MIXTO" in nombre:
-            conteos["MIXTO"] += item["value"]
-        else:
-            conteos["OTROS"] += item["value"]
-
-    return [{"name": k, "value": v} for k, v in conteos.items() if v > 0]
 
 
 async def get_comprobantes_by_day(

@@ -6,10 +6,9 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.core.config import settings
 from app.domain.comprobante import Libro
 from app.repositories import comprobantes as repo_comprobantes
-from app.services import almacen_pdf, ollama_rag, scraping_sunat
+from app.services import almacen_pdf, scraping_sunat
 from app.services.jobs_service import Reportador
 
 logger = logging.getLogger(__name__)
@@ -28,7 +27,11 @@ async def extraer(
     # Una sola visita al portal por comprobante: se lleva el detalle de ítems
     # **y** el PDF. Entra en la lista todo lo que le falte cualquiera de las
     # dos cosas; lo que ya tenga se respeta y no se vuelve a escribir.
-    pendientes = await repo_comprobantes.listar_pendientes_sunat(db, empresa_id, periodo, libro)
+    # El trabajo de la pantalla cubre todo el periodo; limitar esta consulta a
+    # 100 comprobantes hacía que un periodo de 298 pareciera terminar en 100.
+    pendientes = await repo_comprobantes.listar_pendientes_sunat(
+        db, empresa_id, periodo, libro
+    )
 
     if not pendientes:
         await reportar(0, 0, "No hay comprobantes pendientes de detalle ni de PDF")
@@ -39,20 +42,18 @@ async def extraer(
             "descargados_pdf": 0,
             "sin_pdf": 0,
             "pendientes": 0,
-            "enriquecidos_rag": 0,
-            "errores_rag": 0,
         }
 
     total = len(pendientes)
-
-    # El listado corta en `SUNAT_MAX_COMPROBANTES`. Decirlo aquí evita que un
-    # periodo grande parezca terminado cuando sólo se hizo la primera tanda.
-    faltan = (
-        await repo_comprobantes.contar_pendientes_sunat(db, empresa_id, periodo, libro) - total
+    total_pendientes = await repo_comprobantes.contar_pendientes_sunat(
+        db, empresa_id, periodo, libro
     )
-    if faltan > 0:
+    faltan = max(total_pendientes - total, 0)
+    if faltan:
         await reportar(
-            0, total, f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta"
+            0,
+            total,
+            f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta",
         )
     else:
         await reportar(0, total, f"Extrayendo detalle y PDF de {total} comprobantes")
@@ -201,6 +202,14 @@ async def extraer(
             return
         futuro.add_done_callback(_registrar_fallo)
 
+    consultados = []
+    complementos = []
+
+    def al_consultar(documento):
+        consultados.append(documento["_id"])
+        if libro is Libro.VENTAS and "_contraparte_sunat" in documento:
+            complementos.append(documento)
+
     resultados = await scraping_sunat.obtener_detalles(
         empresa,
         pendientes,
@@ -211,7 +220,14 @@ async def extraer(
         al_descargar=guardar_pdf,
         al_descargar_xml=guardar_xml,
         al_extraer_leyenda=guardar_leyenda,
+        al_consultar=al_consultar,
     )
+
+    await repo_comprobantes.marcar_consulta_glosa(
+        db, empresa_id, periodo, libro, consultados
+    )
+    for documento in complementos:
+        await repo_comprobantes.guardar_contraparte_sunat(db, empresa_id, periodo, documento)
 
     # Red de seguridad por si algún aviso se perdió: reintenta sólo lo que no
     # se llegó a agendar.
@@ -225,37 +241,6 @@ async def extraer(
         con_detalle += 1
     con_detalle += len(con_detalle_previo)
     con_pdf = len(pdfs_guardados) + len(con_pdf_previo)
-
-    # El detalle extraído es la glosa de entrada del RAG. Cada comprobante se
-    # aísla: una caída temporal de Render no borra el scraping ni impide que los
-    # demás comprobantes terminen.
-    limite = asyncio.Semaphore(settings.RAG_MAX_CONCURRENCY)
-    enriquecidos = 0
-    errores_rag = 0
-
-    async def enriquecer(documento: dict[str, Any]) -> None:
-        nonlocal enriquecidos, errores_rag
-        serie_numero = documento.get("serie_numero", "")
-        # Los que ya tenían detalle (entraron por el PDF) también se repasan:
-        # si el índice de cuentas estaba vacío la primera vez, es su
-        # oportunidad de recibir cuenta.
-        detalle = resultados.get(serie_numero) or documento.get("detalle_sunat") or []
-        if not detalle:
-            return
-        try:
-            async with limite:
-                entrada = {**documento, "detalle_sunat": detalle}
-                resultado = await ollama_rag.clasificar(db, entrada, empresa)
-            metadata = ollama_rag.a_formato_legacy(resultado, entrada)
-            await repo_comprobantes.guardar_metadata(db, documento["_id"], metadata)
-            enriquecidos += 1
-        except Exception:
-            errores_rag += 1
-            logger.exception("Error enriqueciendo con RAG serie_numero=%s", serie_numero)
-
-    if resultados or con_detalle_previo:
-        await reportar(total, total, "Clasificando códigos contables con RAG")
-        await asyncio.gather(*(enriquecer(documento) for documento in pendientes))
 
     sin_detalle = total - con_detalle
     sin_pdf = total - con_pdf
@@ -276,7 +261,7 @@ async def extraer(
         sin_detalle,
         len(pdfs_guardados),
         sin_pdf,
-        max(faltan, 0),
+        faltan,
     )
     return {
         "procesados": total,
@@ -284,7 +269,5 @@ async def extraer(
         "sin_detalle": sin_detalle,
         "descargados_pdf": len(pdfs_guardados),
         "sin_pdf": sin_pdf,
-        "pendientes": max(faltan, 0),
-        "enriquecidos_rag": enriquecidos,
-        "errores_rag": errores_rag,
+        "pendientes": faltan,
     }

@@ -94,32 +94,9 @@ describe('cobertura por comprobante', () => {
     ).toBe('Sí');
   });
 
-  it('la glosa sale del RAG o, si no la hay, de la descripción del análisis', () => {
+  it('usa la glosa del comprobante', () => {
     expect(tieneGlosa(comprobante()).texto).toBe('No');
-
-    const conRag = comprobante({
-      analisis: {
-        detalle: [],
-        cuenta_contable: null,
-        centro_costos: null,
-        condicion_igv: null,
-        resultado: null,
-        confianza: null,
-        estado: null,
-        documentos: null,
-        descripcion: null,
-        observaciones: null,
-        rag: {
-          codigo_comprobante: null,
-          codigo_identidad: null,
-          cuenta_base: null,
-          cuenta_total: null,
-          glosa: 'POR LA COMPRA DE COMBUSTIBLE',
-          respuesta_cuentas: null,
-        },
-      },
-    });
-    expect(tieneGlosa(conRag).texto).toBe('Sí');
+    expect(tieneGlosa(comprobante({ glosa: 'COMBUSTIBLE' })).texto).toBe('Sí');
   });
 });
 

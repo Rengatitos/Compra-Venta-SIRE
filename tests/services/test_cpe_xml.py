@@ -1,7 +1,7 @@
 """El detalle que se guarda tiene que salir del XML con la misma forma exacta
 que tenía cuando salía de raspar el popup del portal: ocho claves, todas `str`,
 cadena vacía cuando falta el dato. El reporte de auditoría suma `valor_venta`,
-el RAG lee `descripcion` y la tabla del frontend descarta la fila si no hay
+el reporte lee `descripcion` y la tabla del frontend descarta la fila si no hay
 `descripcion` ni `codigo`; un `None` o un número en cualquiera de esos sitios
 revienta silenciosamente.
 

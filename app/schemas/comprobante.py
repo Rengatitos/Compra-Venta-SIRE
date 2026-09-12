@@ -4,37 +4,6 @@ from typing import Any
 from pydantic import BaseModel
 
 
-class LineaDetalle(BaseModel):
-    producto: str | None = None
-    categoria_contable: str | None = None
-    cantidad: Any | None = None
-    importe: Any | None = None
-    razon: str | None = None
-
-
-class ClasificacionRAG(BaseModel):
-    codigo_comprobante: str | None = None
-    codigo_identidad: str | None = None
-    cuenta_base: str | None = None
-    cuenta_total: str | None = None
-    glosa: str | None = None
-    respuesta_cuentas: str | None = None
-
-
-class AnalisisIA(BaseModel):
-    detalle: list[LineaDetalle] = []
-    cuenta_contable: str | None = None
-    centro_costos: str | None = None
-    condicion_igv: str | None = None
-    resultado: str | None = None
-    confianza: str | None = None
-    estado: str | None = None
-    documentos: bool | None = None
-    descripcion: str | None = None
-    observaciones: str | None = None
-    rag: ClasificacionRAG | None = None
-
-
 class PdfSunat(BaseModel):
     """Respaldo del comprobante descargado del portal SOL."""
 
@@ -89,7 +58,9 @@ class ComprobanteResponse(BaseModel):
     total: float = 0.0
 
     estado_procesamiento: str
-    analisis: AnalisisIA | None = None
+    analisis: None = None
+    glosa: str = ""
+    observacion: str = ""
     detalle_sunat: list[Any] = []
     # True cuando la propuesta SUNAT contiene indDetraccion="D".
     detraccion: bool = False
@@ -106,4 +77,6 @@ class ComprobanteResponse(BaseModel):
 
 
 class ComprobanteUpdate(BaseModel):
+    razon_social: str | None = None
+    documento_contraparte: str | None = None
     descripcion: str | None = None

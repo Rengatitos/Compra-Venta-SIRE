@@ -30,6 +30,33 @@
   gap: var(--space-1);
 }
 
+.destinoListado {
+  scroll-margin-top: 6rem;
+}
+
+.avisoIncompletos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+  color: #713f12;
+  text-align: left;
+  background: #fef3c7;
+  border: 1px solid #d97706;
+  border-radius: 1rem;
+  cursor: pointer;
+  font: inherit;
+}
+
+.avisoIncompletos:hover {
+  background: #fde68a;
+}
+
+.avisoIncompletos:focus-visible {
+  outline: 3px solid #92400e;
+  outline-offset: 3px;
+}
+
 /* Bloque de comando dentro del aviso: se copia tal cual. */
 .comando {
   display: inline-block;

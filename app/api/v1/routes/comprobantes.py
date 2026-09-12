@@ -43,6 +43,50 @@ async def listar_comprobantes(
     return serializar_lote(filas)
 
 
+@router.get("/incompletos", response_model=list[ComprobanteResponse])
+async def incompletos(
+    periodo: str = Depends(periodo_valido), empresa: str = Depends(empresa_id),
+    libro: Libro = Query(...), db=Depends(get_db),
+):
+    from app.services.revision_comprobantes import incompleto
+
+    await _asegurar_periodo(db, empresa, periodo)
+    resultado = []
+    skip = 0
+    while True:
+        filas = await repo_comprobantes.listar(db, empresa, periodo, libro=libro, skip=skip, limit=500)
+        for fila in filas:
+            visible = {**fila, **serializar(fila)}
+            if incompleto(visible):
+                resultado.append(visible)
+        if len(filas) < 500:
+            break
+        skip += 500
+    return resultado
+
+
+@router.get("/anulados-sunat", response_model=list[ComprobanteResponse])
+async def anulados_sunat(
+    periodo: str = Depends(periodo_valido),
+    empresa: str = Depends(empresa_id),
+    libro: Libro = Query(...),
+    db=Depends(get_db),
+):
+    await _asegurar_periodo(db, empresa, periodo)
+    return serializar_lote(await repo_comprobantes.listar_anulados_sunat(db, empresa, periodo, libro))
+
+
+@router.get("/cobertura-sunat", response_model=dict[str, int])
+async def cobertura_sunat(
+    periodo: str = Depends(periodo_valido),
+    empresa: str = Depends(empresa_id),
+    libro: Libro = Query(...),
+    db=Depends(get_db),
+):
+    await _asegurar_periodo(db, empresa, periodo)
+    return await repo_comprobantes.cobertura_sunat(db, empresa, periodo, libro)
+
+
 @router.get("/export", summary="Exportar todos los comprobantes del periodo")
 async def exportar_lote(
     periodo: str = Depends(periodo_valido),
@@ -227,9 +271,13 @@ async def actualizar_comprobante(
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
 
     if datos.descripcion is not None:
-        metadata = dict(fila.get("metadata_procesada") or {})
-        metadata["descripcion"] = datos.descripcion
-        await repo_comprobantes.guardar_metadata(db, fila["_id"], metadata)
+        await repo_comprobantes.guardar_glosa(db, fila["_id"], datos.descripcion)
+
+    await repo_comprobantes.guardar_campos_contraparte(db, fila["_id"], {
+        campo: getattr(datos, campo).strip()
+        for campo in ("razon_social", "documento_contraparte")
+        if getattr(datos, campo) is not None
+    })
 
     return {"mensaje": "Comprobante actualizado correctamente"}
 
