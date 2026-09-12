@@ -27,7 +27,11 @@ async def extraer(
     # Una sola visita al portal por comprobante: se lleva el detalle de ítems
     # **y** el PDF. Entra en la lista todo lo que le falte cualquiera de las
     # dos cosas; lo que ya tenga se respeta y no se vuelve a escribir.
-    pendientes = await repo_comprobantes.listar_pendientes_sunat(db, empresa_id, periodo, libro)
+    # El trabajo de la pantalla cubre todo el periodo; limitar esta consulta a
+    # 100 comprobantes hacía que un periodo de 298 pareciera terminar en 100.
+    pendientes = await repo_comprobantes.listar_pendientes_sunat(
+        db, empresa_id, periodo, libro
+    )
 
     if not pendientes:
         await reportar(0, 0, "No hay comprobantes pendientes de detalle ni de PDF")
@@ -41,15 +45,15 @@ async def extraer(
         }
 
     total = len(pendientes)
-
-    # El listado corta en `SUNAT_MAX_COMPROBANTES`. Decirlo aquí evita que un
-    # periodo grande parezca terminado cuando sólo se hizo la primera tanda.
-    faltan = (
-        await repo_comprobantes.contar_pendientes_sunat(db, empresa_id, periodo, libro) - total
+    total_pendientes = await repo_comprobantes.contar_pendientes_sunat(
+        db, empresa_id, periodo, libro
     )
-    if faltan > 0:
+    faltan = max(total_pendientes - total, 0)
+    if faltan:
         await reportar(
-            0, total, f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta"
+            0,
+            total,
+            f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta",
         )
     else:
         await reportar(0, total, f"Extrayendo detalle y PDF de {total} comprobantes")
@@ -257,7 +261,7 @@ async def extraer(
         sin_detalle,
         len(pdfs_guardados),
         sin_pdf,
-        max(faltan, 0),
+        faltan,
     )
     return {
         "procesados": total,
@@ -265,5 +269,5 @@ async def extraer(
         "sin_detalle": sin_detalle,
         "descargados_pdf": len(pdfs_guardados),
         "sin_pdf": sin_pdf,
-        "pendientes": max(faltan, 0),
+        "pendientes": faltan,
     }

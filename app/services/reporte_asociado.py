@@ -15,7 +15,7 @@ from app.domain.comprobante import Libro
 from app.services import almacen_pdf
 from app.repositories import comprobantes
 from app.services.comprobante_service import serializar_lote
-from app.services.glosa import obtener_glosa
+from app.services.glosa import OBSERVACION_SIN_GLOSA, obtener_glosa
 from app.services.plantilla_excel import excel_plantilla
 from app.services.revision_comprobantes import anulado
 
@@ -41,9 +41,12 @@ async def registros(db, empresa, periodo):
 
 def estado(registros):
     filas = [f for grupo in registros.values() for f in grupo]
-    pendientes = sum(not bool(obtener_glosa(f)) for f in filas)
-    libros_completos = all(registros.get(libro) for libro in (Libro.COMPRAS, Libro.VENTAS))
-    return {'habilitado': libros_completos and pendientes == 0, 'pendientes': pendientes}
+    pendientes = sum(
+        not obtener_glosa(f) and f.get('glosa_consultada') is not True
+        for f in filas
+    )
+    hay_libros = any(registros.get(libro) for libro in (Libro.COMPRAS, Libro.VENTAS))
+    return {'habilitado': hay_libros and pendientes == 0, 'pendientes': pendientes}
 
 
 def excel(registros, periodo, ruc):
@@ -76,8 +79,14 @@ def excel(registros, periodo, ruc):
     for col in 'ABCDEFGHIJK':
         control.column_dimensions[col].width = 24
     for libro in (Libro.VENTAS, Libro.COMPRAS):
-        filas = [fila for fila in registros[libro] if not anulado(fila)]
-        original = load_workbook(excel_plantilla(serializar_lote(filas), libro)).worksheets[0]
+        filas = [fila for fila in registros.get(libro, []) if not anulado(fila)]
+        if not filas:
+            continue
+        datos = serializar_lote(filas)
+        for dato, fila in zip(datos, filas, strict=True):
+            if not dato.get('glosa') and fila.get('glosa_consultada') is True:
+                dato['glosa'] = OBSERVACION_SIN_GLOSA
+        original = load_workbook(excel_plantilla(datos, libro)).worksheets[0]
         hoja = wb.create_sheet('Registro de ventas' if libro == Libro.VENTAS else 'Registro de compras')
         for rango in original.merged_cells.ranges:
             hoja.merge_cells(str(rango))
@@ -94,7 +103,7 @@ def excel(registros, periodo, ruc):
                 destino.protection = copy(celda.protection)
         for clave, dimension in original.column_dimensions.items():
             destino = hoja.column_dimensions[clave]
-            destino.width = dimension.width
+            destino.width = dimension.width  
             destino.hidden = dimension.hidden
             destino.bestFit = dimension.bestFit
             destino.outlineLevel = dimension.outlineLevel

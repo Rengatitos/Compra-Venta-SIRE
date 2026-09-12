@@ -40,7 +40,7 @@ async def descargar_reporte_asociado(
     if not reporte_asociado.estado(registros)["habilitado"]:
         raise HTTPException(
             status_code=409,
-            detail="Completa las glosas de compras y ventas antes de descargar",
+            detail="Completa las glosas de los comprobantes disponibles antes de descargar",
         )
     ruta = reporte_asociado.zip_reporte(registros, periodo, empresa["ruc"], empresa["usuario"])
     return FileResponse(

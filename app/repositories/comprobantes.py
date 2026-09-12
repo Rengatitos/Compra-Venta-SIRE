@@ -20,6 +20,7 @@ from app.repositories._mongo import (
     monto_a_bson,
     monto_desde_bson,
 )
+from app.services.sunat.texto import corregir_codificacion
 
 _CAMPOS_MONTO = (
     "base_imponible",
@@ -432,7 +433,7 @@ async def listar_pendientes_sunat(
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     cursor = _col(db).find(_filtro_pendiente_sunat(empresa_id, periodo, libro))
-    return await cursor.to_list(length=limit or settings.SUNAT_MAX_COMPROBANTES)
+    return await cursor.to_list(length=limit)
 
 
 async def contar_pendientes_sunat(
