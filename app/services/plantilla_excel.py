@@ -73,7 +73,7 @@ MONEDAS: dict[str, str] = {"PEN": "S", "USD": "D"}
 # operaciones exoneradas.
 TASA_IGV = 18
 
-# Anchos que declara la plantilla para las columnas de texto que llena la IA.
+# Anchos que declara la plantilla para las columnas de texto (glosa y cuenta).
 # Pasarse no es inofensivo: Contasis trunca por su cuenta al importar y el
 # corte cae donde caiga.
 MAX_CUENTA_CONTABLE = 10

@@ -1,6 +1,6 @@
 # Rate limiting
 
-Los límites de tasa se implementan con `slowapi`, indexados por IP remota ([get_remote_address](../../app/main.py:8)). Cada router que necesita límites propios instancia su propio `Limiter` local (mismo `key_func`), y el manejador de excepción se registra una sola vez en [main.py](../../app/main.py:65).
+Los límites de tasa se implementan con `slowapi`, indexados por IP remota ([get_remote_address](../../app/main.py)). Cada router que necesita límites propios instancia su propio `Limiter` local (mismo `key_func`), y el manejador de excepción se registra una sola vez en [main.py](../../app/main.py).
 
 | Endpoint | Límite | Razón |
 |---|---|---|
@@ -10,4 +10,4 @@ Los límites de tasa se implementan con `slowapi`, indexados por IP remota ([get
 
 El resto de los endpoints no tiene límite propio.
 
-Si se excede un límite, `slowapi` devuelve `429 Too Many Requests` a través de [_rate_limit_exceeded_handler](../../app/main.py:64), registrado como manejador de `RateLimitExceeded`.
+Si se excede un límite, `slowapi` devuelve `429 Too Many Requests` a través de [_rate_limit_exceeded_handler](../../app/main.py), registrado como manejador de `RateLimitExceeded`.

@@ -56,7 +56,7 @@ def _texto(valor: Any) -> str:
 
     Contasis rellena a ancho fijo con espacios (`'01        '`), así que sin
     recortar cada valor nada casa después: ni las búsquedas, ni el índice
-    único, ni el cruce con la clasificación de la IA.
+    único, ni el cruce por código de cuenta.
     """
     if valor is None:
         return ""

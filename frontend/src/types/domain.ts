@@ -7,12 +7,6 @@
 export const LIBROS = ['compras', 'ventas'] as const;
 export type Libro = (typeof LIBROS)[number];
 
-/**
- * `libro=ventas` responde 501: el RVIE no tiene cliente HTTP todavía
- * (ver `app/services/sunat/propuesta.py`). La UI ofrece solo lo implementado.
- */
-export const LIBROS_IMPLEMENTADOS: readonly Libro[] = ['compras'];
-
 /** `app/domain/comprobante.py::EstadoProcesamiento`. */
 export type EstadoProcesamiento =
   | 'sire_recibido'
@@ -49,9 +43,6 @@ export type FuenteDato = 'propuesta_sire' | 'detalle_portal_sol' | 'pdf_descarga
  * `PUT /periodos/{periodo}`.
  */
 export type EstadoPeriodo = 'pendiente' | 'sincronizado' | 'sin_propuesta' | (string & {});
-
-/** Resultado de la clasificación de la IA, tal como lo agrupa analytics_service. */
-export type ResultadoIA = 'GASTO' | 'COSTO' | 'MIXTO' | 'OTROS';
 
 export const FORMATOS_EXPORT = ['excel', 'pdf'] as const;
 export type FormatoExport = (typeof FORMATOS_EXPORT)[number];

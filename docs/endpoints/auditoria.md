@@ -2,7 +2,7 @@
 
 ## `GET /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/auditoria/reporte`
 
-[obtener_reporte](../../app/api/v1/routes/auditoria.py:118). La tabla comparativa que pide el auditor.
+[obtener_reporte](../../app/api/v1/routes/auditoria.py). La tabla comparativa que pide el auditor.
 
 El auditor pide tres cosas. Dos ya existían: la **glosa detallada** se obtiene del detalle SUNAT y los **PDFs en ZIP** los sirve [pdfs.md](pdfs.md). Este endpoint arma la tercera: la tabla comparativa **con fuentes**.
 

@@ -1,6 +1,6 @@
 # Modelo de datos — periodos
 
-Un periodo fiscal de sincronización SIRE para una empresa. Poblada por [crear_periodo](../../app/api/v1/routes/periodos.py:14).
+Un periodo fiscal de sincronización SIRE para una empresa. Poblada por [crear_periodo](../../app/api/v1/routes/periodos.py).
 
 | Campo | Tipo | Descripción |
 |---|---|---|

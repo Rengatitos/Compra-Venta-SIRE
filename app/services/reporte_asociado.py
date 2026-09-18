@@ -3,7 +3,7 @@ import io
 import re
 import tempfile
 import zipfile
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from copy import copy
 from pathlib import Path
 
@@ -12,8 +12,8 @@ from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Font
 
 from app.domain.comprobante import Libro
-from app.services import almacen_pdf
 from app.repositories import comprobantes
+from app.services import almacen_pdf
 from app.services.comprobante_service import serializar_lote
 from app.services.glosa import ESTADO_PENDIENTE, estado_glosa
 from app.services.plantilla_excel import excel_plantilla

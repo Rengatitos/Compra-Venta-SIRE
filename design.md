@@ -1,7 +1,7 @@
 ---
-version: "neuform-top-creators-featured"
-name: "Nexus Analytics Dashboard"
-description: "Nexus Analytics Dashboard Section is designed for demonstrating application workflows and interface hierarchy. Key features include clear information density, modular panels, and interface rhythm. It is suitable for product showcases, admin panels, and analytics experiences."
+version: "sire-panel-1"
+name: "Panel SIRE"
+description: "Tokens de diseño del panel web de Sire (frontend/src/styles/tokens.css): colores, tipografía, espaciado y radios del tema oscuro de referencia. El tema claro y las desviaciones por contraste están documentadas en frontend/README.md."
 colors:
   primary: "#000000"
   secondary: "#94A3B8"

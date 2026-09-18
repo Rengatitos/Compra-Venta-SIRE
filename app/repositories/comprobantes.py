@@ -286,8 +286,8 @@ async def listar_pendientes_analisis(
             {"estado_procesamiento": {"$exists": False}},
         ],
     }
-    # El prompt de la IA depende del libro (una venta no es un gasto), así que
-    # cada lote se analiza por separado.
+    # Ventas y compras se procesan como lotes separados: comparten `serie_numero`
+    # y mezclarlos escribiría en el documento equivocado.
     if libro is not None:
         filtro["libro"] = libro.value
     cursor = _col(db).find(filtro).sort([("_id", -1)])

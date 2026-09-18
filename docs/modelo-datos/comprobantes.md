@@ -36,11 +36,19 @@ SUNAT manda la tasa como fracción (`0.18`) y el modelo la guarda en puntos, as�
 | `extra` | dict | Campos propios del origen que no entran al modelo común. Para `origen="sire"`: `raw_sire` (el JSON crudo de la respuesta, como texto) y `periodo_sunat` (el periodo tributario que asigna SUNAT, que es el que decide a qué registro pertenece el comprobante — no su mes de emisión). En ventas se añaden el CAR SUNAT, el tipo de operación y la referencia al documento que modifica una nota de crédito. |
 | `estado_procesamiento` | str | `sire_recibido` → `analizado` \| `error_analisis` \| `sin_datos`. Ver [domain/comprobante.py — EstadoProcesamiento](../../app/domain/comprobante.py). Solo se establece al insertar (`$setOnInsert`); no se pisa en una resincronización. |
 | `detalle_sunat` | list \| None | Detalle de ítems extraído por scraping (ver [flujo de extracción de detalle](../flujo/04-extraccion-detalle.md)). Ausente hasta que se ejecuta ese job. |
-| `leyenda_sunat` | list \| None | Líneas del recuadro «LEYENDA» del popup, sin viñetas ni repeticiones. Es la glosa real de muchas FE recibidas: en una comisión bancaria el ítem dice sólo `CONCEPTO DE PAGO:COMISION` y la leyenda añade `TARJETA DE DEBITO`. Ausente en la mayoría de comprobantes, que no traen recuadro — por eso **no** entra en el filtro de pendientes del portal. |
+| `leyenda_sunat` | list \| None | Líneas del recuadro «LEYENDA» del popup, sin viñetas ni repeticiones. Es la glosa real de muchas FE recibidas: en una comisión bancaria el ítem dice sólo `CONCEPTO DE PAGO:COMISION` y la leyenda añade `TARJETA DE DEBITO`; cuando los ítems no describen nada, `obtener_glosa` la usa como glosa. Ausente en la mayoría de comprobantes, que no traen recuadro — por eso **no** entra en el filtro de pendientes del portal. |
+| `glosa_consultada` | bool | `true` en cada comprobante que el job de detalle buscó en el portal, se haya encontrado o no. Separa «sin glosa» de «pendiente» en `estado_glosa` (ver [glosa y estado](../flujo/05-glosa-y-estado.md)). |
+| `glosa` | str | Sólo existe si el usuario la escribió con `PATCH` (`descripcion`). Gana sobre el detalle y la leyenda, incluso vacía. |
+| `contraparte_manual` | dict | `razon_social` y `documento_contraparte` escritos por el usuario; prevalecen al serializar. |
+| `contraparte_sunat`, `contraparte_sunat_fuente`, `contraparte_sunat_consultada` | dict, str, bool | Receptor que el portal mostró para una venta cuyo SIRE venía sin contraparte, y la marca de que ya se buscó. |
+| `pdf_sunat` | dict \| None | `{ruta, bytes, descargado_en}`; la ruta es relativa a `SUNAT_DATA_DIR`. Lo escribe la extracción de detalle o la descarga de PDFs. |
+| `detracciones`, `detracciones_consultado_en` | list, datetime | NPD asociados al comprobante por el job de detracciones (sólo compras). |
+
+`estado_glosa` y `observacion` **no se guardan**: se derivan al serializar a partir de `tipo_cp`, `libro`, `serie`, `glosa`, `detalle_sunat`, `leyenda_sunat` y `glosa_consultada`.
 
 ## Por qué `Decimal128` y no `float`
 
-Guardar los montos como `float` reintroduce el problema de precisión que la normalización a `Decimal` existe para evitar (ver los tests de `normalizar_monto` en [tests/domain](../../tests/domain)). Al leer, [monto_a_float](../../app/repositories/_mongo.py:32) convierte a `float` solo en el borde de la serialización JSON, donde la pérdida de precisión ya no importa.
+Guardar los montos como `float` reintroduce el problema de precisión que la normalización a `Decimal` existe para evitar (ver los tests de `normalizar_monto` en [tests/domain](../../tests/domain)). Al leer, [monto_a_float](../../app/repositories/_mongo.py) convierte a `float` solo en el borde de la serialización JSON, donde la pérdida de precisión ya no importa.
 
 ## Índices
 
