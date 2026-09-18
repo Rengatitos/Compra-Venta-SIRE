@@ -16,6 +16,7 @@ import layout from '@/styles/layouts.module.css';
 import type { ComprobanteResponse } from '@/types/api';
 
 import { presentarEstadoComprobante } from './estadoComprobante';
+import { presentarEstadoGlosa } from './estadoGlosa';
 import estilos from './FichaComprobante.module.css';
 import { TablaDetalleSunat } from './TablaDetalleSunat';
 
@@ -89,6 +90,7 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
 
   const serieNumero = datos.serie_numero;
   const estado = presentarEstadoComprobante(datos.estado_procesamiento);
+  const estadoGlosa = presentarEstadoGlosa(datos.estado_glosa);
 
   // El campo editable arranca con la glosa extraída.
   useEffect(() => {
@@ -124,9 +126,14 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
       <Seccion
         titulo="Datos del comprobante"
         acciones={
-          <Badge tono={estado.tono} conPunto>
-            {estado.texto}
-          </Badge>
+          <div className={layout.fila}>
+            <Badge tono={estado.tono} conPunto>
+              {estado.texto}
+            </Badge>
+            <Badge tono={estadoGlosa.tono} conPunto>
+              {estadoGlosa.texto}
+            </Badge>
+          </div>
         }
       >
         <dl className={layout.definiciones}>
@@ -194,6 +201,14 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
       </Seccion>
 
       <Seccion titulo="Descripción">
+        {datos.observacion || datos.leyenda_sunat.length > 0 ? (
+          <dl className={layout.definiciones}>
+            {datos.observacion ? <Dato termino="Observación">{datos.observacion}</Dato> : null}
+            {datos.leyenda_sunat.length > 0 ? (
+              <Dato termino="Leyenda SUNAT">{datos.leyenda_sunat.join(' / ')}</Dato>
+            ) : null}
+          </dl>
+        ) : null}
         <form className={layout.pila} onSubmit={alGuardar}>
           <TextAreaField
             etiqueta="Descripción del comprobante"

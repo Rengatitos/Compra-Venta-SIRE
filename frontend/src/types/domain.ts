@@ -20,6 +20,14 @@ export type EstadoProcesamiento =
   | 'error_analisis'
   | 'sin_datos';
 
+/**
+ * `app/services/glosa.py::estado_glosa`. Depende del tipo de comprobante (qué
+ * publica SUNAT) y de si el portal ya se consultó: «pendiente» es un tipo
+ * consultable que todavía no pasó por SOL.
+ */
+export const ESTADOS_GLOSA = ['con_glosa', 'sin_glosa', 'en_evaluacion', 'pendiente'] as const;
+export type EstadoGlosa = (typeof ESTADOS_GLOSA)[number];
+
 /** `app/domain/jobs.py::EstadoJob`. */
 export type EstadoJob = 'pendiente' | 'en_progreso' | 'completado' | 'fallido';
 

@@ -1,5 +1,5 @@
 import { descargar, pedir, segmento } from '@/lib/http';
-import type { ComprobanteResponse, MessageResponse } from '@/types/api';
+import type { CoberturaSunat, ComprobanteResponse, MessageResponse } from '@/types/api';
 import type { FormatoExport, Libro } from '@/types/domain';
 
 const base = (ruc: string, periodo: string) =>
@@ -41,10 +41,9 @@ export function editarContraparte(
 }
 
 export function obtenerCoberturaSunat(ruc: string, periodo: string, libro: Libro) {
-  return pedir<{ total: number; con_detalle: number; con_pdf: number }>(
-    `${base(ruc, periodo)}/cobertura-sunat`,
-    { consulta: { libro } },
-  );
+  return pedir<CoberturaSunat>(`${base(ruc, periodo)}/cobertura-sunat`, {
+    consulta: { libro },
+  });
 }
 
 /** `404` si el periodo no existe para la empresa. */

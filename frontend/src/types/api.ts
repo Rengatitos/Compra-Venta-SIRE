@@ -4,6 +4,7 @@
  * repo lleve directamente a su origen.
  */
 import type {
+  EstadoGlosa,
   EstadoJob,
   EstadoPeriodo,
   EstadoProcesamiento,
@@ -102,9 +103,24 @@ export interface PdfSunat {
   descargado_en: string | null;
 }
 
+/** `GET …/comprobantes/cobertura-sunat` (`app/schemas/comprobante.py::CoberturaSunat`). */
+export interface CoberturaSunat {
+  total: number;
+  con_detalle: number;
+  con_pdf: number;
+  estado_glosa: Record<EstadoGlosa, number>;
+}
+
 export interface ComprobanteResponse {
   glosa?: string;
   observacion?: string;
+  /**
+   * Con glosa / sin glosa / en evaluación / pendiente, según el tipo de
+   * comprobante y si el portal ya se consultó (`app/services/glosa.py`).
+   */
+  estado_glosa: EstadoGlosa | (string & {});
+  /** Recuadro «LEYENDA» del portal; es la glosa cuando los ítems no describen nada. */
+  leyenda_sunat: string[];
   detracciones?: {
     tipo: 'pago' | 'npd';
     numero?: string;
