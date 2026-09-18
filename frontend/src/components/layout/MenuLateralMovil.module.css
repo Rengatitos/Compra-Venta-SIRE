@@ -1,0 +1,82 @@
+.boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+.boton:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-2);
+  border-color: var(--color-border);
+}
+
+/* En escritorio la barra lateral está siempre a la vista. */
+@media (width > 60rem) {
+  .boton {
+    display: none;
+  }
+}
+
+/*
+ * El agente de usuario centra un diálogo modal con `inset: 0; margin: auto`.
+ * `reset.css` ya deja el margen en 0, así que con un ancho definido el reparto
+ * queda sobre-restringido y el navegador ignora `inset-inline-end`: el panel se
+ * pega al borde de inicio. Los `max-*` del agente de usuario sí hay que
+ * anularlos.
+ */
+.cajon {
+  position: fixed;
+  inline-size: min(var(--shell-nav-drawer-width), calc(100vw - var(--space-7)));
+  max-inline-size: none;
+  block-size: 100dvh;
+  max-block-size: none;
+  padding: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-1);
+  border: none;
+  border-inline-end: 1px solid var(--color-border);
+
+  /* Solo `transform` y las propiedades discretas de la capa superior: ninguna
+     propiedad de color entra en la transición (ver global.css).
+     `prefers-reduced-motion` ya la deja en 0.01 ms desde ahí. */
+  transition:
+    transform var(--duration-base) var(--ease-out),
+    overlay var(--duration-base) allow-discrete,
+    display var(--duration-base) allow-discrete;
+}
+
+.cajon[open] {
+  display: block;
+}
+
+.cajon:not([open]) {
+  transform: translateX(-100%);
+}
+
+@starting-style {
+  .cajon[open] {
+    transform: translateX(-100%);
+  }
+}
+
+.cajon::backdrop {
+  background-color: var(--color-backdrop);
+}
+
+.cerrar {
+  position: absolute;
+  inset-block-start: var(--space-3);
+  inset-inline-end: var(--space-3);
+  z-index: 1;
+  display: inline-flex;
+  padding: var(--space-2);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+}

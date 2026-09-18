@@ -58,11 +58,12 @@ Definidas en la clase `Settings` ([config.py](../app/core/config.py), `pydantic-
 |---|---|---|---|
 | `PROJECT_NAME` | str, default "Automatización SUNAT API" | No | Título de la app FastAPI. |
 | `API_V1_PREFIX` | str, default `/api/v1` | No | Prefijo bajo el que se monta el router de la API. |
-| `ADMIN_TOKEN` | str | Sí | Token estático para endpoints admin (header `X-Admin-Token`). Ver [autenticación](arquitectura/autenticacion.md). |
 | `JWT_SECRET_KEY` | str | Sí | Clave de firma HMAC del JWT. También se usa como semilla de cifrado si `SOL_USER_CRYPTO_KEY` no está definida. |
 | `SOL_USER_CRYPTO_KEY` | str, opcional | No | Semilla preferida para derivar la clave de cifrado de contraseñas SOL. Ver [cifrado](arquitectura/cifrado.md). |
 | `JWT_ALGORITHM` | str, default HS256 | No | Algoritmo de firma JWT. |
 | `JWT_EXPIRE_HOURS` | int, default 2 | No | Horas de validez del JWT. |
+| `GOOGLE_CLIENT_ID` | str | Sí (en la práctica) | Client ID del cliente OAuth de Google contra el que se valida el `aud` de los ID tokens. Sin él nadie puede entrar. Ver [autenticación](arquitectura/autenticacion.md). |
+| `GOOGLE_ALLOWED_EMAILS` | lista separada por comas | Sí (en la práctica) | Correos con acceso al panel. **Una lista vacía no deja entrar a nadie**: al revés que `CORS_ORIGINS`, este campo falla cerrado a propósito. |
 | `MONGO_URI` | str | Sí (en la práctica) | Cadena de conexión a MongoDB. |
 | `MONGO_FACTURASDB_NAME` | str | Sí (en la práctica) | Nombre de la base con las colecciones `empresas`, `periodos`, `comprobantes`, `jobs`, `plan_cuentas`. |
 | `SUNAT_CLIENT_ID` / `SUNAT_CLIENT_SECRET` | str, opcional | No | Respaldo global de credenciales OAuth SUNAT si la empresa no tiene las suyas propias. |

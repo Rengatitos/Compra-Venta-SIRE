@@ -2,7 +2,10 @@ import { pedir, segmento } from '@/lib/http';
 import type { JobResponse } from '@/types/api';
 import type { EstadoJob, TipoJob } from '@/types/domain';
 
-/** `GET /api/v1/jobs/{job_id}`. `403` si el job es de otra empresa. */
+/**
+ * `GET /api/v1/jobs/{job_id}`. Un `job_id` es único, y la sesión da acceso a
+ * todas las empresas, así que no lleva RUC: solo puede fallar con `404`.
+ */
 export function obtenerJob(jobId: string): Promise<JobResponse> {
   return pedir<JobResponse>(`/jobs/${segmento(jobId)}`);
 }
@@ -16,10 +19,11 @@ export interface FiltroJobs {
 }
 
 /**
- * `GET /api/v1/jobs`. El RUC no es un parámetro: el backend lo saca del token,
- * así que la lista siempre es la de la empresa autenticada. Viene ordenada del
- * job más reciente al más antiguo.
+ * `GET /api/v1/jobs`. El RUC va explícito: el token identifica a una persona
+ * con acceso a todas las empresas, así que ya no puede deducirse de él. Sin RUC
+ * el backend devuelve el historial de todas. Viene ordenada del job más reciente
+ * al más antiguo.
  */
-export function listarJobs(filtro: FiltroJobs = {}): Promise<JobResponse[]> {
-  return pedir<JobResponse[]>('/jobs', { consulta: { ...filtro } });
+export function listarJobs(ruc: string, filtro: FiltroJobs = {}): Promise<JobResponse[]> {
+  return pedir<JobResponse[]>('/jobs', { consulta: { ruc, ...filtro } });
 }

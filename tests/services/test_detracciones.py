@@ -148,20 +148,31 @@ def test_propuesta_encola_detracciones_despues_de_guardar(monkeypatch, libro, au
     assert ("detracciones_job_id" in respuesta["datos"]) is automatico
 
 
-def test_descarga_rechaza_ruc_de_otra_empresa(monkeypatch):
+def test_descarga_con_ruc_inexistente_responde_404(monkeypatch):
+    """La autorizacion corta antes de tocar datos.
+
+    Antes este test comprobaba un 403 por pedir el RUC de otra empresa, porque
+    el token identificaba una empresa. Ahora identifica a una persona con acceso
+    a todas, asi que lo que queda por cortar es un RUC que no existe; lo que se
+    sigue verificando es lo mismo: que no se llega al repositorio.
+    """
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from app.api.v1.deps import empresa_autenticada
+    from app.api.v1 import deps
     from app.api.v1.routes.detracciones import router
+    from app.core.auth import usuario_actual
+    from app.db.database import get_db
 
     app = FastAPI()
     app.include_router(router, prefix="/empresas/{ruc}/periodos/{periodo}/detracciones")
-    app.dependency_overrides[empresa_autenticada] = lambda: {"ruc": RUC, "_id": "empresa"}
+    app.dependency_overrides[usuario_actual] = lambda: {"email": "prueba@example.com"}
+    app.dependency_overrides[get_db] = lambda: None
+    monkeypatch.setattr(deps.repo_empresas, "obtener_por_ruc", AsyncMock(return_value=None))
     listar = AsyncMock()
     monkeypatch.setattr(service.repo_periodos, "obtener", listar)
     respuesta = TestClient(app).get("/empresas/20000000000/periodos/202608/detracciones/zip")
-    assert respuesta.status_code == 403
+    assert respuesta.status_code == 404
     listar.assert_not_called()
 
 

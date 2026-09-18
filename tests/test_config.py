@@ -1,4 +1,4 @@
-"""Parseo de CORS_ORIGINS.
+"""Parseo de las listas que se leen del entorno.
 
 Regresión: `CORS_ORIGINS` es `list[str]`, y pydantic-settings decodifica los
 campos complejos del entorno como JSON antes de aplicar los validadores. Sin
@@ -46,3 +46,43 @@ def test_una_lista_pasa_sin_tocar():
 def test_json_malformado_falla_con_mensaje_util():
     with pytest.raises(ValidationError, match="no se pudo decodificar"):
         Settings(CORS_ORIGINS='["https://a.pe",')
+
+
+# Parseo de GOOGLE_ALLOWED_EMAILS. Comparte forma con CORS_ORIGINS —y por tanto
+# la necesidad de `NoDecode`— pero no comparte el trato del valor vacío, que es
+# justo lo que fijan los tests de abajo.
+
+CORREOS = ["uno@example.com", "dos@example.com"]
+
+
+@pytest.mark.parametrize(
+    "valor",
+    [
+        "uno@example.com,dos@example.com",
+        " uno@example.com , dos@example.com ",
+        "UNO@Example.com,Dos@EXAMPLE.com",
+        '["uno@example.com","dos@example.com"]',
+        '[ "UNO@example.com" , " dos@example.com " ]',
+    ],
+    ids=["comas", "espacios", "mayusculas", "json", "json-sucio"],
+)
+def test_correos_acepta_ambos_formatos_y_normaliza(valor: str):
+    assert Settings(GOOGLE_ALLOWED_EMAILS=valor).GOOGLE_ALLOWED_EMAILS == CORREOS
+
+
+def test_correos_una_lista_tambien_se_normaliza():
+    # Es la forma en la que llega al construir Settings a mano en los tests.
+    entrada = [" UNO@example.com ", "dos@EXAMPLE.com"]
+    assert Settings(GOOGLE_ALLOWED_EMAILS=entrada).GOOGLE_ALLOWED_EMAILS == CORREOS
+
+
+def test_correos_vacio_no_deja_entrar_a_nadie():
+    # Al revés que CORS_ORIGINS, y a propósito: este campo falla cerrado. Un
+    # default permisivo abriría el panel a cualquier cuenta de Google, así que
+    # "no lo configuré" tiene que significar "no entra nadie".
+    assert Settings(GOOGLE_ALLOWED_EMAILS="").GOOGLE_ALLOWED_EMAILS == []
+
+
+def test_correos_json_malformado_falla_con_mensaje_util():
+    with pytest.raises(ValidationError, match="no se pudo decodificar"):
+        Settings(GOOGLE_ALLOWED_EMAILS='["uno@example.com",')

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, pedir } from '../http';
+import { ApiError, pedir, registrarManejadorDeSesionExpirada } from '../http';
 import { guardarSesion, limpiarSesion } from '../session';
 
 function respuestaJson(cuerpo: unknown, status = 200): Response {
@@ -23,7 +23,7 @@ describe('pedir', () => {
   it('añade la cabecera Bearer cuando hay sesión', async () => {
     const espia = vi.fn().mockResolvedValue(respuestaJson({ periodo: '202606' }));
     vi.stubGlobal('fetch', espia);
-    guardarSesion({ token: 'jwt-de-prueba', ruc: '20608997106' });
+    guardarSesion({ token: 'jwt-de-prueba', correo: 'prueba@example.com', ruc: '20608997106' });
 
     await pedir('/empresas/20608997106/periodos/202606');
 
@@ -74,7 +74,7 @@ describe('pedir', () => {
 
   it('limpia la sesión ante un 401, porque el JWT solo dura dos horas', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuestaJson({ detail: 'Token expirado' }, 401)));
-    guardarSesion({ token: 'caducado', ruc: '20608997106' });
+    guardarSesion({ token: 'caducado', correo: 'prueba@example.com', ruc: '20608997106' });
 
     await expect(pedir('/empresas/20608997106')).rejects.toBeInstanceOf(ApiError);
 
@@ -84,6 +84,40 @@ describe('pedir', () => {
 
     const [, init] = segunda.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Headers).has('Authorization')).toBe(false);
+  });
+
+  it('avisa de sesión expirada solo si había sesión', async () => {
+    const alExpirar = vi.fn();
+    registrarManejadorDeSesionExpirada(alExpirar);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(respuestaJson({ detail: 'Token expirado' }, 401)),
+    );
+    guardarSesion({ token: 'caducado', correo: 'prueba@example.com', ruc: '20608997106' });
+
+    await expect(pedir('/empresas/20608997106')).rejects.toBeInstanceOf(ApiError);
+
+    expect(alExpirar).toHaveBeenCalledTimes(1);
+    registrarManejadorDeSesionExpirada(null);
+  });
+
+  it('un 401 sin sesión no se anuncia como expiración', async () => {
+    // Es el caso de `POST /auth/google`: el backend rechaza el intento de
+    // entrar, no caduca nada. Tratarlo igual sacaba un toast de «sesión
+    // expirada» encima del aviso del propio login, diciendo además otra cosa.
+    const alExpirar = vi.fn();
+    registrarManejadorDeSesionExpirada(alExpirar);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(respuestaJson({ detail: 'Token de Google inválido' }, 401)),
+    );
+
+    await expect(
+      pedir('/auth/google', { metodo: 'POST', cuerpo: { credential: 'falso' } }),
+    ).rejects.toThrow('Token de Google inválido');
+
+    expect(alExpirar).not.toHaveBeenCalled();
+    registrarManejadorDeSesionExpirada(null);
   });
 
   it('traduce un fallo de red en un ApiError con status 0', async () => {

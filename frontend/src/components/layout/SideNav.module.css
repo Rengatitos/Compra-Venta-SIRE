@@ -1,13 +1,95 @@
-.lista {
+/* Tres bandas: encabezado fijo, cuerpo desplazable y zona de cuenta fija. */
+.panel {
   display: flex;
   flex-direction: column;
+  block-size: 100%;
+}
+
+.encabezado {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.cuerpo {
+  flex: 1;
+  min-block-size: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cuenta {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
   gap: var(--space-1);
+  padding: var(--space-3);
+  border-block-start: 1px solid var(--color-border);
+}
+
+.lista,
+.sublista {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin: 0;
 }
 
+/* `hidden` no gana a `display: flex`; hay que decirlo. */
+.sublista[hidden] {
+  display: none;
+}
+
+/* El segundo nivel se marca solo con sangría, sin guía vertical. Va en margen y
+   no en `padding-inline-start` porque el `ul[class]` de reset.css tiene más
+   especificidad (0,1,1) que esta clase y lo dejaría en cero. La medida deja el
+   icono del hijo justo bajo el texto del padre. */
+.sublista {
+  margin-block-start: 2px;
+  margin-inline-start: var(--space-6);
+}
+
+.fila {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.disparador {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  color: var(--color-text-label);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+
+  /* Solo el giro: los colores nunca se transicionan (ver global.css). */
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.disparador:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-2);
+}
+
+.desplegado {
+  transform: rotate(90deg);
+}
+
 .enlace {
-  display: block;
-  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex: 1;
+  gap: var(--space-3);
+  align-items: center;
+  min-inline-size: 0;
+  padding: var(--space-3);
   font-size: var(--text-body-sm);
   color: var(--color-text-secondary);
   text-decoration: none;
@@ -20,14 +102,47 @@
   background-color: var(--color-surface-2);
 }
 
+/* Las acciones de la zona de cuenta comparten métrica con los enlaces, pero sin
+   `flex: 1`: en una columna flex las estiraría a lo alto. */
+.accion {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-inline-size: 0;
+  padding: var(--space-3);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+  text-align: start;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+}
+
+.accion:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-2);
+}
+
 .activo {
   color: var(--color-text-primary);
   background-color: var(--color-surface-2);
   border-color: var(--color-border);
 }
 
+/* Estar dentro de la sección no es estar en la página: se marca más flojo que
+   `.activo` y sin `aria-current`. */
+.enSeccion .enlace {
+  color: var(--color-text-primary);
+}
+
+.texto {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .grupo {
-  padding: var(--space-4) var(--space-4) var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-label-md);
   font-weight: var(--weight-semibold);
@@ -36,19 +151,107 @@
   letter-spacing: var(--tracking-label);
 }
 
-@media (width <= 60rem) {
-  .lista {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: var(--space-2);
-    overflow-x: auto;
-  }
+.filaMarca {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-inline-size: 0;
+}
 
-  .grupo {
+.marca {
+  display: flex;
+  flex: 1;
+  gap: var(--space-3);
+  align-items: center;
+  min-inline-size: 0;
+  text-decoration: none;
+}
+
+.campana {
+  flex-shrink: 0;
+}
+
+@media (width <= 60rem) {
+  .campana {
     display: none;
   }
+}
 
-  .enlace {
-    white-space: nowrap;
-  }
+.monograma {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-bg);
+  letter-spacing: 0.06em;
+  background-color: var(--color-accent-strong);
+  border-radius: var(--radius-sm);
+}
+
+.nombre {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  letter-spacing: 0.18em;
+}
+
+.usuario {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-inline-size: 0;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  margin-block-start: var(--space-1);
+  border-block-start: 1px solid var(--color-border);
+}
+
+.avatar {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-3);
+  border-radius: var(--radius-pill);
+}
+
+.datos,
+.textosMarca {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.nombreUsuario,
+.correo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* El subtítulo de la marca se parte en dos líneas en vez de recortarse: con la
+   campana al lado ya no cabe de una, y «Registro de compras e…» se lee peor
+   que dos renglones. */
+.subtitulo {
+  line-height: var(--leading-label);
+  text-wrap: pretty;
+}
+
+.nombreUsuario {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+}
+
+.correo,
+.subtitulo {
+  font-size: var(--text-label-md);
+  color: var(--color-text-secondary);
 }

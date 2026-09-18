@@ -20,7 +20,7 @@ Todos los archivos de inicialización de paquete están vacíos; solo marcan paq
 
 Toda request HTTP atraviesa las mismas capas, en el mismo orden:
 
-**routes.** Cada archivo de `api/v1/routes/` define un router de FastAPI, valida el cuerpo de la petición con los schemas de Pydantic, resuelve las dependencias de autorización (`empresa_actual`, `empresa_id`, o `verify_admin` para los pocos endpoints administrativos) y delega la lógica de negocio a la capa de servicios. Los routers tampoco declaran su propio prefijo de path — se define al montar cada router en [router.py](../../app/api/v1/router.py), incluyendo los parámetros de ruta (`{ruc}`, `{periodo}`, `{libro}`).
+**routes.** Cada archivo de `api/v1/routes/` define un router de FastAPI, valida el cuerpo de la petición con los schemas de Pydantic, resuelve las dependencias de autorización (`usuario_actual`, `empresa_actual` o `empresa_id`) y delega la lógica de negocio a la capa de servicios. Los routers tampoco declaran su propio prefijo de path — se define al montar cada router en [router.py](../../app/api/v1/router.py), incluyendo los parámetros de ruta (`{ruc}`, `{periodo}`, `{libro}`).
 
 **services.** Contienen la lógica de negocio: llamadas a la API oficial de SUNAT, generación de reportes, agregaciones y ejecución de jobs. Reciben la conexión de base de datos como parámetro explícito.
 

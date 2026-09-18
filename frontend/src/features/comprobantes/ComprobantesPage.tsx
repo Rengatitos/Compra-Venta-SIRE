@@ -40,6 +40,7 @@ import { DialogComprobante } from './DialogComprobante';
 import { DescargarDetraccionesButton, DetraccionCelda, NpdPanel } from './Detracciones';
 import { DescargarPdfsButton } from './DescargarPdfsButton';
 import { presentarEstadoComprobante } from './estadoComprobante';
+import { IconoHojaCalculo, IconoListado, IconoReporteAsociado } from './IconosExportacion';
 import { presentarEstadoGlosa } from './estadoGlosa';
 
 const POR_PAGINA = 100;
@@ -390,25 +391,33 @@ export function ComprobantesPage() {
                 </Button>
               ))}
             </div>
-            <Button
-              onClick={() => void exportar('excel', 'excel')}
-              cargando={exportando === 'excel'}
-              disabled={exportando !== null}
-              title={`Excel con la plantilla Contasis del ${NOMBRE_REGISTRO[libro].toLowerCase()}`}
-            >
-              Excel · {NOMBRE_REGISTRO[libro]}
-            </Button>
-            <Button
-              onClick={() => void exportar('pdf', 'pdf')}
-              cargando={exportando === 'pdf'}
-              disabled={exportando !== null}
-              title={`PDF del listado de ${libro} con los datos de SUNAT`}
-            >
-              PDF del listado
-            </Button>
-            <DescargarPdfsButton ruc={ruc} periodo={periodo} libro={libro} />
+            <div className={estilos.descargas} role="group" aria-label="Descargables">
+              <Button
+                pequeno
+                icono={<IconoHojaCalculo />}
+                onClick={() => void exportar('excel', 'excel')}
+                cargando={exportando === 'excel'}
+                disabled={exportando !== null}
+                title={`Excel con la plantilla Contasis del ${NOMBRE_REGISTRO[libro].toLowerCase()}`}
+              >
+                Excel
+              </Button>
+              <Button
+                pequeno
+                icono={<IconoListado />}
+                onClick={() => void exportar('pdf', 'pdf')}
+                cargando={exportando === 'pdf'}
+                disabled={exportando !== null}
+                title={`PDF del listado de ${libro} con los datos de SUNAT`}
+              >
+                PDF
+              </Button>
+              <DescargarPdfsButton ruc={ruc} periodo={periodo} libro={libro} />
+            </div>
             <Button
               variante="azul"
+              pequeno
+              icono={<IconoReporteAsociado />}
               onClick={() => descargarAsociado.mutate()}
               cargando={descargarAsociado.isPending}
               disabled={!reporteAsociado.data?.habilitado || descargarAsociado.isPending}
@@ -511,9 +520,6 @@ export function ComprobantesPage() {
             >
               Completar con GLOSA
             </Button>
-            <span className={layout.textoSecundario}>
-              Sobre {libro}. Cambia de libro en la cabecera.
-            </span>
           </div>
 
           {jobActivo ? (

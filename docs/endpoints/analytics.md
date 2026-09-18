@@ -1,6 +1,6 @@
 # Endpoints — Analytics
 
-Todos bajo `/api/v1/analytics`, pensados para ser consumidos por un sistema externo de contabilidad que consulta varias empresas a la vez. Se autentican con el mismo JWT, pero vía [token_dashboard](../../app/api/v1/routes/analytics.py), que solo decodifica el token sin resolver la empresa contra Mongo.
+Todos bajo `/api/v1/analytics`, pensados para ser consumidos por un sistema externo de contabilidad que consulta varias empresas a la vez. Se autentican con [usuario_actual](../../app/core/auth.py), igual que el resto de la API. Antes usaban una dependencia propia que solo decodificaba la firma, sin comprobar el esquema del token ni la lista de correos autorizados; unificarlas cerró esa puerta.
 
 Todos aceptan `rucs` (opcional, RUCs separados por comas — sin él, el filtro de empresa queda vacío y las agregaciones no devuelven nada), `periodo` y `libro` (default `compras`).
 

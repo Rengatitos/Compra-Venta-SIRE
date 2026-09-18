@@ -2,10 +2,13 @@
 
 ## `GET /api/v1/jobs`
 
-[listar_jobs](../../app/api/v1/routes/jobs.py). Historial de trabajos de la empresa, del más reciente al más antiguo. El RUC **sale del token**, nunca de un query param: no hay forma de pedir el historial de otra empresa.
+[listar_jobs](../../app/api/v1/routes/jobs.py). Historial de trabajos, del más reciente al más antiguo.
+
+El RUC iba antes en el token y no se aceptaba como query param, porque el token identificaba una empresa y admitirlo del cliente habría dejado pedir el historial de otra. Ahora identifica a una persona con acceso a todas las empresas, así que va explícito: **sin `ruc` se devuelve el historial de todas**, y de un `ruc` recibido solo se comprueba que exista (`404` si no) para que un RUC mal escrito no se lea como «no hay trabajos».
 
 | Query | Tipo | Por defecto |
 |---|---|---|
+| `ruc` | 11 dígitos | — (todas las empresas) |
 | `periodo` | `YYYYMM` | — |
 | `tipo` | `TipoJob` (`extraccion_detalles`) | — |
 | `estado` | `EstadoJob` (`pendiente`, `en_progreso`, `completado`, `fallido`) | — |
@@ -16,7 +19,7 @@ Responde `list[JobResponse]`, con la misma forma de elemento que la consulta ind
 
 ## `GET /api/v1/jobs/{job_id}`
 
-[obtener_job](../../app/api/v1/routes/jobs.py). Consulta el estado de cualquier trabajo asíncrono. No cuelga de `/empresas/{ruc}` — la pertenencia se valida comparando `job.ruc` contra el RUC del token del solicitante. `403` si el job pertenece a otra empresa; `404` si no existe.
+[obtener_job](../../app/api/v1/routes/jobs.py). Consulta el estado de cualquier trabajo asíncrono. No cuelga de `/empresas/{ruc}` y no lleva RUC: un `job_id` es único y ya no hay «otra empresa» respecto de la cual un trabajo sea ajeno, así que la comprobación de pertenencia desapareció. `404` si no existe.
 
 Respuesta (`JobResponse`):
 

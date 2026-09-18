@@ -66,6 +66,11 @@
   box-shadow: var(--shadow-dialog);
 }
 
+/* Variante de la barra lateral: el panel se despliega hacia el contenido. */
+.panelInicio {
+  inset-inline: 0 auto;
+}
+
 .titulo {
   font-family: var(--font-mono);
   font-size: var(--text-label-md);

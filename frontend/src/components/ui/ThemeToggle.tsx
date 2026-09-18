@@ -43,14 +43,46 @@ function IconoSol() {
   );
 }
 
+interface Props {
+  /**
+   * `icono` es el botón redondo de la cabecera. `fila` es el de la barra
+   * lateral: un interruptor con la etiqueta a la vista, donde el nombre
+   * accesible es el texto fijo y el estado lo lleva `aria-checked`.
+   */
+  apariencia?: 'icono' | 'fila';
+}
+
 /**
  * Cambia entre el tema claro y el oscuro. El icono muestra el tema al que se va
  * a cambiar, y el nombre accesible lo dice con palabras: un icono solo no basta
  * para un lector de pantalla.
  */
-export function ThemeToggle() {
+export function ThemeToggle({ apariencia = 'icono' }: Props) {
   const tema = useSyncExternalStore(suscribirTema, obtenerTema, () => TEMA_POR_DEFECTO);
   const esOscuro = tema === 'dark';
+
+  if (apariencia === 'fila') {
+    return (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={esOscuro}
+        className={estilos.fila}
+        onClick={() => alternarTema()}
+      >
+        {/* Luna fija, no el tema de destino: aquí el estado lo lleva el
+            interruptor y un icono que cambia solo añadiría ruido. Va delante
+            para que el texto caiga en la misma columna que el de las
+            secciones. */}
+        <IconoLuna />
+        <span className={estilos.etiquetaFila}>Modo oscuro</span>
+        <span className={estilos.pista} aria-hidden="true">
+          <span className={estilos.pomo} />
+        </span>
+      </button>
+    );
+  }
+
   const etiqueta = esOscuro ? 'Activar el modo claro' : 'Activar el modo oscuro';
 
   return (

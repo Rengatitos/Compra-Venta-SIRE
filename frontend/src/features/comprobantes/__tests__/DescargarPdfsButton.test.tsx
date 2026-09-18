@@ -27,7 +27,7 @@ async function descargar() {
       <DescargarPdfsButton ruc="20123456789" periodo="202608" libro="ventas" />
     </QueryClientProvider>,
   );
-  await userEvent.click(screen.getByRole('button', { name: /ZIP de PDFs SUNAT/ }));
+  await userEvent.click(screen.getByRole('button', { name: /ZIP de PDFs/ }));
 }
 
 it('descarga desde SUNAT ambos registros y comunica el resultado', async () => {

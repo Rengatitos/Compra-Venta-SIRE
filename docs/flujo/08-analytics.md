@@ -6,4 +6,4 @@ El servicio de analytics ejecuta agregaciones de Mongo sobre la colección `comp
 
 El conteo por día ([get_comprobantes_by_day](../../app/services/analytics_service.py)) agrupa con el operador `$dayOfMonth` de Mongo directamente sobre `fecha_emision`, que es un campo `date` real — no hay que parsear texto para agrupar por fecha.
 
-Ver [endpoints — Analytics](../endpoints/analytics.md) para el detalle de cada endpoint HTTP y la nota sobre su modelo de autorización, que es distinto del resto de la API: el token solo se decodifica con [token_dashboard](../../app/api/v1/routes/analytics.py), sin resolver la empresa contra Mongo, y la restricción de acceso por RUC se delega al sistema externo que llama.
+Ver [endpoints — Analytics](../endpoints/analytics.md) para el detalle de cada endpoint HTTP. Se autentican con [usuario_actual](../../app/core/auth.py), igual que el resto de la API; las empresas a agregar llegan por el query param `rucs`, que con una sesión por persona ya no es una vía para leer datos ajenos.

@@ -27,12 +27,12 @@ La regla que sostiene la separación: **`domain/` no importa `app.db`, `app.repo
 /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/<recurso>
 ```
 
-La identidad del recurso es el **RUC**, no el `_id` de Mongo. El sujeto sale del **JWT**, nunca del path: la dependencia `empresa_actual` contrasta el RUC del path con el del token.
+La identidad del recurso es el **RUC**, no el `_id` de Mongo. El **permiso** sale del JWT y el **objeto** del path: el token identifica a una persona con acceso a todas las empresas, y `empresa_actual` resuelve por el RUC del path la empresa sobre la que se actúa.
 
 | Método | Ruta (bajo `/api/v1`) | Descripción |
 |---|---|---|
-| `POST` | `/auth/login` | JWT a partir de RUC + usuario + clave SOL |
-| `POST` `GET` | `/empresas` | Registrar empresa · listar (admin) |
+| `POST` | `/auth/google` | JWT a partir de una cuenta de Google autorizada |
+| `POST` `GET` | `/empresas` | Registrar empresa · listar todas (selector de cuentas) |
 | `GET` `PUT` `DELETE` | `/empresas/{ruc}` | Consultar, actualizar y eliminar |
 | `POST` | `/empresas/{ruc}/token-sunat` | Renovar el token Bearer de SUNAT |
 | `POST` `GET` `DELETE` | `/empresas/{ruc}/plan-cuentas` | Maestro de cuentas de la empresa (Excel de Contasis) |
@@ -50,7 +50,7 @@ La identidad del recurso es el **RUC**, no el `_id` de Mongo. El sujeto sale del
 | `POST` `GET` | `…/periodos/{periodo}/detracciones[/npds,/zip]` | NPD de detracciones: consulta como job, listado, PDFs y ZIP |
 | `GET` | `…/libros/{libro}/auditoria/reporte` | Tabla comparativa con glosas y fuentes |
 | `GET` | `…/periodos/{periodo}/reporte-asociado[/estado]` | Reporte mensual con libro conjunto y PDFs |
-| `GET` | `/jobs` | Historial de operaciones asíncronas de la empresa |
+| `GET` | `/jobs` | Historial de operaciones asíncronas, filtrable por `ruc` |
 | `GET` | `/jobs/{job_id}` | Estado y progreso de una operación asíncrona |
 | `GET` | `/analytics/*` | Agregados para el dashboard externo |
 
@@ -72,6 +72,8 @@ La referencia completa está en [docs/inicio.md](docs/inicio.md#variables-de-ent
 ```bash
 cp .env.example .env
 ```
+
+Antes de arrancar hay que crear un cliente OAuth en Google Cloud Console (tipo «aplicación web») con el origen del frontend en **Authorized JavaScript origins** —en desarrollo, `http://localhost:5173`— y poner su Client ID en `GOOGLE_CLIENT_ID` (y en `VITE_GOOGLE_CLIENT_ID` del frontend), más los correos con acceso en `GOOGLE_ALLOWED_EMAILS`. Con Google Identity Services no hace falta *redirect URI*. Si esa lista queda vacía no entra nadie: el acceso falla cerrado a propósito.
 
 ```bash
 uv sync --dev

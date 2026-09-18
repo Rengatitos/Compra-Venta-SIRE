@@ -8,6 +8,7 @@ import { axe } from 'vitest-axe';
 
 import { ToastProvider } from '@/components/ui/ToastProvider';
 import { ContextoAuthReact } from '@/features/auth/authContext';
+import { ContextoEmpresasReact } from '@/features/empresas/empresasContext';
 import { ContextoJobsReact } from '@/features/jobs/jobsContext';
 import { NotificacionesMenu } from '@/features/jobs/NotificacionesMenu';
 import type { JobResponse } from '@/types/api';
@@ -16,15 +17,17 @@ import type { JobResponse } from '@/types/api';
 const OPCIONES = { rules: { 'color-contrast': { enabled: false } } } as const;
 
 vi.mock('@/api/jobs', () => ({
-  listarJobs: () => Promise.resolve([]),
+  listarJobs: (_ruc: string) => Promise.resolve([]),
   obtenerJob: () => Promise.reject(new Error('no debería consultarse en este test')),
 }));
+
+const RUC = '20608997106';
 
 const JOB_EN_CURSO: JobResponse = {
   job_id: 'abc123',
   tipo: 'extraccion_detalles',
   estado: 'en_progreso',
-  ruc: '20608997106',
+  ruc: RUC,
   periodo: '202607',
   libro: null,
   progreso: { actual: 4, total: 10, mensaje: 'Extrayendo detalle', porcentaje: 40 },
@@ -43,22 +46,35 @@ function Envoltura({ children, job }: { children: ReactNode; job?: JobResponse }
         <ToastProvider>
           <ContextoAuthReact.Provider
             value={{
-              ruc: '20608997106',
+              correo: 'prueba@example.com',
+              nombre: 'Prueba',
               autenticado: true,
-              iniciarSesion: () => Promise.resolve(),
+              iniciarSesionConGoogle: () => Promise.resolve(),
               salir: () => undefined,
             }}
           >
-            <ContextoJobsReact.Provider
+            {/* La campana lee el RUC activo con `useRuc()`, que ahora sale del
+                contexto de empresas y no del de sesión. */}
+            <ContextoEmpresasReact.Provider
               value={{
-                seguidos: job ? [job.job_id] : [],
-                porId: job ? { [job.job_id]: job } : {},
-                seguir: () => undefined,
-                dejarDeSeguir: () => undefined,
+                empresas: [],
+                ruc: RUC,
+                empresaActiva: null,
+                cambiarEmpresa: () => undefined,
+                recargar: () => undefined,
               }}
             >
-              {children}
-            </ContextoJobsReact.Provider>
+              <ContextoJobsReact.Provider
+                value={{
+                  seguidos: job ? [job.job_id] : [],
+                  porId: job ? { [job.job_id]: job } : {},
+                  seguir: () => undefined,
+                  dejarDeSeguir: () => undefined,
+                }}
+              >
+                {children}
+              </ContextoJobsReact.Provider>
+            </ContextoEmpresasReact.Provider>
           </ContextoAuthReact.Provider>
         </ToastProvider>
       </QueryClientProvider>

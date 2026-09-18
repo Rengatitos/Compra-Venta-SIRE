@@ -11,6 +11,7 @@ La plataforma prepara el Registro de Compras (RCE) y el Registro de Ventas (RVIE
 3. **Construye la glosa** de forma determinista: descripciones del detalle, la leyenda del comprobante cuando los ítems no describen nada, o el texto manual del usuario. Cada comprobante lleva un **estado de glosa** (con glosa, sin glosa, en evaluación, pendiente) según lo que SUNAT publica de su tipo; los tipos que SUNAT no publica no se consultan.
 4. **Entrega**: Excel en la plantilla oficial de Contasis por libro (con columnas Observación y Estado glosa y hoja de anulados), PDF del listado, ZIP de respaldos con manifiesto, ZIP completo de compras y ventas, reporte mensual asociado con control de correlatividad, NPD de detracciones y reporte de auditoría con fuentes por comprobante.
 5. **Panel web** en React con todo lo anterior, tema claro/oscuro y seguimiento de jobs.
+6. **Acceso con cuenta de Google**, con una lista de correos autorizados en el entorno. La sesión es de una persona, no de una empresa: desde dentro se ven todas las empresas registradas y se cambia entre ellas sin volver a iniciar sesión. Las credenciales SOL siguen guardadas y cifradas, pero solo para hablar con SUNAT.
 
 ## Alcance por tipo de comprobante
 
@@ -33,7 +34,7 @@ Ver [docs/flujo/05-glosa-y-estado.md](docs/flujo/05-glosa-y-estado.md) y el cat�
 Según el cronograma de cierre (12 al 22 de septiembre de 2026):
 
 1. **Casos del cliente** para los 14 tipos que requieren casos y un RUC que emita boletas por OSE/PSE (series B) para verificar el criterio de documento del receptor.
-2. **Despliegue en Google Cloud**: proyecto, máquina virtual, contenedores de aplicación, base de datos y proxy HTTPS, secretos, migración de datos, publicación de la web, respaldos y prueba de humo.
+2. **Despliegue en Google Cloud**: proyecto, máquina virtual, contenedores de aplicación, base de datos y proxy HTTPS, secretos, migración de datos, publicación de la web, respaldos y prueba de humo. El cliente OAuth de Google necesita el dominio de producción en sus orígenes autorizados, y el entorno, `GOOGLE_CLIENT_ID` y `GOOGLE_ALLOWED_EMAILS`.
 3. **Pruebas finales** con datos reales del cliente en producción y validación del Excel Contasis y del reporte por su contador.
 4. Después del cierre: decidir si se construye la ruta de recibos por honorarios (02) y si la leyenda debe complementar al ítem además de sustituirlo cuando está vacío.
 

@@ -1,12 +1,12 @@
 import { lazy } from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 
 import { AppShell } from '@/components/layout/AppShell';
 import { ToastProvider } from '@/components/ui/ToastProvider';
 import { AuthProvider } from '@/features/auth/AuthProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { ProtectedRoute } from '@/features/auth/ProtectedRoute';
-import { RegistroPage } from '@/features/auth/RegistroPage';
+import { EmpresaGate } from '@/features/empresas/EmpresaGate';
 import { NoEncontradaPage } from '@/features/shared/NoEncontradaPage';
 
 /**
@@ -43,6 +43,9 @@ const AuditoriaPage = lazy(() =>
 const ReportePage = lazy(() =>
   import('@/features/reporte/ReportePage').then((m) => ({ default: m.ReportePage })),
 );
+const NuevaEmpresaPage = lazy(() =>
+  import('@/features/empresas/NuevaEmpresaPage').then((m) => ({ default: m.NuevaEmpresaPage })),
+);
 
 export function App() {
   return (
@@ -51,19 +54,30 @@ export function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/registro" element={<RegistroPage />} />
+            {/* El alta dejó de ser pública al dejar de ser la puerta de entrada.
+                La redirección es por cortesía con los enlaces antiguos. */}
+            <Route path="/registro" element={<Navigate to="/empresas/nueva" replace />} />
 
             <Route element={<ProtectedRoute />}>
-              <Route element={<AppShell />}>
-                <Route index element={<DashboardPage />} />
-                <Route path="periodos" element={<PeriodosPage />} />
-                <Route path="periodos/:periodo" element={<ComprobantesPage />} />
-                <Route path="periodos/:periodo/auditoria" element={<AuditoriaPage />} />
-                <Route path="periodos/:periodo/reporte" element={<ReportePage />} />
-                <Route path="procesos" element={<ProcesosPage />} />
-                <Route path="plan-cuentas" element={<PlanCuentasPage />} />
-                <Route path="ajustes" element={<AjustesPage />} />
-                <Route path="*" element={<NoEncontradaPage />} />
+              {/* Fuera del armazón: la barra anuncia la empresa activa, que no
+                  es la que se está registrando, y la navegación lateral no
+                  tiene ninguna sección para esta pantalla. */}
+              <Route path="empresas/nueva" element={<NuevaEmpresaPage />} />
+
+              {/* ProtectedRoute exige sesión; EmpresaGate, empresa activa.
+                  AppShell da por hecha la segunda, así que va dentro. */}
+              <Route element={<EmpresaGate />}>
+                <Route element={<AppShell />}>
+                  <Route index element={<DashboardPage />} />
+                  <Route path="periodos" element={<PeriodosPage />} />
+                  <Route path="periodos/:periodo" element={<ComprobantesPage />} />
+                  <Route path="periodos/:periodo/auditoria" element={<AuditoriaPage />} />
+                  <Route path="periodos/:periodo/reporte" element={<ReportePage />} />
+                  <Route path="procesos" element={<ProcesosPage />} />
+                  <Route path="plan-cuentas" element={<PlanCuentasPage />} />
+                  <Route path="ajustes" element={<AjustesPage />} />
+                  <Route path="*" element={<NoEncontradaPage />} />
+                </Route>
               </Route>
             </Route>
           </Routes>

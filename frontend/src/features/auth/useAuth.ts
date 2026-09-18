@@ -12,13 +12,10 @@ export function useAuth(): ContextoAuth {
 }
 
 /**
- * Para pantallas que ya están detrás de ProtectedRoute y por tanto siempre
- * tienen RUC. Evita comprobar null en cada componente.
+ * Sigue siendo el único punto del que las pantallas obtienen el RUC activo, y
+ * mantiene su contrato: devuelve el RUC o lanza. Lo que cambió es de dónde sale.
+ * Ya no viene de la sesión —una persona ve todas las empresas— sino de la
+ * empresa elegida en el panel, que resuelve `EmpresaGate`. Se re-exporta desde
+ * aquí para no tocar los imports de las pantallas que ya lo usaban.
  */
-export function useRuc(): string {
-  const { ruc } = useAuth();
-  if (!ruc) {
-    throw new Error('Se esperaba una sesión activa en esta ruta.');
-  }
-  return ruc;
-}
+export { useRuc } from '@/features/empresas/useEmpresas';

@@ -63,3 +63,10 @@ a:hover {
     scroll-behavior: auto;
   }
 }
+
+/* Con un diálogo modal abierto la página de detrás no debe desplazarse:
+   `showModal()` pone el fondo inerte pero no bloquea el scroll, y ver moverse
+   el listado bajo el modal se lee como un fallo de pintado. */
+:root:has(dialog[open]) {
+  overflow: hidden;
+}
