@@ -1,10 +1,8 @@
 import asyncio
-import io
 import logging
 import re
 import tempfile
 import time
-import zipfile
 from calendar import monthrange
 from collections.abc import Callable
 from contextlib import ExitStack
@@ -60,6 +58,10 @@ SEL_SERIE = "input#criterio\\.serie"
 SEL_NUMERO = "input#criterio\\.numero"
 SEL_FEC_DESDE = "input#criterio\\.fecDesde"
 SEL_FEC_HASTA = "input#criterio\\.fecHasta"
+# Documento del receptor. Sólo lo usa ventas cuando la contraparte no es un
+# RUC (boletas a DNI): el campo de RUC exige once dígitos y este es el sitio
+# natural para el DNI.
+SEL_DOC_RECEPTOR = "input#criterio\\.numDocideRecep"
 SEL_BUSCAR = (
     "#criterio\\.btnContinuar, #btnBuscar, "
     "button:has-text('Buscar'), input[value='Buscar']"
@@ -652,63 +654,8 @@ def _abrir_consulta(page, iframe, timeout_ms: int) -> None:
     iframe.locator(SEL_TIPO_CONSULTA).wait_for(state="visible", timeout=timeout_ms)
 
 
-_JS_DESCARGAR_FACTURA = """(args) => {
-    let form = document.querySelector("form[name='formArchivo'], form#formArchivo, form[action*='descargarFactura']");
-    if (!form) {
-        form = document.createElement('form');
-        form.name = 'formArchivo';
-        form.method = 'POST';
-        form.action = 'consultar.do?action=descargarFactura';
-        document.body.appendChild(form);
-    }
-    function setField(name, val) {
-        let input = form.querySelector(`input[name='${name}']`);
-        if (!input) {
-            input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = name;
-            form.appendChild(input);
-        }
-        input.value = val;
-    }
-    setField('ruc', args.ruc);
-    setField('tipo', args.tipo);
-    setField('serie', args.serie);
-    setField('numero', args.numero);
-    form.submit();
-    return true;
-}"""
-
-_JS_DESCARGAR_PDF = """(args) => {
-    let form = document.querySelector("form[name='formArchivoComprobantePdf'], form#formArchivoComprobantePdf, form[action*='descargarComprobanteEnPdf']");
-    if (!form) {
-        form = document.createElement('form');
-        form.name = 'formArchivoComprobantePdf';
-        form.method = 'POST';
-        form.action = 'consultar.do?action=descargarComprobanteEnPdf';
-        document.body.appendChild(form);
-    }
-    function setField(name, val) {
-        let input = form.querySelector(`input[name='${name}']`);
-        if (!input) {
-            input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = name;
-            form.appendChild(input);
-        }
-        input.value = val;
-    }
-    setField('ruc', args.ruc);
-    setField('tipo', args.tipo);
-    setField('serie', args.serie);
-    setField('numero', args.numero);
-    form.submit();
-    return true;
-}"""
-
-
 def _abrir_modulo_see_sol(page, iframe, timeout_ms: int, boleta: bool = False) -> None:
-    """Entra por el men? para establecer la sesi?n del m?dulo correspondiente."""
+    """Entra por el menú para establecer la sesión del módulo SEE-SOL correspondiente."""
     codigo = "11.5.4.1.4" if boleta else "11.5.3.1.2"
     titulo = "Consultar Boleta de Venta y Nota" if boleta else "Consultar Factura y Nota"
     modulo = "ol-ti-itconscpemypebve" if boleta else "ol-ti-itconscpemype"
@@ -718,7 +665,7 @@ def _abrir_modulo_see_sol(page, iframe, timeout_ms: int, boleta: bool = False) -
         timeout=timeout_ms,
     ):
         page.evaluate("""({codigo, titulo}) => {
-            if (typeof ejecuta !== 'function') throw new Error('Men? SOL no disponible');
+            if (typeof ejecuta !== 'function') throw new Error('Menú SOL no disponible');
             ejecuta('MenuInternet.htm?action=iconExecute&code=' + codigo,
                     false, titulo, '#nivel1_11', codigo);
         }""", {"codigo": codigo, "titulo": titulo})
@@ -733,22 +680,6 @@ def _es_serie_sol(serie: str) -> bool:
     comienzan con 'F' o 'B'.
     """
     return (serie or "").strip().upper().startswith("E")
-
-
-def _extraer_xml_de_zip(contenido: bytes) -> bytes:
-    """Extrae el archivo XML contenido dentro de un ZIP descargado de SUNAT."""
-    if not contenido:
-        raise ValueError("El contenido a desempaquetar está vacío")
-    if contenido.startswith(b"<?xml") or contenido.startswith(b"<"):
-        return contenido
-    try:
-        with zipfile.ZipFile(io.BytesIO(contenido)) as z:
-            for nombre in z.namelist():
-                if nombre.lower().endswith(".xml"):
-                    return z.read(nombre)
-    except zipfile.BadZipFile as e:
-        raise ValueError(f"El archivo descargado no es un ZIP válido: {e}") from e
-    raise ValueError("El archivo ZIP de SUNAT no contiene ningún archivo .xml")
 
 
 def _ruc_emisor(fac: dict, libro: Libro, ruc_empresa: str) -> str:
@@ -823,6 +754,21 @@ def _criterio_ruc(fac: dict, libro: Libro) -> str:
     """
     documento = fac.get("documento_contraparte", "") or ""
     if libro is Libro.VENTAS and len(documento) != 11:
+        return ""
+    return documento
+
+
+def _criterio_doc_receptor(fac: dict, libro: Libro) -> str:
+    """Documento del receptor para el campo `numDocideRecep`, o cadena vacía.
+
+    Es el complemento de `_criterio_ruc`: en ventas, cuando el receptor no es
+    un RUC (boletas a DNI, carné de extranjería…), su documento va aquí. En
+    compras el receptor es la propia empresa y el portal no lo pide.
+    """
+    documento = str(fac.get("documento_contraparte", "") or "").strip()
+    if libro is not Libro.VENTAS or not documento or len(documento) == 11:
+        return ""
+    if documento in {"-", "—", "0"}:
         return ""
     return documento
 
@@ -951,6 +897,7 @@ def _buscar(
 
     escritos = [
         (SEL_RUC, "el RUC", _criterio_ruc(fac, libro)),
+        (SEL_DOC_RECEPTOR, "el documento del receptor", _criterio_doc_receptor(fac, libro)),
         (SEL_SERIE, "la serie", serie),
         (SEL_NUMERO, "el número", correlativo),
     ]
@@ -1110,7 +1057,10 @@ def _ruta_see_sol(fac: dict, libro: Libro) -> tuple[bool, str]:
                  Libro.COMPRAS: {"01": "11", "07": "14", "08": "16"}}
     consulta = tipos[libro].get(tipo)
     if consulta is None:
-        raise ValueError("Tipo de comprobante sin bandeja SEE-SOL configurada")
+        raise ValueError(
+            f"tipo {tipo or '?'} sin bandeja SEE-SOL configurada para {libro.value}"
+            + (" (nota sobre boleta)" if boleta and tipo != TIPO_BOLETA else "")
+        )
     return boleta, consulta
 
 
@@ -1123,14 +1073,23 @@ _JS_TABLAS_SEE_SOL = """() => Array.from(document.querySelectorAll('table.detall
 def _consultar_uno_see_sol(
     page, context, iframe, fac: dict, libro: Libro, ruc_empresa: str,
     timeout_ms: int, log, descargar_pdf: bool = False, headless: bool = True,
-) -> tuple[list[dict], bytes | None, bytes | None]:
-    """Consulta la bandeja y lee el HTML asociado al id de la fila en esa sesi?n."""
+    timeout_pdf_ms: int | None = None,
+) -> tuple[list[dict], bytes | None]:
+    """Detalle y PDF de un comprobante SEE-SOL (series E).
+
+    El módulo SEE-SOL no tiene el formulario de bandejas del resto del portal:
+    se consulta el listado del mes por HTTP dentro de la sesión, se localiza
+    la fila del comprobante y se abre su impresión, de la que salen los ítems
+    y el PDF. El índice de la fila sólo vale para la última consulta de la
+    sesión, así que las dos peticiones van seguidas.
+    """
+    serie_num = fac.get("serie_numero", "")
     boleta, tipo_consulta = _ruta_see_sol(fac, libro)
     _abrir_modulo_see_sol(page, iframe, timeout_ms, boleta=boleta)
     url = URL_SEE_SOL.replace('itconscpemype/', 'itconscpemypebve/') if boleta else URL_SEE_SOL
     fecha = fac.get("fecha_emision")
     if not isinstance(fecha, (date, datetime)):
-        raise ValueError("El comprobante SEE-SOL requiere fecha de emisi?n")
+        raise ValueError("El comprobante SEE-SOL requiere fecha de emisión")
     parametros = {
         "action": "realizarConsulta", "buscarPor": "porPer", "estado": "0",
         "fec_desde": fecha.replace(day=1).strftime("%d/%m/%Y"),
@@ -1139,7 +1098,7 @@ def _consultar_uno_see_sol(
     }
     respuesta = context.request.get(url, params=parametros, timeout=timeout_ms)
     if not respuesta.ok:
-        raise RuntimeError(f"Consulta SEE-SOL respondi? HTTP {respuesta.status}")
+        raise RuntimeError(f"la consulta SEE-SOL respondió HTTP {respuesta.status}")
     try:
         texto = respuesta.text()
     except UnicodeDecodeError:
@@ -1151,8 +1110,14 @@ def _consultar_uno_see_sol(
         serie=str(fac.get("serie", "")), numero=fac.get("numero", ""),
     )
     if indice is None:
-        raise ComprobanteNoEncontrado(fac.get("serie_numero", ""))
-    # El ?ndice s?lo pertenece a la ?ltima consulta de esta sesi?n: abrirlo
+        # Se deja constancia de cuánto listó el portal: distingue «el mes no
+        # tiene nada» de «hay filas pero ninguna es este comprobante».
+        log(
+            f"{serie_num}: no figura en el listado SEE-SOL del mes "
+            f"(tipoConsulta {tipo_consulta}, {len(filas)} filas)"
+        )
+        raise ComprobanteNoEncontrado(serie_num)
+    # El índice sólo pertenece a la última consulta de esta sesión: abrirlo
     # inmediatamente, sin consultas paralelas que cambien el listado del servidor.
     if libro is Libro.VENTAS:
         fila = next(f for f in filas if str(f.get("id")) == indice)
@@ -1163,18 +1128,20 @@ def _consultar_uno_see_sol(
             "action": "verImprimirFactura", "rowIndex": indice,
         }), wait_until="domcontentloaded", timeout=timeout_ms)
         if respuesta_html is None or not respuesta_html.ok:
-            raise RuntimeError("No se pudo abrir la impresi?n SEE-SOL")
+            raise RuntimeError("no se pudo abrir la impresión SEE-SOL")
         if libro is Libro.VENTAS:
             cabecera = contraparte.receptor_html(popup.evaluate(_JS_LEER_CABECERA))
             fac["_contraparte_sunat"] = {**cabecera, **fac.get("_contraparte_sunat", {})}
         detalles = see_sol.leer_detalles(popup.evaluate(_JS_TABLAS_SEE_SOL))
         if not detalles:
-            raise ValueError("El HTML SEE-SOL no contiene l?neas de detalle reconocibles")
+            raise ValueError("la impresión SEE-SOL no contiene líneas de detalle reconocibles")
         pdf = None
         if descargar_pdf:
-            pdf = _capturar_pdf(popup, context, settings.SUNAT_PDF_TIMEOUT_MS,
-                                log, fac.get("serie_numero", ""), headless)
-        return detalles, pdf, None
+            pdf = _capturar_pdf(
+                popup, context, timeout_pdf_ms or settings.SUNAT_PDF_TIMEOUT_MS,
+                log, serie_num, headless,
+            )
+        return detalles, pdf
     finally:
         popup.close()
 
@@ -1195,7 +1162,6 @@ def _scrape_detalles(
     descargar_pdf: bool = False,
     al_descargar: Callable[[str, bytes], None] | None = None,
     timeout_pdf_ms: int | None = None,
-    al_descargar_xml: Callable[[str, bytes], None] | None = None,
     al_extraer_leyenda: Callable[[str, list[str]], None] | None = None,
     al_consultar: Callable[[dict], None] | None = None,
 ) -> dict:
@@ -1279,10 +1245,11 @@ def _scrape_detalles(
                 # el comprobante por perdido.
                 for intento in (1, 2):
                     try:
-                        # SEE-SOL aporta la glosa desde su tabla de impresión.
+                        # SEE-SOL aporta la glosa desde su tabla de impresión y
+                        # no tiene recuadro de leyenda.
                         leyenda: list[str] = []
                         if _es_serie_sol(fac.get("serie", "")):
-                            detalles, pdf, xml = _consultar_uno_see_sol(
+                            detalles, pdf = _consultar_uno_see_sol(
                                 page,
                                 context,
                                 iframe,
@@ -1293,9 +1260,8 @@ def _scrape_detalles(
                                 timeout_ms=timeout_ms,
                                 log=log,
                                 descargar_pdf=descargar_pdf,
+                                timeout_pdf_ms=timeout_pdf_ms,
                             )
-                            if xml and al_descargar_xml:
-                                al_descargar_xml(serie_num, xml)
                         else:
                             _abrir_consulta(page, iframe, timeout_ms)
                             detalles, pdf, leyenda = _consultar_uno(
@@ -1398,7 +1364,6 @@ async def obtener_detalles(
     descargar_pdf: bool = False,
     al_descargar: Callable[[str, bytes], None] | None = None,
     timeout_pdf_ms: int | None = None,
-    al_descargar_xml: Callable[[str, bytes], None] | None = None,
     al_extraer_leyenda: Callable[[str, list[str]], None] | None = None,
     al_consultar: Callable[[dict], None] | None = None,
 ) -> dict:
@@ -1440,7 +1405,6 @@ async def obtener_detalles(
             descargar_pdf=descargar_pdf,
             al_descargar=al_descargar,
             timeout_pdf_ms=timeout_pdf_ms,
-            al_descargar_xml=al_descargar_xml,
             al_extraer_leyenda=al_extraer_leyenda,
             al_consultar=al_consultar,
         )

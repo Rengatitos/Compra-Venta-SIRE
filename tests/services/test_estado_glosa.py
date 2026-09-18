@@ -75,14 +75,19 @@ def test_estado_y_observacion_por_tipo(documento, estado, observacion):
     assert salida["observacion"] == observacion
 
 
-def test_excepcion_por_libro(monkeypatch):
-    from app.domain import catalogos
-
-    monkeypatch.setitem(catalogos.SIN_DETALLE_POR_LIBRO, "compras", frozenset({"03"}))
-    boleta = {"tipo_cp": "03"}
-    assert estado_glosa({**boleta, "libro": "compras"}) == ESTADO_SIN_GLOSA
-    assert observacion_glosa({**boleta, "libro": "compras"}) == OBSERVACION_SIN_DETALLE_SUNAT
-    assert estado_glosa({**boleta, "libro": "ventas"}) == ESTADO_PENDIENTE
+def test_boletas_recibidas_sin_bandeja_en_compras():
+    # El portal no tiene «BVE Recibidas»: una boleta B### recibida no se puede
+    # consultar. La misma boleta emitida (ventas) o una EB01 recibida (SEE-SOL)
+    # sí son consultables.
+    papel = {"tipo_cp": "03", "serie": "B001", "libro": "compras"}
+    assert estado_glosa(papel) == ESTADO_SIN_GLOSA
+    assert observacion_glosa(papel) == OBSERVACION_SIN_DETALLE_SUNAT
+    assert estado_glosa({**papel, "libro": "ventas"}) == ESTADO_PENDIENTE
+    assert estado_glosa({**papel, "serie": "EB01"}) == ESTADO_PENDIENTE
+    assert estado_glosa({**papel, "serie": "EB01", "glosa_consultada": True}) == ESTADO_SIN_GLOSA
+    assert observacion_glosa({**papel, "serie": "EB01", "glosa_consultada": True}) == (
+        OBSERVACION_SIN_GLOSA
+    )
 
 
 class TestLeyendaComoGlosa:
@@ -156,9 +161,15 @@ def test_los_filtros_del_portal_excluyen_los_tipos_sin_detalle(libro):
         repo._filtro_pendiente_sunat("empresa", "202608", libro),
         repo._filtro_sin_detalle("empresa", "202608", libro),
     ):
-        excluidos = filtro["tipo_cp"]["$nin"]
+        excluidos = filtro["$nor"][0]["tipo_cp"]["$in"]
         assert "12" in excluidos and "01" not in excluidos and "14" not in excluidos
         assert excluidos == sorted(excluidos)
+        if libro is Libro.COMPRAS:
+            # Boletas recibidas que no son SEE-SOL.
+            assert filtro["$nor"][1]["tipo_cp"]["$in"] == ["03"]
+            assert filtro["$nor"][1]["serie"]["$not"]["$regex"] == "^E"
+        else:
+            assert len(filtro["$nor"]) == 1
 
 
 def test_el_reporte_asociado_solo_espera_a_los_consultables():

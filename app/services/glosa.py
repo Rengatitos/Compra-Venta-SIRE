@@ -3,11 +3,7 @@
 import re
 from typing import Any
 
-from app.domain.catalogos import (
-    SIN_DETALLE_POR_LIBRO,
-    TIPOS_CON_DETALLE_SUNAT,
-    TIPOS_SIN_DETALLE_SUNAT,
-)
+from app.domain.catalogos import TIPOS_CON_DETALLE_SUNAT, sin_detalle_en_sunat
 from app.domain.comprobante import normalizar_tipo_cp
 from app.services.sunat.texto import corregir_codificacion
 
@@ -74,12 +70,17 @@ def obtener_glosa(documento: dict[str, Any]) -> str:
     return " / ".join(descripciones)[:MAX_GLOSA]
 
 
+def _sin_detalle(documento: dict[str, Any], tipo: str) -> bool:
+    return sin_detalle_en_sunat(
+        tipo, str(documento.get("libro") or ""), str(documento.get("serie") or "")
+    )
+
+
 def estado_glosa(documento: dict[str, Any]) -> str:
     if obtener_glosa(documento):
         return ESTADO_CON_GLOSA
     tipo = normalizar_tipo_cp(documento.get("tipo_cp"))
-    libro = str(documento.get("libro") or "")
-    if tipo in TIPOS_SIN_DETALLE_SUNAT or tipo in SIN_DETALLE_POR_LIBRO.get(libro, ()):
+    if _sin_detalle(documento, tipo):
         return ESTADO_SIN_GLOSA
     # Sin tipo no hay nada que evaluar: se trata como consultable, igual que
     # una factura. Un código que sí llega y no está en el catálogo, sí queda
@@ -97,8 +98,6 @@ def observacion_glosa(documento: dict[str, Any]) -> str:
         return OBSERVACION_EN_EVALUACION
     if estado != ESTADO_SIN_GLOSA:
         return ""
-    tipo = normalizar_tipo_cp(documento.get("tipo_cp"))
-    libro = str(documento.get("libro") or "")
-    if tipo in TIPOS_SIN_DETALLE_SUNAT or tipo in SIN_DETALLE_POR_LIBRO.get(libro, ()):
+    if _sin_detalle(documento, normalizar_tipo_cp(documento.get("tipo_cp"))):
         return OBSERVACION_SIN_DETALLE_SUNAT
     return OBSERVACION_SIN_GLOSA

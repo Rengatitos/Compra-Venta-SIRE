@@ -2,14 +2,10 @@
 
 Verifica:
 - La detección de series SOL (E, EB, EC, ED) vs OSE/Contribuyente (F, B).
-- La extracción segura de XML desde archivos ZIP descargados de SUNAT.
 - La resolución del RUC del emisor según el libro (compras vs ventas).
 """
 
 from __future__ import annotations
-
-import io
-import zipfile
 
 import pytest
 
@@ -41,42 +37,6 @@ class TestDeteccionSerieSol:
         assert scraping_sunat._es_serie_sol(serie) is esperado
 
 
-class TestExtraerXmlDeZip:
-    def test_extrae_el_xml_contenido_en_el_zip(self):
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as z:
-            z.writestr("FACTURAE001-192920486339510.XML", b"<Invoice><ID>E001-1929</ID></Invoice>")
-            z.writestr("otro.txt", b"ignorar")
-
-        contenido_zip = buf.getvalue()
-        extraido = scraping_sunat._extraer_xml_de_zip(contenido_zip)
-
-        assert extraido == b"<Invoice><ID>E001-1929</ID></Invoice>"
-
-    def test_un_xml_plano_sin_zip_se_devuelve_tal_cual(self):
-        xml_plano = b"<?xml version='1.0'?><Invoice/>"
-        assert scraping_sunat._extraer_xml_de_zip(xml_plano) == xml_plano
-
-        xml_sin_declaracion = b"<Invoice/>"
-        assert scraping_sunat._extraer_xml_de_zip(xml_sin_declaracion) == xml_sin_declaracion
-
-    def test_un_contenido_vacio_lanza_error(self):
-        with pytest.raises(ValueError, match="vacío"):
-            scraping_sunat._extraer_xml_de_zip(b"")
-
-    def test_un_zip_danado_lanza_error(self):
-        with pytest.raises(ValueError, match="no es un ZIP válido"):
-            scraping_sunat._extraer_xml_de_zip(b"PK\x03\x04invalido")
-
-    def test_un_zip_sin_xml_lanza_error(self):
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as z:
-            z.writestr("archivo.pdf", b"%PDF-1.4")
-
-        with pytest.raises(ValueError, match="no contiene ningún archivo .xml"):
-            scraping_sunat._extraer_xml_de_zip(buf.getvalue())
-
-
 class TestRucEmisor:
     def test_en_compras_el_emisor_es_el_proveedor(self):
         fac = {"documento_contraparte": "20486339510"}
@@ -103,7 +63,7 @@ class TestDespachoPorSerie:
 
         def falso_consultar_see_sol(*_a, **_k):
             sol_llamado.append(True)
-            return [{"cantidad": "1.00"}], b"%PDF", b"<xml/>"
+            return [{"cantidad": "1.00"}], b"%PDF"
 
         def falso_abrir_ose(*_a, **_k):
             pass
@@ -164,7 +124,6 @@ class TestDespachoPorSerie:
             {"serie_numero": "F001-43318", "serie": "F001", "numero": "43318", "tipo_cp": "01"},
         ]
 
-        xml_descargados = []
         detalles_extraidos = []
         leyendas = {}
 
@@ -174,7 +133,6 @@ class TestDespachoPorSerie:
             "PASS",
             comprobantes,
             al_extraer=lambda s, d: detalles_extraidos.append(s),
-            al_descargar_xml=lambda s, x: xml_descargados.append(s),
             al_extraer_leyenda=leyendas.setdefault,
         )
 
@@ -182,7 +140,6 @@ class TestDespachoPorSerie:
         assert len(ose_llamado) == 1
         assert "E001-1929" in res
         assert "F001-43318" in res
-        assert xml_descargados == ["E001-1929"]
         assert detalles_extraidos == ["E001-1929", "F001-43318"]
-        # La leyenda sólo existe en el popup: SEE-SOL la trae dentro del XML.
+        # La leyenda sólo existe en el popup del portal; SEE-SOL no la tiene.
         assert leyendas == {"F001-43318": ["TARJETA DE DEBITO"]}

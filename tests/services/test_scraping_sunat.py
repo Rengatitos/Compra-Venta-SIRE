@@ -111,3 +111,65 @@ def test_el_ruc_del_cliente_solo_se_usa_si_es_un_ruc():
     assert scraping_sunat._criterio_ruc(con_dni, Libro.VENTAS) == ""
     # En compras el emisor siempre tiene RUC, así que se manda tal cual.
     assert scraping_sunat._criterio_ruc(con_dni, Libro.COMPRAS) == "46169303"
+
+
+def test_el_dni_del_receptor_va_en_su_propio_campo():
+    # Complemento del anterior: el DNI de una boleta no cabe en el campo de RUC,
+    # pero el formulario tiene `numDocideRecep` para él. En compras no aplica.
+    con_ruc = {"documento_contraparte": "20608997106"}
+    con_dni = {"documento_contraparte": "46169303"}
+
+    assert scraping_sunat._criterio_doc_receptor(con_dni, Libro.VENTAS) == "46169303"
+    assert scraping_sunat._criterio_doc_receptor(con_ruc, Libro.VENTAS) == ""
+    assert scraping_sunat._criterio_doc_receptor(con_dni, Libro.COMPRAS) == ""
+    for vacio in ("", "-", "—", "0", None):
+        assert scraping_sunat._criterio_doc_receptor({"documento_contraparte": vacio}, Libro.VENTAS) == ""
+
+
+def test_el_formulario_recibe_el_documento_del_receptor(monkeypatch):
+    # `_buscar` escribe el DNI en `numDocideRecep` y deja el RUC vacío.
+    escritos: dict[str, str] = {}
+
+    class Campo:
+        def __init__(self, selector):
+            self.selector = selector
+
+        def count(self):
+            return 1
+
+        def fill(self, valor, timeout=None):
+            escritos[self.selector] = valor
+
+        def press(self, _tecla):
+            pass
+
+        def click(self, **_k):
+            pass
+
+        def press_sequentially(self, *_a, **_k):
+            pass
+
+        def wait_for(self, **_k):
+            raise RuntimeError("sin lista")
+
+        def get_attribute(self, _nombre):
+            return None
+
+        @property
+        def first(self):
+            return self
+
+    class Iframe:
+        def locator(self, selector, **_k):
+            return Campo(selector)
+
+    monkeypatch.setattr(scraping_sunat, "_esperar_resultado", lambda *_a, **_k: object())
+    boleta = {
+        "serie_numero": "B001-7", "serie": "B001", "numero": "7", "tipo_cp": "03",
+        "documento_contraparte": "46169303",
+    }
+    scraping_sunat._buscar(Iframe(), boleta, Libro.VENTAS, 1000)
+
+    assert escritos[scraping_sunat.SEL_DOC_RECEPTOR] == "46169303"
+    assert scraping_sunat.SEL_RUC not in escritos
+    assert escritos[scraping_sunat.SEL_SERIE] == "B001"

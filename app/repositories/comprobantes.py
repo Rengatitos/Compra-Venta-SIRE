@@ -6,7 +6,11 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import settings
-from app.domain.catalogos import SIN_DETALLE_POR_LIBRO, TIPOS_SIN_DETALLE_SUNAT
+from app.domain.catalogos import (
+    PREFIJO_SERIE_SEE_SOL,
+    SIN_DETALLE_POR_LIBRO,
+    TIPOS_SIN_DETALLE_SUNAT,
+)
 from app.domain.comprobante import (
     Comprobante,
     EstadoProcesamiento,
@@ -290,15 +294,27 @@ async def listar_pendientes_analisis(
     return await cursor.to_list(length=limit)
 
 
-def tipos_sin_detalle_sunat(libro: Libro) -> list[str]:
-    """Tipos que el portal SOL no publica para ese libro; no se consultan nunca."""
-    return sorted(TIPOS_SIN_DETALLE_SUNAT | SIN_DETALLE_POR_LIBRO.get(libro.value, frozenset()))
+def _sin_detalle_en_sunat(libro: Libro) -> list[dict[str, Any]]:
+    """Cláusulas Mongo que casan con lo que el portal SOL no publica para ese libro.
+
+    `tipo_cp` se guarda normalizado a dos dígitos (`normalizar_tipo_cp`), así
+    que se compara por literal. Las excepciones por libro (boletas recibidas en
+    compras) no alcanzan a las series SEE-SOL, que tienen su propio módulo.
+    """
+    clausulas: list[dict[str, Any]] = [{"tipo_cp": {"$in": sorted(TIPOS_SIN_DETALLE_SUNAT)}}]
+    por_libro = SIN_DETALLE_POR_LIBRO.get(libro.value, frozenset())
+    if por_libro:
+        clausulas.append({
+            "tipo_cp": {"$in": sorted(por_libro)},
+            "serie": {"$not": {"$regex": f"^{PREFIJO_SERIE_SEE_SOL}", "$options": "i"}},
+        })
+    return clausulas
 
 
 def _excluir_tipos_sin_detalle(libro: Libro) -> dict[str, Any]:
-    # `tipo_cp` se guarda normalizado a dos dígitos (`normalizar_tipo_cp`), así
-    # que el `$nin` compara literales.
-    return {"tipo_cp": {"$nin": tipos_sin_detalle_sunat(libro)}}
+    # Buscarlos en el portal sólo cuesta un timeout por comprobante y termina
+    # en "no encontrado".
+    return {"$nor": _sin_detalle_en_sunat(libro)}
 
 
 def _filtro_sin_detalle(empresa_id: str, periodo: str, libro: Libro) -> dict[str, Any]:
@@ -435,8 +451,7 @@ def _filtro_pendiente_sunat(empresa_id: str, periodo: str, libro: Libro) -> dict
     # **o** el PDF. Las dos cosas salen de la misma consulta en SOL, así que
     # abrir el navegador dos veces (una por cada cosa) era pagar el mismo
     # recorrido dos veces.
-    # Los tipos que SUNAT no publica quedan fuera: buscarlos en el portal sólo
-    # cuesta un timeout por comprobante y termina en "no encontrado".
+    # Los tipos que SUNAT no publica quedan fuera de la consulta al portal.
     filtro = {
         "empresa_id": empresa_id,
         "periodo": periodo,
@@ -482,7 +497,7 @@ async def contar_omitidos_sin_detalle(
         "empresa_id": empresa_id,
         "periodo": periodo,
         "libro": libro.value,
-        "tipo_cp": {"$in": tipos_sin_detalle_sunat(libro)},
+        "$or": _sin_detalle_en_sunat(libro),
     })
 
 
@@ -539,39 +554,6 @@ async def guardar_pdf_sunat(
         {
             "$set": {
                 "pdf_sunat": {
-                    "ruta": ruta,
-                    "bytes": bytes_,
-                    "descargado_en": datetime.now(UTC),
-                }
-            }
-        },
-    )
-
-
-async def guardar_xml_sunat(
-    db: AsyncIOMotorDatabase,
-    empresa_id: str,
-    periodo: str,
-    libro: Libro,
-    serie_numero: str,
-    ruta: str,
-    bytes_: int,
-) -> None:
-    """Apunta dónde quedó el XML de un comprobante.
-
-    Se guarda la ruta relativa al almacén. `xml_sunat` es sólo un puntero
-    de respaldo, nunca un criterio de pendiente.
-    """
-    await _col(db).update_one(
-        {
-            "empresa_id": empresa_id,
-            "periodo": periodo,
-            "libro": libro.value,
-            "serie_numero": serie_numero,
-        },
-        {
-            "$set": {
-                "xml_sunat": {
                     "ruta": ruta,
                     "bytes": bytes_,
                     "descargado_en": datetime.now(UTC),
