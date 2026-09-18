@@ -61,6 +61,13 @@ class ComprobanteResponse(BaseModel):
     analisis: None = None
     glosa: str = ""
     observacion: str = ""
+    # `con_glosa`, `sin_glosa`, `en_evaluacion` o `pendiente`
+    # (`app/services/glosa.py`). Depende del tipo de comprobante y de si ya se
+    # consultó el portal; "pendiente" es un tipo consultable aún sin consultar.
+    estado_glosa: str = "pendiente"
+    # Recuadro «LEYENDA» del popup de SOL. Cuando los ítems no traen
+    # descripción, la glosa sale de aquí.
+    leyenda_sunat: list[str] = []
     detalle_sunat: list[Any] = []
     # True cuando la propuesta SUNAT contiene indDetraccion="D".
     detraccion: bool = False
@@ -74,6 +81,22 @@ class ComprobanteResponse(BaseModel):
     documentos_modificados: list[dict[str, Any]] = []
 
     model_config = {"from_attributes": True}
+
+
+class ConteoEstadoGlosa(BaseModel):
+    con_glosa: int = 0
+    sin_glosa: int = 0
+    en_evaluacion: int = 0
+    pendiente: int = 0
+
+
+class CoberturaSunat(BaseModel):
+    """Cobertura de todo el libro en el periodo, independiente de la paginación."""
+
+    total: int = 0
+    con_detalle: int = 0
+    con_pdf: int = 0
+    estado_glosa: ConteoEstadoGlosa = ConteoEstadoGlosa()
 
 
 class ComprobanteUpdate(BaseModel):

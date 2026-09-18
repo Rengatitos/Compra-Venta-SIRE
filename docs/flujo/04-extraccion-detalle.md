@@ -8,7 +8,7 @@ Cada comprobante pendiente requiere navegar un formulario del portal SOL con Pla
 
 ## Pasos
 
-1. [detalle_service.extraer](../../app/services/detalle_service.py:16) busca los comprobantes **de ese libro** en el periodo que todavía no tienen `detalle_sunat` guardado (`listar_sin_detalle`). Si no hay ninguno, el job se completa de inmediato con `procesados: 0`.
+1. `detalle_service.extraer` ([detalle_service.py](../../app/services/detalle_service.py)) busca los comprobantes **de ese libro** en el periodo a los que les falta el detalle o el PDF (`listar_pendientes_sunat`). Quedan fuera los tipos que SUNAT no publica y las boletas recibidas de serie B en compras (ver [glosa y estado](05-glosa-y-estado.md)): el job los cuenta en `omitidos_sin_detalle` y lo dice en su primer mensaje. Si no hay ninguno pendiente, el job se completa de inmediato con `procesados: 0`.
 
    El libro no es opcional en esa consulta: `serie_numero` no es único dentro de un periodo —el mismo `F001-1` puede existir como venta propia y como compra a un tercero—, así que sin él una extracción de ventas recogería comprobantes de compras y el detalle acabaría escrito en el documento equivocado.
 
@@ -18,7 +18,7 @@ Cada comprobante pendiente requiere navegar un formulario del portal SOL con Pla
 
 4. Por cada comprobante pendiente, [_scrape_detalles](../../app/services/scraping_sunat.py) navega a la consulta de "Factura, Boletas y Notas", completa el formulario de búsqueda (tipo de consulta, RUC de la contraparte, serie, número y fecha de emisión en formato `dd/mm/aaaa`) y abre el popup de detalle del comprobante encontrado, del que extrae la tabla de ítems.
 
-   El combo «Tipo de consulta» decide en qué bandeja busca el portal, y el portal separa **una bandeja por tipo de documento**, no una por libro. Estas son sus opciones reales:
+   El combo «Tipo de consulta» decide en qué bandeja busca el portal, y el portal separa **una bandeja por tipo de documento**, no una por libro. Estas son sus opciones reales, y son **todas**: `scripts/listar_bandejas_sol.py` recorrió el combo completo el 18 de septiembre de 2026 y no hay más páginas ni una bandeja de boletas recibidas.
 
    ```
    FE Emitidas · FE Recibidas · NC Emitidas · NC Recibidas · ND Emitidas
@@ -30,15 +30,19 @@ Cada comprobante pendiente requiere navegar un formulario del portal SOL con Pla
    | `tipo_cp` | Compras | Ventas |
    |---|---|---|
    | `01` factura | FE Recibidas | FE Emitidas |
-   | `03` boleta | — | BVE Emitidas - OSE |
+   | `03` boleta | — (sin bandeja: no se consulta; las EB01 van por SEE-SOL) | BVE Emitidas - OSE |
    | `07` nota de crédito | NC Recibidas | NC Emitidas |
    | `08` nota de débito | ND Recibidas | ND Emitidas |
+
+   Un tipo sin bandeja cae en la de facturas, pero eso ya sólo puede pasar con los 14 tipos que esperan casos reales (13, 14, 18…), porque los que SUNAT no publica no entran al job.
 
    Una nota que corrige una **boleta** va a `NC-BVE`/`ND-BVE`. Eso no se deduce de su `tipo_cp` —es 07 u 08 como cualquier otra—, sino del tipo del documento que modifica, que el RVIE manda en `documentoMod` y el mapeo guarda en `extra.documentos_modificados`.
 
    El rótulo se compara **entero**: `BVE Emitidas - OSE` es subcadena de `NC-BVE Emitidas - OSE`, así que un `has-text` acabaría eligiendo la bandeja de las notas.
 
-   El criterio de RUC necesita un matiz aparte: en compras es el emisor y siempre es un RUC, pero en ventas es el receptor, que en boletas suele ser un DNI o no venir. En ventas sólo se rellena si tiene once dígitos; sin él, serie + número + fecha identifican el comprobante (`_criterio_ruc`). Un criterio vacío **no se escribe**: `fill` espera a que el campo sea editable, y en las bandejas de emitidas algunos llegan deshabilitados, de modo que esa espera se tragaba el timeout completo del paso en cada comprobante.
+   El criterio de RUC necesita un matiz aparte: en compras es el emisor y siempre es un RUC, pero en ventas es el receptor, que en boletas suele ser un DNI o no venir. En ventas el RUC sólo se rellena si tiene once dígitos (`_criterio_ruc`); si el receptor es un DNI u otro documento, va en el criterio `numDocideRecep` del formulario (`_criterio_doc_receptor`), que compras no usa. Un criterio vacío **no se escribe**: `fill` espera a que el campo sea editable, y en las bandejas de emitidas algunos criterios llegan deshabilitados, de modo que esa espera se tragaba el timeout completo del paso en cada comprobante.
+
+   **Series E (SEE-SOL).** Los comprobantes emitidos desde el portal de SUNAT (facturas `E001`, boletas `EB01`, notas `EC`/`ED`) no están en estas bandejas: `_es_serie_sol` los desvía a `_consultar_uno_see_sol`, que entra al módulo SEE-SOL correspondiente (facturas o boletas, códigos de menú `11.5.3.1.2` y `11.5.4.1.4`), pide por HTTP dentro de la sesión el listado del mes con el `tipoConsulta` que corresponde al libro y tipo (`_ruta_see_sol`), localiza la fila del comprobante por RUC emisor, tipo, serie y número, y abre su impresión (`verImprimirFactura`) en una pestaña aparte, de la que lee la tabla de ítems y captura el PDF. El índice de la fila sólo vale para la última consulta de la sesión, así que las dos peticiones van seguidas. Cuando el comprobante no está, el log dice cuántas filas listó el portal ese mes. Verificado el 18 de septiembre de 2026 con siete facturas E001 recibidas y cuatro boletas EB01 emitidas: todas con ítems y PDF.
 
 5. Si un comprobante falla, se reintenta una vez. Cuando el fallo es que la sesión SOL expiró (`_es_sesion_expirada`, que sólo da positivo si SUNAT devolvió el formulario de login), se vuelve a entrar antes del reintento; si ni así se recupera, se corta la vuelta y se devuelve lo ya extraído en lugar de perderlo.
 
@@ -52,7 +56,7 @@ Cada comprobante pendiente requiere navegar un formulario del portal SOL con Pla
 
 6. Cada comprobante con detalle encontrado se guarda vía `guardar_detalle_sunat`, que solo agrega el campo `detalle_sunat` sin tocar el resto del documento. El filtro incluye el libro, por lo mismo del paso 1.
 
-7. El progreso se reporta a través del callback `reportar` que [jobs_service.ejecutar](../../app/services/jobs_service.py:34) inyecta, actualizando `progreso.actual`/`progreso.total` en la colección `jobs` conforme avanza. Al terminar, el job pasa a `completado` con el resultado `{"procesados": N, "con_detalle": M, "pendientes": P}`, o a `fallido` con el mensaje de la excepción si algo se rompe. `pendientes` es lo que quedó fuera por el tope de `SUNAT_MAX_COMPROBANTES`.
+7. El progreso se reporta a través del callback `reportar` que `jobs_service.ejecutar` ([jobs_service.py](../../app/services/jobs_service.py)) inyecta, actualizando `progreso.actual`/`progreso.total` en la colección `jobs` conforme avanza. Al terminar, el job pasa a `completado` con el resultado `{"procesados", "con_detalle", "sin_detalle", "descargados_pdf", "sin_pdf", "pendientes", "omitidos_sin_detalle"}`, o a `fallido` con el mensaje de la excepción si algo se rompe. `pendientes` es lo que quedó fuera por el tope de `SUNAT_MAX_COMPROBANTES`; `omitidos_sin_detalle`, lo que no se consulta porque SUNAT no lo publica. Cada comprobante que el scraper buscó —encontrado o no— queda marcado con `glosa_consultada`, que es lo que separa «sin glosa» de «pendiente».
 
 
 ## Rendimiento
@@ -95,11 +99,8 @@ En el frontend, la barra de progreso sigue **al libro seleccionado**. Sin ese fi
 
 ## Estado por libro
 
-**Compras está verificado** de punta a punta contra el portal: una factura real devuelve sus ítems.
+**Compras está verificado** de punta a punta contra el portal, tanto por bandeja (facturas `F…`) como por SEE-SOL (facturas `E001`): los comprobantes reales devuelven sus ítems y su PDF.
 
-**Ventas no lo está.** La selección de bandeja por tipo de comprobante y el arreglo del criterio vacío son correctos —la búsqueda ya termina en vez de agotar el timeout—, pero una boleta real no aparece en `BVE Emitidas - OSE`. Quedan dos hipótesis sin descartar:
+**Ventas está verificado para boletas SEE-SOL** (`EB01`, el caso real disponible: cuatro boletas con DNI del receptor, todas con ítems y PDF). Lo que queda sin caso real es una boleta `B…` emitida por OSE/PSE, que iría por la bandeja `BVE Emitidas - OSE` con el DNI en `numDocideRecep`; el criterio ya se rellena, falta un RUC que emita así para confirmarlo. La hipótesis de que el combo tuviera más bandejas quedó descartada al enumerarlo completo.
 
-1. **La lista del combo está paginada.** «Opciones anteriores» y «Más opciones» son los controles de paginación de Dojo, así que puede haber bandejas que no se han visto todavía; `BVE … OSE` es específicamente para boletas emitidas a través de un OSE, y una empresa que no use OSE tendría la suya en otra.
-2. **Falta un criterio.** El formulario tiene `criterio.numDocideRecep`, que no se rellena nunca. Para una boleta el receptor se identifica por DNI, y ese campo es el sitio natural para él.
-
-Confirmarlo exige volver al portal. Conviene espaciar los intentos: SUNAT empieza a rechazar el login tras varias entradas seguidas.
+Conviene espaciar los intentos contra el portal: SUNAT empieza a rechazar el login tras varias entradas seguidas (el primer intento suele fallar y el segundo entra).

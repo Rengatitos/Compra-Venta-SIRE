@@ -1,10 +1,10 @@
 # Flujo — Sincronización de la propuesta SIRE
 
-[POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/propuesta](../endpoints/propuesta.md) llama a [propuesta_service.sincronizar](../../app/services/propuesta_service.py:16).
+[POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/propuesta](../endpoints/propuesta.md) llama a [propuesta_service.sincronizar](../../app/services/propuesta_service.py).
 
 ## Pasos
 
-1. La empresa ya llegó resuelta y verificada por la dependencia [empresa_actual](../../app/api/v1/deps.py:9) — la ruta no vuelve a buscarla.
+1. La empresa ya llegó resuelta y verificada por la dependencia [empresa_actual](../../app/api/v1/deps.py) — la ruta no vuelve a buscarla.
 
 2. Los dos libros siguen el mismo camino. [sunat/propuesta.py](../../app/services/sunat/propuesta.py) se queda con el transporte —URL, credenciales, paginación— y delega el mapeo de campos en [sunat/rce.py](../../app/services/sunat/rce.py) (compras) o [sunat/rvie.py](../../app/services/sunat/rvie.py) (ventas), que son los que conocen los nombres de cada libro.
 
@@ -17,13 +17,13 @@
 
    El RVIE **no** tiene `/busqueda` ni `/preliminar`: responden `500`. Su único otro camino es `exportapropuesta`, que devuelve un `numTicket` y obliga al flujo asíncrono; no hace falta, porque `/comprobantes` da los mismos datos de forma directa.
 
-3. `descargar` resuelve las credenciales OAuth con [credenciales_cliente](../../app/services/sunat/auth.py:24): usa las propias de la empresa si existen, o cae a las variables de entorno globales.
+3. `descargar` resuelve las credenciales OAuth con [credenciales_cliente](../../app/services/sunat/auth.py): usa las propias de la empresa si existen, o cae a las variables de entorno globales.
 
-4. **Manejo del token OAuth**, en [peticion_autenticada](../../app/services/sunat/auth.py:87). Si la empresa no tiene un token guardado, se pide uno nuevo con [obtener_token](../../app/services/sunat/auth.py:32) — una petición tipo `password` contra el servicio de seguridad de SUNAT, usando como username la concatenación directa de RUC y usuario SOL sin separador (formato exigido por SUNAT). Luego se llama a la API SIRE con la plantilla del libro, reemplazando el placeholder de periodo. Los dos endpoints devuelven la misma forma —`{paginacion: {page, perPage, totalRegistros}, registros: [...], totales: {...}}`— y los dos exigen `page` y `perPage`: omitirlos da `422` nombrando el campo que falta.
+4. **Manejo del token OAuth**, en [peticion_autenticada](../../app/services/sunat/auth.py). Si la empresa no tiene un token guardado, se pide uno nuevo con [obtener_token](../../app/services/sunat/auth.py) — una petición tipo `password` contra el servicio de seguridad de SUNAT, usando como username la concatenación directa de RUC y usuario SOL sin separador (formato exigido por SUNAT). Luego se llama a la API SIRE con la plantilla del libro, reemplazando el placeholder de periodo. Los dos endpoints devuelven la misma forma —`{paginacion: {page, perPage, totalRegistros}, registros: [...], totales: {...}}`— y los dos exigen `page` y `perPage`: omitirlos da `422` nombrando el campo que falta.
 
 La respuesta se recorre **página a página** hasta agotar `totalRegistros` o hasta que una página venga corta, con `SIRE_MAX_PAGINAS` como freno por si el endpoint ignorase `page`. Antes se pedía `page=1&perPage=100` fijo y todo lo que pasara de cien comprobantes se perdía sin que nada lo dijera; en ventas eso ocurre casi siempre. `perPage` no puede pasar de 100 (por encima, `422`), así que se recorta. `codTipoOpe=1` sólo se manda en compras: el RVIE lo acepta pero lo ignora.
 
-El bloque `totales` que acompaña a cada respuesta es el mejor control del mapeo: sus sumas tienen que cuadrar con las de los comprobantes ya mapeados. Si la respuesta es `401` (token expirado), se llama a [renovar_token](../../app/services/sunat/auth.py:64) y se reintenta la misma petición una vez. Si no hay credenciales de cliente disponibles y el token expiró, se lanza `ErrorSunat` en vez de reintentar sin credenciales.
+El bloque `totales` que acompaña a cada respuesta es el mejor control del mapeo: sus sumas tienen que cuadrar con las de los comprobantes ya mapeados. Si la respuesta es `401` (token expirado), se llama a [renovar_token](../../app/services/sunat/auth.py) y se reintenta la misma petición una vez. Si no hay credenciales de cliente disponibles y el token expiró, se lanza `ErrorSunat` en vez de reintentar sin credenciales.
 
 5. **Mapeo al modelo canónico**, en el `a_comprobante` del módulo del libro. Cada registro crudo de SUNAT se convierte a un `Comprobante` normalizado (ver [modelo de datos de comprobantes](../modelo-datos/comprobantes.md)). Los nombres de campo se resuelven probando una lista de candidatos por cada destino (serie, número, tipo, montos, etc.) — la respuesta real de SUNAT no está confirmada al 100% contra la documentación oficial, así que el mapeo tolera variaciones de nombre. El JSON crudo completo se conserva en `extra.raw_sire`.
 
@@ -66,7 +66,7 @@ El bloque `totales` que acompaña a cada respuesta es el mejor control del mapeo
 
    Este mapeo estuvo equivocado: se buscaban `mtoBIGravada` y `mtoIGV`, nombres que el SIRE no envía nunca, así que la base imponible y el IGV llegaban siempre en cero y sólo el total era correcto. Los tests usaban un payload inventado con esos mismos nombres, así que pasaban en verde. El fixture de `tests/domain/test_mapeo.py` es ahora una respuesta real. Para recalcular comprobantes ya guardados sin volver a llamar a SUNAT existe [scripts/recalcular_importes.py](../../scripts/recalcular_importes.py), que rehace los montos desde `extra.raw_sire`.
 
-6. **Dos filtros**, aplicados en [propuesta_service.sincronizar](../../app/services/propuesta_service.py:16):
+6. **Dos filtros**, aplicados en [propuesta_service.sincronizar](../../app/services/propuesta_service.py):
    - `comprobante.es_valido`: descarta filas sin serie, número o fecha de emisión.
    - `pertenece_al_periodo`: el **periodo tributario que asigna SUNAT** (`perTributario` en el RCE, `perPeriodoTributario` en el RVIE, guardado en `extra.periodo_sunat`) debe coincidir con el solicitado.
 
@@ -74,7 +74,7 @@ El bloque `totales` que acompaña a cada respuesta es el mejor control del mapeo
 
    Había un tercer filtro, `serie_aceptada`, que sólo dejaba pasar series `F` y `E` y por tanto tiraba las boletas. El registro de ventas es en su mayoría boletas (`B001`, `EB01`), así que desapareció de los dos libros: ahora se guarda todo lo que SUNAT devuelve.
 
-7. **Persistencia**, vía [repo_comprobantes.upsert](../../app/repositories/comprobantes.py:110). El filtro de identidad es `(empresa_id, periodo, libro, origen, tipo_cp, serie, numero)`. Los campos de identidad y el `estado_procesamiento` inicial solo se establecen si el documento es nuevo (`$setOnInsert`); el resto de los campos (contraparte, montos, datos crudos) se actualizan siempre, para que una resincronización refresque los datos sin perder el detalle y los archivos SUNAT ya extraídos.
+7. **Persistencia**, vía [repo_comprobantes.upsert](../../app/repositories/comprobantes.py). El filtro de identidad es `(empresa_id, periodo, libro, origen, tipo_cp, serie, numero)`. Los campos de identidad y el `estado_procesamiento` inicial solo se establecen si el documento es nuevo (`$setOnInsert`); el resto de los campos (contraparte, montos, datos crudos) se actualizan siempre, para que una resincronización refresque los datos sin perder el detalle y los archivos SUNAT ya extraídos.
 
 8. Si SUNAT responde `422`, se interpreta como "sin propuestas para ese periodo" — no es un error: el periodo se marca `sin_propuesta` y se devuelve `nuevos: 0`. Si la sincronización tiene éxito (con o sin comprobantes nuevos), el periodo se marca `sincronizado`.
 

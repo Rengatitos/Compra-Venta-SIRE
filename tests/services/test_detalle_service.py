@@ -37,7 +37,6 @@ def _correr(
     """Ejecuta `extraer` con el repositorio y el scraping simulados."""
     reportes: list[tuple[int, int, str]] = []
     guardados: list[str] = []
-    xml_guardados: list[str] = []
     punteros_pdf: list[tuple[str, str, int]] = []
     clasificados: list[str] = []
     libros_pedidos: list[Libro] = []
@@ -52,12 +51,12 @@ def _correr(
     async def contar_pendientes_sunat(db, empresa_id, periodo, libro_pedido):
         return len(pendientes) if total_en_bd is None else total_en_bd
 
+    async def contar_omitidos_sin_detalle(db, empresa_id, periodo, libro_pedido):
+        return 0
+
     async def guardar_detalle_sunat(db, empresa_id, periodo, libro_pedido, serie_numero, detalle):
         libros_pedidos.append(libro_pedido)
         guardados.append(serie_numero)
-
-    async def guardar_xml_sunat(db, empresa_id, periodo, libro_pedido, serie_numero, ruta, bytes_):
-        xml_guardados.append(serie_numero)
 
     async def guardar_pdf_sunat(db, empresa_id, periodo, libro_pedido, serie_numero, ruta, bytes_):
         libros_pedidos.append(libro_pedido)
@@ -74,7 +73,6 @@ def _correr(
         progreso=None,
         al_extraer=None,
         al_descargar=None,
-        al_descargar_xml=None,
         al_extraer_leyenda=None,
         **resto,
     ):
@@ -94,8 +92,6 @@ def _correr(
                 hechos_ok[serie] = [{"descripcion": "un ítem"}]
                 if al_extraer:
                     al_extraer(serie, hechos_ok[serie])
-                if al_descargar_xml and serie.startswith("E"):
-                    al_descargar_xml(serie, b"<Invoice/>")
                 if al_descargar and serie not in sin_pdf:
                     al_descargar(serie, b"%PDF-1.4 " + serie.encode())
             return hechos_ok
@@ -105,8 +101,8 @@ def _correr(
     repo = detalle_service.repo_comprobantes
     monkeypatch.setattr(repo, "listar_pendientes_sunat", listar_pendientes_sunat)
     monkeypatch.setattr(repo, "contar_pendientes_sunat", contar_pendientes_sunat)
+    monkeypatch.setattr(repo, "contar_omitidos_sin_detalle", contar_omitidos_sin_detalle)
     monkeypatch.setattr(repo, "guardar_detalle_sunat", guardar_detalle_sunat)
-    monkeypatch.setattr(repo, "guardar_xml_sunat", guardar_xml_sunat)
     monkeypatch.setattr(repo, "guardar_pdf_sunat", guardar_pdf_sunat)
     monkeypatch.setattr(detalle_service.scraping_sunat, "obtener_detalles", obtener_detalles)
 
@@ -122,7 +118,6 @@ def _correr(
         "reportes": reportes,
         "guardados": guardados,
         "libros": libros_pedidos,
-        "xml": xml_guardados,
         "pdfs": punteros_pdf,
         "clasificados": clasificados,
     }
@@ -138,6 +133,7 @@ def test_reporta_el_avance_de_cada_comprobante(monkeypatch):
         "descargados_pdf": 3,
         "sin_pdf": 0,
         "pendientes": 0,
+        "omitidos_sin_detalle": 0,
     }
 
     reportes = salida["reportes"]
@@ -255,21 +251,3 @@ def test_respeta_lo_que_el_comprobante_ya_tenia(monkeypatch):
     assert salida["resultado"]["descargados_pdf"] == 1
     assert salida["resultado"]["sin_pdf"] == 0
     assert salida["clasificados"] == []
-
-
-def test_guarda_el_xml_si_el_scraper_lo_entrega(monkeypatch):
-    pendientes_con_sol = [
-        {
-            "_id": "1",
-            "serie_numero": "E001-1929",
-            "serie": "E001",
-            "numero": "1929",
-            "tipo_cp": "01",
-        },
-        {"_id": "2", "serie_numero": "F001-2", "serie": "F001", "numero": "2", "tipo_cp": "01"},
-    ]
-    salida = _correr(monkeypatch, pendientes_con_sol)
-
-    assert "E001-1929" in salida["guardados"]
-    assert "F001-2" in salida["guardados"]
-    assert salida["xml"] == ["E001-1929"]

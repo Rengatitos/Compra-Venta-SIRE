@@ -32,7 +32,7 @@ export function actualizarEmpresa(ruc: string, datos: EmpresaUpdate): Promise<Em
   return pedir<EmpresaResponse>(base(ruc), { metodo: 'PUT', cuerpo });
 }
 
-/** Borra en cascada comprobantes, periodos y chunks vectoriales. */
+/** Borra en cascada comprobantes, periodos y plan de cuentas de la empresa. */
 export function eliminarEmpresa(ruc: string): Promise<MessageResponse> {
   return pedir<MessageResponse>(base(ruc), { metodo: 'DELETE' });
 }

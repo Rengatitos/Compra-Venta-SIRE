@@ -40,6 +40,7 @@ import { DialogComprobante } from './DialogComprobante';
 import { DescargarDetraccionesButton, DetraccionCelda, NpdPanel } from './Detracciones';
 import { DescargarPdfsButton } from './DescargarPdfsButton';
 import { presentarEstadoComprobante } from './estadoComprobante';
+import { presentarEstadoGlosa } from './estadoGlosa';
 
 const POR_PAGINA = 100;
 
@@ -300,6 +301,24 @@ export function ComprobantesPage() {
       cabecera: 'Observación',
       render: (fila) => fila.observacion || '—',
     },
+    // En la vista de anulados la glosa es la descripción de SUNAT, así que el
+    // estado de la glosa no dice nada ahí.
+    ...(verAnulados
+      ? []
+      : [
+          {
+            clave: 'estado_glosa',
+            cabecera: 'Estado glosa',
+            render: (fila: ComprobanteResponse) => {
+              const estado = presentarEstadoGlosa(fila.estado_glosa);
+              return (
+                <Badge tono={estado.tono} conPunto>
+                  {estado.texto}
+                </Badge>
+              );
+            },
+          },
+        ]),
     {
       clave: 'igv',
       cabecera: 'IGV',
@@ -461,6 +480,21 @@ export function ComprobantesPage() {
                 cobertura.isError
                   ? 'No se pudo consultar la cobertura'
                   : 'Todo el registro del periodo'
+              }
+            />
+            <MetricTile
+              etiqueta="Con glosa"
+              valor={
+                cobertura.data
+                  ? `${cobertura.data.estado_glosa.con_glosa} / ${cobertura.data.total}`
+                  : '—'
+              }
+              nota={
+                cobertura.isError
+                  ? 'No se pudo consultar la cobertura'
+                  : cobertura.data
+                    ? `${cobertura.data.estado_glosa.sin_glosa} sin glosa · ${cobertura.data.estado_glosa.en_evaluacion} en evaluación · ${cobertura.data.estado_glosa.pendiente} pendientes`
+                    : 'Todo el registro del periodo'
               }
             />
           </div>

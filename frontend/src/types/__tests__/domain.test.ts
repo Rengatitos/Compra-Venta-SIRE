@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { esPeriodoValido, esRucValido, LIBROS_IMPLEMENTADOS } from '../domain';
+import { esPeriodoValido, esRucValido, ESTADOS_GLOSA, LIBROS } from '../domain';
 
 describe('esPeriodoValido', () => {
   it('acepta el formato YYYYMM del backend', () => {
@@ -25,8 +25,12 @@ describe('esRucValido', () => {
   });
 });
 
-describe('libros', () => {
-  it('solo declara compras como implementado, porque ventas responde 501', () => {
-    expect(LIBROS_IMPLEMENTADOS).toEqual(['compras']);
+describe('catálogos del dominio', () => {
+  it('los dos libros están implementados', () => {
+    expect(LIBROS).toEqual(['compras', 'ventas']);
+  });
+
+  it('los cuatro estados de glosa son los del backend', () => {
+    expect(ESTADOS_GLOSA).toEqual(['con_glosa', 'sin_glosa', 'en_evaluacion', 'pendiente']);
   });
 });

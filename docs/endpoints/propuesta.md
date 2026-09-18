@@ -2,7 +2,7 @@
 
 ## `POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/propuesta`
 
-[sincronizar_propuesta](../../app/api/v1/routes/propuesta.py:19). Descarga la propuesta de comprobantes del SIRE para el periodo y libro indicados, la normaliza al modelo canónico y la guarda vía upsert. Límite: 10/minuto.
+[sincronizar_propuesta](../../app/api/v1/routes/propuesta.py). Descarga la propuesta de comprobantes del SIRE para el periodo y libro indicados, la normaliza al modelo canónico y la guarda vía upsert. Límite: 10/minuto.
 
 `libro` acepta `ventas` o `compras`. Los dos están implementados y comparten transporte: [sunat/propuesta.py](../../app/services/sunat/propuesta.py) resuelve URL, credenciales y paginación, y delega el mapeo de campos en [sunat/rce.py](../../app/services/sunat/rce.py) o [sunat/rvie.py](../../app/services/sunat/rvie.py) según el libro. Cada uno tiene su endpoint: `URL_SIRE_PROPUESTA` y `URL_SIRE_PROPUESTA_VENTAS`.
 
@@ -28,6 +28,10 @@ Errores:
 
 - `502` si la API SIRE responde con un error no controlado, o si no se pudo renovar el token OAuth.
 - Si SUNAT responde `422` (sin propuesta para el periodo), **no es un error**: se guarda el periodo como `sin_propuesta` y se devuelve `nuevos: 0`.
+
+## `POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/compras/propuesta/archivo`
+
+`importar_archivo_propuesta`. Recibe (`multipart/form-data`, campo `archivo`) el ZIP oficial que el SIRE genera para un ticket de descarga del RCE, lo convierte con el mismo mapeo que la sincronización y hace upsert de los comprobantes. Es la vía manual cuando la descarga por ticket no se puede lanzar desde la aplicación; la exportación a Excel de compras usa internamente el mismo camino (`sincronizar_ticket_rce`), por lo que un export siempre refleja la propuesta oficial vigente y puede cambiar la cantidad de comprobantes del periodo. Si el archivo trae filas, encola además el job de [detracciones](detracciones.md) y devuelve su `detracciones_job_id` en `datos`. `400` si no es un `.zip`; `422` si el contenido no es una propuesta RCE válida. Límite: 10/minuto.
 
 ## Las boletas ya no se descartan
 

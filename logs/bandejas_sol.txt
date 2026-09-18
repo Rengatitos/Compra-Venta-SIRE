@@ -1,0 +1,13 @@
+# Opciones del combo «Tipo de consulta» (lista desplegable paginada) — RUC 20610202251
+
+FE Emitidas	conocida
+FE Recibidas	conocida
+NC Emitidas	conocida
+NC Recibidas	conocida
+ND Emitidas	conocida
+ND Recibidas	conocida
+BVE Emitidas - OSE	conocida
+NC-BVE Emitidas - OSE	conocida
+ND-BVE Emitidas - OSE	conocida
+
+Total: 9; sin usar por el scraper: 0

@@ -29,7 +29,9 @@ class EstadoProcesamiento(str, Enum):
     SIN_DATOS = "sin_datos"
 
 
-# Comprobantes que el análisis con IA aún debe procesar.
+# Estados de procesamiento que cuentan como «sin procesar». Los valores
+# `analizado` y `error_analisis` vienen del análisis con IA ya retirado; se
+# conservan porque están escritos en los documentos existentes.
 ESTADOS_PENDIENTES_ANALISIS = frozenset(
     {EstadoProcesamiento.SIRE_RECIBIDO, EstadoProcesamiento.ERROR_ANALISIS}
 )

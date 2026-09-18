@@ -4,7 +4,7 @@ El auditor pide el PDF de cada factura y boleta como respaldo. La API del SIRE n
 
 ## `POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/pdfs`
 
-[iniciar_descarga](../../app/api/v1/routes/pdfs.py:50). Dispara en segundo plano la descarga del PDF de cada comprobante que todavía no lo tenga. Límite: 5/minuto.
+[iniciar_descarga](../../app/api/v1/routes/pdfs.py). Dispara en segundo plano la descarga del PDF de cada comprobante que todavía no lo tenga. Límite: 5/minuto.
 
 Responde de inmediato con `202 Accepted` y un `job_id`; el avance se consulta en [GET /api/v1/jobs/{job_id}](jobs.md).
 
@@ -45,9 +45,13 @@ En Mongo sólo se guarda el puntero, en el propio documento del comprobante y co
 
 > **En Docker**: la imagen no declara ningún `VOLUME`. Sin montar un volumen en `{WORKDIR}/data` los PDFs desaparecen en cada reinicio del contenedor. `docker-compose.yml` lo monta; ver el README.
 
+## `POST …/libros/{libro}/pdfs/zip-completo` y `GET …/libros/{libro}/pdfs/zip-completo/{job_id}`
+
+`iniciar_zip_completo` y `descargar_zip_completo`. Es la «descarga completa»: un job `descarga_pdfs` que vuelve a pedir a SUNAT los PDFs de **compras y ventas** del periodo (también los que ya tenían respaldo) y los empaqueta en un ZIP con las carpetas `comprobantes compra/` y `comprobantes venta/`, cada archivo nombrado `{ruc}_{tipo}_{serie}_{numero}_{n}.pdf`, más un `faltantes.csv` con los que SUNAT no entregó. El `POST` responde `202` con el `job_id` (`409` si ya hay una descarga en curso); el `GET` sirve el archivo cuando el job terminó (`409` mientras no esté listo, `404` si el archivo temporal ya se limpió). El `libro` de la ruta no filtra: el ZIP siempre lleva los dos registros.
+
 ## `GET /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/pdfs/zip`
 
-[exportar_zip](../../app/api/v1/routes/pdfs.py:155). Devuelve en un ZIP los PDFs ya guardados de ese periodo y libro, conservando la jerarquía de carpetas, más un **`manifiesto.csv`** que relaciona cada comprobante del registro con su archivo:
+`exportar_zip` en [pdfs.py](../../app/api/v1/routes/pdfs.py). Devuelve en un ZIP los PDFs ya guardados de ese periodo y libro, conservando la jerarquía de carpetas, más un **`manifiesto.csv`** que relaciona cada comprobante del registro con su archivo:
 
 ```
 serie_numero;tipo_cp;fecha_emision;documento_contraparte;razon_social;total;ruta_pdf;estado

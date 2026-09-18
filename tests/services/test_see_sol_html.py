@@ -78,7 +78,7 @@ def test_consulta_antes_de_imprimir_y_cierra_popup(monkeypatch):
         ['Cantidad', 'Unidad Medida', 'Descripción', 'Valor Unitario'],
         ['1', 'UNIDAD', 'Servicio', '10'],
     ]]
-    detalles, pdf, xml = scraper._consultar_uno_see_sol(
+    detalles, pdf = scraper._consultar_uno_see_sol(
         MagicMock(), context, MagicMock(),
         {'tipo_cp': '01', 'serie': 'E001', 'numero': '359',
          'documento_contraparte': 'proveedor', 'fecha_emision': date(2024, 2, 10)},
@@ -88,5 +88,5 @@ def test_consulta_antes_de_imprimir_y_cierra_popup(monkeypatch):
     assert parametros['tipoConsulta'] == '11'
     assert 'rowIndex=2' in popup.goto.call_args.args[0]
     assert detalles[0]['descripcion'] == 'Servicio'
-    assert pdf is xml is None
+    assert pdf is None
     popup.close.assert_called_once()
