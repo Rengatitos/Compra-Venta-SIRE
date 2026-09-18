@@ -74,6 +74,7 @@ def test_servicio_marca_solo_consultados_no_todo_el_lote(monkeypatch):
     filas = [{"_id": "1", "serie_numero": "F001-1"}, {"_id": "2", "serie_numero": "F001-2"}]
     monkeypatch.setattr(repo, "listar_pendientes_sunat", AsyncMock(return_value=filas))
     monkeypatch.setattr(repo, "contar_pendientes_sunat", AsyncMock(return_value=300))
+    monkeypatch.setattr(repo, "contar_omitidos_sin_detalle", AsyncMock(return_value=0))
     marcar = AsyncMock()
     monkeypatch.setattr(repo, "marcar_consulta_glosa", marcar)
 

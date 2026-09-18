@@ -7,7 +7,6 @@ data/
 *.png
 *.log
 .env
-test1.py
 source
 
 # entornos

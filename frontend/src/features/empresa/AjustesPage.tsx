@@ -206,7 +206,7 @@ export function AjustesPage() {
 
         <Panel
           titulo="Token de la API SIRE"
-          descripcion="Fuerza un token nuevo con las credenciales de cliente de la empresa, o con las globales de respaldo si no tiene propias. El rubro que usa la IA se deduce de este token."
+          descripcion="Fuerza un token nuevo con las credenciales de cliente de la empresa, o con las globales de respaldo si no tiene propias. Con él se descargan las propuestas del SIRE."
         >
           <div className={layout.filaFin}>
             <Button onClick={() => renovar.mutate()} cargando={renovar.isPending}>

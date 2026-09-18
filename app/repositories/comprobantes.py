@@ -6,7 +6,11 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import settings
-from app.services.sunat.texto import corregir_codificacion
+from app.domain.catalogos import (
+    PREFIJO_SERIE_SEE_SOL,
+    SIN_DETALLE_POR_LIBRO,
+    TIPOS_SIN_DETALLE_SUNAT,
+)
 from app.domain.comprobante import (
     Comprobante,
     EstadoProcesamiento,
@@ -20,6 +24,7 @@ from app.repositories._mongo import (
     monto_a_bson,
     monto_desde_bson,
 )
+from app.services.glosa import ETIQUETA_ESTADO_GLOSA, estado_glosa
 from app.services.sunat.texto import corregir_codificacion
 
 _CAMPOS_MONTO = (
@@ -194,10 +199,11 @@ async def listar_anulados_sunat(db, empresa_id: str, periodo: str, libro: Libro)
     }).to_list(length=None)
 
 
-async def cobertura_sunat(db, empresa_id: str, periodo: str, libro: Libro) -> dict[str, int]:
+async def cobertura_sunat(db, empresa_id: str, periodo: str, libro: Libro) -> dict[str, Any]:
     """Cobertura de todo el libro, independiente de la paginación del listado."""
+    filtro = {"empresa_id": empresa_id, "periodo": periodo, "libro": libro.value}
     filas = await _col(db).aggregate([
-        {"$match": {"empresa_id": empresa_id, "periodo": periodo, "libro": libro.value}},
+        {"$match": filtro},
         {"$group": {
             "_id": None,
             "total": {"$sum": 1},
@@ -210,7 +216,21 @@ async def cobertura_sunat(db, empresa_id: str, periodo: str, libro: Libro) -> di
         }},
         {"$project": {"_id": 0}},
     ]).to_list(length=1)
-    return filas[0] if filas else {"total": 0, "con_detalle": 0, "con_pdf": 0}
+    salida = filas[0] if filas else {"total": 0, "con_detalle": 0, "con_pdf": 0}
+
+    # El estado de la glosa combina tipo, glosa manual, ítems, leyenda y si ya
+    # se consultó el portal: replicar esa regla en un `$group` no compensa para
+    # periodos de unos cientos de comprobantes, así que se cuenta en Python
+    # sobre una proyección mínima.
+    conteo = dict.fromkeys(ETIQUETA_ESTADO_GLOSA, 0)
+    proyeccion = {
+        "tipo_cp": 1, "libro": 1, "glosa": 1, "glosa_consultada": 1,
+        "leyenda_sunat": 1, "detalle_sunat.descripcion": 1,
+    }
+    async for documento in _col(db).find(filtro, proyeccion):
+        conteo[estado_glosa(documento)] += 1
+    salida["estado_glosa"] = conteo
+    return salida
 
 
 async def listar(
@@ -266,12 +286,35 @@ async def listar_pendientes_analisis(
             {"estado_procesamiento": {"$exists": False}},
         ],
     }
-    # El prompt de la IA depende del libro (una venta no es un gasto), así que
-    # cada lote se analiza por separado.
+    # Ventas y compras se procesan como lotes separados: comparten `serie_numero`
+    # y mezclarlos escribiría en el documento equivocado.
     if libro is not None:
         filtro["libro"] = libro.value
     cursor = _col(db).find(filtro).sort([("_id", -1)])
     return await cursor.to_list(length=limit)
+
+
+def _sin_detalle_en_sunat(libro: Libro) -> list[dict[str, Any]]:
+    """Cláusulas Mongo que casan con lo que el portal SOL no publica para ese libro.
+
+    `tipo_cp` se guarda normalizado a dos dígitos (`normalizar_tipo_cp`), así
+    que se compara por literal. Las excepciones por libro (boletas recibidas en
+    compras) no alcanzan a las series SEE-SOL, que tienen su propio módulo.
+    """
+    clausulas: list[dict[str, Any]] = [{"tipo_cp": {"$in": sorted(TIPOS_SIN_DETALLE_SUNAT)}}]
+    por_libro = SIN_DETALLE_POR_LIBRO.get(libro.value, frozenset())
+    if por_libro:
+        clausulas.append({
+            "tipo_cp": {"$in": sorted(por_libro)},
+            "serie": {"$not": {"$regex": f"^{PREFIJO_SERIE_SEE_SOL}", "$options": "i"}},
+        })
+    return clausulas
+
+
+def _excluir_tipos_sin_detalle(libro: Libro) -> dict[str, Any]:
+    # Buscarlos en el portal sólo cuesta un timeout por comprobante y termina
+    # en "no encontrado".
+    return {"$nor": _sin_detalle_en_sunat(libro)}
 
 
 def _filtro_sin_detalle(empresa_id: str, periodo: str, libro: Libro) -> dict[str, Any]:
@@ -283,6 +326,7 @@ def _filtro_sin_detalle(empresa_id: str, periodo: str, libro: Libro) -> dict[str
         "periodo": periodo,
         "libro": libro.value,
         "detalle_sunat": {"$exists": False},
+        **_excluir_tipos_sin_detalle(libro),
     }
 
 
@@ -407,10 +451,12 @@ def _filtro_pendiente_sunat(empresa_id: str, periodo: str, libro: Libro) -> dict
     # **o** el PDF. Las dos cosas salen de la misma consulta en SOL, así que
     # abrir el navegador dos veces (una por cada cosa) era pagar el mismo
     # recorrido dos veces.
+    # Los tipos que SUNAT no publica quedan fuera de la consulta al portal.
     filtro = {
         "empresa_id": empresa_id,
         "periodo": periodo,
         "libro": libro.value,
+        **_excluir_tipos_sin_detalle(libro),
         "$or": [
             {"detalle_sunat": {"$exists": False}},
             {"pdf_sunat": {"$exists": False}},
@@ -441,6 +487,18 @@ async def contar_pendientes_sunat(
 ) -> int:
     """Cuántos siguen sin detalle o sin PDF, ignorando el tope del listado."""
     return await _col(db).count_documents(_filtro_pendiente_sunat(empresa_id, periodo, libro))
+
+
+async def contar_omitidos_sin_detalle(
+    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, libro: Libro
+) -> int:
+    """Cuántos comprobantes del libro son de tipos que SUNAT no publica y no se consultan."""
+    return await _col(db).count_documents({
+        "empresa_id": empresa_id,
+        "periodo": periodo,
+        "libro": libro.value,
+        "$or": _sin_detalle_en_sunat(libro),
+    })
 
 
 def _filtro_sin_pdf(empresa_id: str, periodo: str, libro: Libro) -> dict[str, Any]:
@@ -496,39 +554,6 @@ async def guardar_pdf_sunat(
         {
             "$set": {
                 "pdf_sunat": {
-                    "ruta": ruta,
-                    "bytes": bytes_,
-                    "descargado_en": datetime.now(UTC),
-                }
-            }
-        },
-    )
-
-
-async def guardar_xml_sunat(
-    db: AsyncIOMotorDatabase,
-    empresa_id: str,
-    periodo: str,
-    libro: Libro,
-    serie_numero: str,
-    ruta: str,
-    bytes_: int,
-) -> None:
-    """Apunta dónde quedó el XML de un comprobante.
-
-    Se guarda la ruta relativa al almacén. `xml_sunat` es sólo un puntero
-    de respaldo, nunca un criterio de pendiente.
-    """
-    await _col(db).update_one(
-        {
-            "empresa_id": empresa_id,
-            "periodo": periodo,
-            "libro": libro.value,
-            "serie_numero": serie_numero,
-        },
-        {
-            "$set": {
-                "xml_sunat": {
                     "ruta": ruta,
                     "bytes": bytes_,
                     "descargado_en": datetime.now(UTC),

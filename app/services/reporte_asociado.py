@@ -3,7 +3,7 @@ import io
 import re
 import tempfile
 import zipfile
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from copy import copy
 from pathlib import Path
 
@@ -12,10 +12,10 @@ from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Font
 
 from app.domain.comprobante import Libro
-from app.services import almacen_pdf
 from app.repositories import comprobantes
+from app.services import almacen_pdf
 from app.services.comprobante_service import serializar_lote
-from app.services.glosa import OBSERVACION_SIN_GLOSA, obtener_glosa
+from app.services.glosa import ESTADO_PENDIENTE, estado_glosa
 from app.services.plantilla_excel import excel_plantilla
 from app.services.revision_comprobantes import anulado
 
@@ -41,10 +41,9 @@ async def registros(db, empresa, periodo):
 
 def estado(registros):
     filas = [f for grupo in registros.values() for f in grupo]
-    pendientes = sum(
-        not obtener_glosa(f) and f.get('glosa_consultada') is not True
-        for f in filas
-    )
+    # Sólo bloquea el reporte lo que aún puede cambiar: un tipo consultable
+    # que no se ha consultado. Los tipos que SUNAT no publica ya son definitivos.
+    pendientes = sum(estado_glosa(f) == ESTADO_PENDIENTE for f in filas)
     hay_libros = any(registros.get(libro) for libro in (Libro.COMPRAS, Libro.VENTAS))
     return {'habilitado': hay_libros and pendientes == 0, 'pendientes': pendientes}
 
@@ -83,9 +82,12 @@ def excel(registros, periodo, ruc):
         if not filas:
             continue
         datos = serializar_lote(filas)
-        for dato, fila in zip(datos, filas, strict=True):
-            if not dato.get('glosa') and fila.get('glosa_consultada') is True:
-                dato['glosa'] = OBSERVACION_SIN_GLOSA
+        for dato in datos:
+            # En el libro conjunto la celda de glosa no puede quedar vacía sin
+            # explicación: se escribe la observación (sin glosa, tipo sin
+            # detalle, en evaluación) en su lugar.
+            if not dato.get('glosa') and dato.get('observacion'):
+                dato['glosa'] = dato['observacion']
         original = load_workbook(excel_plantilla(datos, libro)).worksheets[0]
         hoja = wb.create_sheet('Registro de ventas' if libro == Libro.VENTAS else 'Registro de compras')
         for rango in original.merged_cells.ranges:

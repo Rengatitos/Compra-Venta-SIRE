@@ -32,9 +32,18 @@ async def extraer(
     pendientes = await repo_comprobantes.listar_pendientes_sunat(
         db, empresa_id, periodo, libro
     )
+    # Tipos que SUNAT no publica (recibos de servicios, boletos, pólizas…):
+    # quedan fuera de la lista y se informan aparte para que el job diga por
+    # qué no los visitó.
+    omitidos = await repo_comprobantes.contar_omitidos_sin_detalle(
+        db, empresa_id, periodo, libro
+    )
 
     if not pendientes:
-        await reportar(0, 0, "No hay comprobantes pendientes de detalle ni de PDF")
+        mensaje = "No hay comprobantes pendientes de detalle ni de PDF"
+        if omitidos:
+            mensaje += f"; {omitidos} de tipos sin detalle en SUNAT no se consultan"
+        await reportar(0, 0, mensaje)
         return {
             "procesados": 0,
             "con_detalle": 0,
@@ -42,6 +51,7 @@ async def extraer(
             "descargados_pdf": 0,
             "sin_pdf": 0,
             "pendientes": 0,
+            "omitidos_sin_detalle": omitidos,
         }
 
     total = len(pendientes)
@@ -49,14 +59,19 @@ async def extraer(
         db, empresa_id, periodo, libro
     )
     faltan = max(total_pendientes - total, 0)
+    nota_omitidos = (
+        f"; {omitidos} de tipos sin detalle en SUNAT no se consultan" if omitidos else ""
+    )
     if faltan:
         await reportar(
             0,
             total,
-            f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta",
+            f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta{nota_omitidos}",
         )
     else:
-        await reportar(0, total, f"Extrayendo detalle y PDF de {total} comprobantes")
+        await reportar(
+            0, total, f"Extrayendo detalle y PDF de {total} comprobantes{nota_omitidos}"
+        )
 
     # El scraping corre en un hilo aparte (Playwright es síncrono) y avisa desde
     # ahí. Motor está atado al loop, así que el reporte tiene que volver a él;
@@ -164,44 +179,6 @@ async def extraer(
         pdfs_guardados[serie_numero] = len(contenido)
         futuro.add_done_callback(_registrar_fallo)
 
-    def guardar_xml(serie_numero: str, contenido_xml: bytes) -> None:
-        doc = por_serie.get(serie_numero)
-        if doc is None or not contenido_xml:
-            return
-        try:
-            destino = almacen_pdf.guardar(
-                empresa["ruc"],
-                libro,
-                periodo,
-                doc.get("tipo_cp"),
-                doc.get("serie", ""),
-                doc.get("numero", ""),
-                contenido_xml,
-                extension="xml",
-                subcarpeta="xml",
-            )
-        except (OSError, ValueError):
-            logger.exception("No se pudo guardar el XML serie_numero=%s", serie_numero)
-            return
-
-        try:
-            futuro = asyncio.run_coroutine_threadsafe(
-                repo_comprobantes.guardar_xml_sunat(
-                    db,
-                    empresa_id,
-                    periodo,
-                    libro,
-                    serie_numero,
-                    almacen_pdf.relativa(destino),
-                    len(contenido_xml),
-                ),
-                loop,
-            )
-        except RuntimeError:
-            logger.debug("No se pudo guardar el puntero del XML: el loop está cerrado")
-            return
-        futuro.add_done_callback(_registrar_fallo)
-
     consultados = []
     complementos = []
 
@@ -218,7 +195,6 @@ async def extraer(
         al_extraer=guardar,
         descargar_pdf=True,
         al_descargar=guardar_pdf,
-        al_descargar_xml=guardar_xml,
         al_extraer_leyenda=guardar_leyenda,
         al_consultar=al_consultar,
     )
@@ -270,4 +246,5 @@ async def extraer(
         "descargados_pdf": len(pdfs_guardados),
         "sin_pdf": sin_pdf,
         "pendientes": faltan,
+        "omitidos_sin_detalle": omitidos,
     }

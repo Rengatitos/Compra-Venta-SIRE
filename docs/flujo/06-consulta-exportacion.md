@@ -1,6 +1,6 @@
 # Flujo — Consulta y exportación de comprobantes
 
-[comprobante_service.serializar](../../app/services/comprobante_service.py:35) convierte un documento de Mongo a la forma que expone la API: resuelve la descripción legible del tipo de comprobante desde el catálogo ([describe_comprobante](../../app/domain/catalogos.py)), convierte fechas BSON a `date` y montos `Decimal128` a `float` (ver [_mongo.py](../../app/repositories/_mongo.py)), y expone la glosa bajo la clave `glosa`. El campo heredado `analisis` devuelve `None`.
+[comprobante_service.serializar](../../app/services/comprobante_service.py) convierte un documento de Mongo a la forma que expone la API: resuelve la descripción legible del tipo de comprobante desde el catálogo ([describe_comprobante](../../app/domain/catalogos.py)), convierte fechas BSON a `date` y montos `Decimal128` a `float` (ver [_mongo.py](../../app/repositories/_mongo.py)), y expone la glosa bajo la clave `glosa`. El campo heredado `analisis` devuelve `None`.
 
 No existe deduplicación al leer: el índice único `uniq_comprobante` (ver [ciclo de vida](../arquitectura/ciclo-de-vida.md)) garantiza que un comprobante no pueda insertarse dos veces, así que listar y exportar leen directamente sin filtrar duplicados históricos.
 
@@ -17,10 +17,11 @@ La plantilla real vive en [app/resources/plantilla_registro.xlsx](../../app/reso
 
 No se reconstruye el layout a mano: se abre el archivo y se escriben las filas debajo de sus encabezados. La plantilla oficial de Contasis trae trece filas de notas de uso, título y especificación antes del encabezado, y letra y columnas tan chicas que el propio encabezado se cortaba; ningún registro real de contador las conserva. `scripts/preparar_plantilla.py` las quita: el encabezado de tres niveles queda en las filas 1–3, negrita sobre azul, y los datos empiezan en la fila 4, que además sirve de prototipo de estilo (bordes, formato contable, fuente). Cada fila nueva hereda ese estilo, salvo las columnas de fecha, que se fuerzan al `dd/mm/yyyy` que documentaba la especificación original, y salvo la altura, que la resuelve la propia plantilla (`defaultRowHeight`) en vez de fijarse fila por fila. Al final se reescribe un único pie `TOTAL` que suma el rango real de datos.
 
-### Glosa y cuentas
+### Glosa, estado y observación
 
-La glosa procede del detalle SUNAT o de su edición manual. La cuenta base queda vacía.
-Las contrapartidas generales de la plantilla son 4212 para compras y 1212 para ventas.
+La glosa procede del detalle SUNAT, de la leyenda del comprobante cuando los ítems no describen nada, o de su edición manual (ver [glosa y estado](05-glosa-y-estado.md)); se recorta a 60 caracteres y va en mayúsculas, porque es lo que admite la columna GLOSA de Contasis. La cuenta base queda vacía. Las contrapartidas generales de la plantilla son 4212 para compras y 1212 para ventas.
+
+A la derecha de la última columna oficial se añaden dos columnas propias, **Observación** y **Estado glosa**, sin desplazar las de la plantilla (Contasis las ignora al importar). Observación explica por qué una fila no tiene glosa —«No se pudo obtener glosa», «SUNAT no publica el detalle de este tipo de comprobante», «Tipo de comprobante en evaluación»— o remite a la hoja Anulados; Estado glosa lleva «Con glosa», «Sin glosa», «En evaluación» o «Pendiente». Las dos letras de columna se calculan antes de escribir la primera fila, porque `max_column` cambia en cuanto se llena la primera de ellas.
 
 ### Columnas que se llenan con una regla, y lo que sigue vacío
 

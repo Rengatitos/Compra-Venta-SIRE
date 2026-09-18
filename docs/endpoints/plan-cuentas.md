@@ -5,7 +5,7 @@ El plan contable (PCGE) de la empresa, tal como lo exporta Contasis. Es el catá
 
 ## `POST /api/v1/empresas/{ruc}/plan-cuentas`
 
-[cargar_cuentas](../../app/api/v1/routes/plan_cuentas.py:41). Multipart con el campo `archivo` (`.xlsx` o `.xlsm`). Límite: 5/minuto.
+[cargar_cuentas](../../app/api/v1/routes/plan_cuentas.py). Multipart con el campo `archivo` (`.xlsx` o `.xlsm`). Límite: 5/minuto.
 
 **Reemplaza el maestro completo**, no fusiona: el archivo es la fuente de verdad, y una cuenta que Contasis dejó de exportar es una cuenta que ya no existe. Fusionando se quedaría viva para siempre.
 
@@ -28,7 +28,7 @@ Todas las celdas se recortan: Contasis rellena a ancho fijo con espacios (`'01  
 
 ## `GET /api/v1/empresas/{ruc}/plan-cuentas`
 
-[listar_cuentas](../../app/api/v1/routes/plan_cuentas.py:25). Paginado (`limit` ≤ 3000, `skip`) y ordenado por código.
+[listar_cuentas](../../app/api/v1/routes/plan_cuentas.py). Paginado (`limit` ≤ 3000, `skip`) y ordenado por código.
 
 `busqueda` filtra por código **y** por descripción a la vez, sin distinguir mayúsculas: el contador conoce el número de unas cuentas y el nombre de otras. El texto se neutraliza como expresión regular, así que un `(` o un `*` tecleado en el buscador no tumba la consulta.
 
@@ -46,7 +46,7 @@ Todas las celdas se recortan: Contasis rellena a ancho fijo con espacios (`'01  
 
 ## `DELETE /api/v1/empresas/{ruc}/plan-cuentas`
 
-[eliminar_cuentas](../../app/api/v1/routes/plan_cuentas.py:80). Borra el maestro de la empresa y devuelve cuántas cuentas se eliminaron. También se borra en cascada al eliminar la empresa.
+[eliminar_cuentas](../../app/api/v1/routes/plan_cuentas.py). Borra el maestro de la empresa y devuelve cuántas cuentas se eliminaron. También se borra en cascada al eliminar la empresa.
 
 ## Colección `plan_cuentas`
 

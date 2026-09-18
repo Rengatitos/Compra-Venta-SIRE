@@ -2,7 +2,6 @@
 
 import re
 
-
 _SECUENCIA = re.compile(r"[ÃÂ][\u0080-\u00bf€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ]")
 
 

@@ -1,6 +1,6 @@
 # Endpoints — Analytics
 
-Todos bajo `/api/v1/analytics`, pensados para ser consumidos por un sistema externo de contabilidad que consulta varias empresas a la vez. Se autentican con el mismo JWT, pero vía [token_dashboard](../../app/api/v1/routes/analytics.py:14), que solo decodifica el token sin resolver la empresa contra Mongo.
+Todos bajo `/api/v1/analytics`, pensados para ser consumidos por un sistema externo de contabilidad que consulta varias empresas a la vez. Se autentican con el mismo JWT, pero vía [token_dashboard](../../app/api/v1/routes/analytics.py), que solo decodifica el token sin resolver la empresa contra Mongo.
 
 Todos aceptan `rucs` (opcional, RUCs separados por comas — sin él, el filtro de empresa queda vacío y las agregaciones no devuelven nada), `periodo` y `libro` (default `compras`).
 
@@ -12,4 +12,4 @@ Todos aceptan `rucs` (opcional, RUCs separados por comas — sin él, el filtro 
 | `GET /periodos` | [periodos_disponibles](../../app/services/analytics_service.py) — periodos con datos, para las empresas indicadas. |
 | `GET /dashboard-data` | Ejecuta las cinco consultas anteriores en paralelo (`asyncio.gather`) y las devuelve en un solo payload, más el listado de comprobantes del periodo. |
 
-Ver también [flujo de analytics](../flujo/07-analytics.md).
+Ver también [flujo de analytics](../flujo/08-analytics.md).

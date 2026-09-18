@@ -54,7 +54,7 @@ def test_zip_nuevo_ambos_registros_colisiones_y_faltantes(tmp_path, monkeypatch)
     with zipfile.ZipFile(servicio.ruta_archivo(EMPRESA["ruc"], JOB)) as archivo:
         nombres = archivo.namelist()
         assert "comprobantes compra/" in nombres
-        assert "comprovantes venta/" in nombres
+        assert "comprobantes venta/" in nombres
         contenidos = [archivo.read(n) for n in nombres if n.endswith(".pdf")]
         assert set(contenidos) == {b"%PDF-1.4 nuevo 1", b"%PDF-1.4 nuevo 2", b"%PDF-1.4 nuevo 4"}
         assert "F001-1" in archivo.read("faltantes.csv").decode("utf-8-sig")

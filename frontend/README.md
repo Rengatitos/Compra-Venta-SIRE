@@ -1,9 +1,10 @@
 # Frontend — Panel SIRE
 
 SPA en React 19 + TypeScript que opera la API de [Sire](../README.md): alta y login de empresa,
-periodos, sincronización de la propuesta de compras del SIRE, extracción de detalle del portal SOL
-como job asíncrono, clasificación contable con IA, referencias PDF para el RAG, consulta / edición /
-exportación de comprobantes y el dashboard de analítica.
+periodos, sincronización de la propuesta de compras y ventas del SIRE, extracción de detalle y PDF
+del portal SOL como job asíncrono, estado de la glosa por comprobante, detracciones, consulta /
+edición / exportación de comprobantes, auditoría, reporte asociado, maestro de cuentas y el
+dashboard de analítica.
 
 ## Arrancar
 
@@ -46,9 +47,16 @@ src/
 ```
 
 Las rutas autenticadas son `/` (dashboard), `/periodos`, `/periodos/:periodo` (comprobantes del
-periodo, desde donde se lanzan la extracción y el análisis), `/procesos`, `/referencias` y
-`/ajustes`. La ficha de un comprobante no es una ruta: es un modal sobre el listado, direccionado
-con `?comprobante=<serie>` para que el enlace se pueda compartir y «atrás» lo cierre.
+periodo, con el conmutador compras/ventas, desde donde se lanzan la extracción de detalle, las
+descargas y las detracciones), `/periodos/:periodo/auditoria`, `/periodos/:periodo/reporte`,
+`/procesos`, `/plan-cuentas` y `/ajustes`. La ficha de un comprobante no es una ruta: es un modal
+sobre el listado, direccionado con `?comprobante=<serie>` para que el enlace se pueda compartir y
+«atrás» lo cierre.
+
+En el listado, la columna **Estado glosa** (`features/comprobantes/estadoGlosa.ts`) muestra con una
+insignia si el comprobante tiene glosa, no la tiene, está en evaluación o pendiente de consultar,
+y la tarjeta «Con glosa» resume los cuatro conteos de todo el libro (`GET …/cobertura-sunat`). La
+ficha añade la observación y la leyenda de SUNAT junto a la descripción editable.
 
 Nadie llama a `fetch` fuera de `src/lib/http.ts`; hay una regla de ESLint que lo impide. Los hooks de
 React Query viven junto a la pantalla que los usa, y `src/api/` solo contiene funciones puras.
@@ -60,8 +68,9 @@ React Query viven junto a la pantalla que los usa, y `src/api/` solo contiene fu
 muertas en disco. Un `401` limpia la sesión y devuelve al login con un aviso, porque caducar en
 pantalla es el caso normal, no la excepción.
 
-**Solo compras.** `libro=ventas` responde `501` en el backend (el RVIE no tiene cliente HTTP), así que
-la opción existe en la interfaz pero está deshabilitada y explicada. La UI no deja provocar ese 501.
+**Dos libros.** Compras (RCE) y ventas (RVIE) comparten pantalla y se alternan con el control
+segmentado de la cabecera; al crear un periodo se sincronizan ambos en serie. La barra de progreso de
+un job sigue al libro seleccionado, y el job del otro libro se anuncia aparte.
 
 **`descartados` se muestra siempre.** La sincronización descarta las series que no empiezan por `F` o
 `E` y las fechas fuera del periodo. Si solo se mostrara «se sincronizaron 12», nadie entendería

@@ -6,7 +6,7 @@ from typing import Any
 
 from app.domain.catalogos import describe_comprobante
 from app.repositories._mongo import fecha_desde_bson, monto_a_float
-from app.services.glosa import observacion_glosa, obtener_glosa
+from app.services.glosa import estado_glosa, observacion_glosa, obtener_glosa
 from app.services.sunat.contraparte import completar
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,13 @@ def serializar(documento: dict[str, Any]) -> dict[str, Any]:
         "analisis": None,
         "glosa": obtener_glosa(documento),
         "observacion": observacion_glosa(documento),
+        # Con glosa / sin glosa / en evaluación / pendiente, según el tipo de
+        # comprobante y si ya se consultó el portal. Lo lee el listado, el
+        # Excel y el reporte asociado.
+        "estado_glosa": estado_glosa(documento),
+        "leyenda_sunat": [
+            linea for linea in documento.get("leyenda_sunat") or [] if isinstance(linea, str)
+        ],
         "detalle_sunat": documento.get("detalle_sunat", []) or [],
         "detraccion": _tiene_detraccion(documento),
         "detracciones": documento.get("detracciones") or [],

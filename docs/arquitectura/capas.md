@@ -10,7 +10,7 @@ Dentro de esa carpeta hay seis subcarpetas:
 - **`domain`** contiene lógica pura, sin I/O: el modelo canónico de comprobante y sus normalizadores ([comprobante.py](../../app/domain/comprobante.py)), los catálogos de códigos SUNAT ([catalogos.py](../../app/domain/catalogos.py)), la validación del formato de periodo ([periodo.py](../../app/domain/periodo.py)), el contrato de trabajos asíncronos ([jobs.py](../../app/domain/jobs.py)) y la deducción del rubro desde el CIIU ([rubro.py](../../app/domain/rubro.py)). Ningún módulo de esta carpeta importa `app.db`, `app.repositories` ni `requests`: todo lo que entra son estructuras de datos, y por eso es la única carpeta cubierta por tests que no requieren Mongo ni SUNAT (ver [tests/domain](../../tests/domain)).
 - **`repositories`** es el único punto de acceso a MongoDB. Un archivo por colección: `empresas.py`, `periodos.py`, `comprobantes.py`, `jobs.py`, `plan_cuentas.py`. [_mongo.py](../../app/repositories/_mongo.py) centraliza los nombres de colección y las conversiones entre el dominio y BSON — en particular, `Decimal` ↔ `Decimal128` para los montos y `date` ↔ `datetime` para las fechas.
 - **`core`** contiene la configuración y los mecanismos transversales: [config.py](../../app/core/config.py) (variables de entorno), [auth.py](../../app/core/auth.py) (JWT y dependencias de autorización, ver [autenticación](autenticacion.md)) y [encryption.py](../../app/core/encryption.py) (cifrado de contraseñas SOL, ver [cifrado](cifrado.md)).
-- **`db`** tiene un único archivo, [database.py](../../app/db/database.py), con la conexión a Mongo vía Motor y un único accesor de base — [get_db](../../app/db/database.py:31).
+- **`db`** tiene un único archivo, [database.py](../../app/db/database.py), con la conexión a Mongo vía Motor y un único accesor de base — [get_db](../../app/db/database.py).
 - **`schemas`** reúne los modelos Pydantic de request/response: `empresa.py`, `periodo.py`, `comprobante.py`, `job.py` y `generic.py` (respuestas genéricas reutilizadas entre rutas).
 - **`services`** contiene la lógica de negocio: `propuesta_service.py` (orquesta la sincronización con el SIRE), `comprobante_service.py` (serialización hacia la API y glosa SUNAT), `jobs_service.py` (ejecución de trabajos asíncronos con seguimiento de progreso), `detalle_service.py` (extracción de detalle vía scraping, como job), `analytics_service.py` (agregaciones para el dashboard), `export_service.py` (PDF de revisión y Excel de un comprobante), `plantilla_excel.py` (el registro de compras/ventas sobre la plantilla oficial de Contasis), `scraping_sunat.py` (automatización del portal SOL con Playwright) y el paquete `sunat/` (cliente HTTP hacia la API oficial: `auth.py` para OAuth, `propuesta.py` para la descarga —URL, credenciales y paginación— y `rce.py` / `rvie.py` para el mapeo de campos de cada libro, sobre los helpers comunes de `campos.py`).
 
@@ -26,7 +26,7 @@ Toda request HTTP atraviesa las mismas capas, en el mismo orden:
 
 **repositories.** Son la única capa que arma queries de Mongo y sabe el nombre de cada colección. Los services no acceden a `db["comprobantes"]` directamente — llaman a `repo_comprobantes.listar(db, ...)`. Esta capa también es responsable de convertir entre el modelo de dominio (`Decimal`, `date`) y su representación en BSON (`Decimal128`, `datetime`).
 
-**db.** [database.py](../../app/db/database.py) es la capa mínima de conexión a Mongo vía Motor. Expone [get_db](../../app/db/database.py:31), que lee la variable global inicializada por [connect_to_mongo](../../app/db/database.py:16) durante el arranque de la aplicación. Todas las colecciones del sistema viven en una única base lógica, cuyo nombre se define en `MONGO_FACTURASDB_NAME`.
+**db.** [database.py](../../app/db/database.py) es la capa mínima de conexión a Mongo vía Motor. Expone [get_db](../../app/db/database.py), que lee la variable global inicializada por [connect_to_mongo](../../app/db/database.py) durante el arranque de la aplicación. Todas las colecciones del sistema viven en una única base lógica, cuyo nombre se define en `MONGO_FACTURASDB_NAME`.
 
 ## Convención de rutas
 
@@ -34,7 +34,7 @@ Toda request HTTP atraviesa las mismas capas, en el mismo orden:
 /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/<recurso>
 ```
 
-La identidad del recurso es el **RUC**, no el `_id` de Mongo. El sujeto de la request sale siempre del **JWT**, nunca del path: la dependencia [empresa_actual](../../app/api/v1/deps.py:9) resuelve la empresa desde el token y verifica que su RUC coincida con el del path, devolviendo `403` si no.
+La identidad del recurso es el **RUC**, no el `_id` de Mongo. El sujeto de la request sale siempre del **JWT**, nunca del path: la dependencia [empresa_actual](../../app/api/v1/deps.py) resuelve la empresa desde el token y verifica que su RUC coincida con el del path, devolviendo `403` si no.
 
 `libro` (`ventas` \| `compras`) es un path param, no dos árboles de rutas separados: ventas y compras comparten el grueso de la lógica y duplicar rutas garantizaría que divergieran. Lo llevan `propuesta`, `analisis` y `detalle`.
 
@@ -45,4 +45,4 @@ La identidad del recurso es el **RUC**, no el `_id` de Mongo. El sujeto de la re
 - [Rate limiting](rate-limiting.md) — límites de tasa por endpoint.
 - [Ciclo de vida de la aplicación](ciclo-de-vida.md) — qué ocurre al arrancar y al apagar el servidor.
 
-Además, [main.py](../../app/main.py:71) configura CORS con la lista de orígenes de `CORS_ORIGINS`, credenciales permitidas, y todos los métodos y encabezados habilitados.
+Además, [main.py](../../app/main.py) configura CORS con la lista de orígenes de `CORS_ORIGINS`, credenciales permitidas, y todos los métodos y encabezados habilitados.
