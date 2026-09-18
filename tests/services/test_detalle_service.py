@@ -52,6 +52,9 @@ def _correr(
     async def contar_pendientes_sunat(db, empresa_id, periodo, libro_pedido):
         return len(pendientes) if total_en_bd is None else total_en_bd
 
+    async def contar_omitidos_sin_detalle(db, empresa_id, periodo, libro_pedido):
+        return 0
+
     async def guardar_detalle_sunat(db, empresa_id, periodo, libro_pedido, serie_numero, detalle):
         libros_pedidos.append(libro_pedido)
         guardados.append(serie_numero)
@@ -105,6 +108,7 @@ def _correr(
     repo = detalle_service.repo_comprobantes
     monkeypatch.setattr(repo, "listar_pendientes_sunat", listar_pendientes_sunat)
     monkeypatch.setattr(repo, "contar_pendientes_sunat", contar_pendientes_sunat)
+    monkeypatch.setattr(repo, "contar_omitidos_sin_detalle", contar_omitidos_sin_detalle)
     monkeypatch.setattr(repo, "guardar_detalle_sunat", guardar_detalle_sunat)
     monkeypatch.setattr(repo, "guardar_xml_sunat", guardar_xml_sunat)
     monkeypatch.setattr(repo, "guardar_pdf_sunat", guardar_pdf_sunat)
@@ -138,6 +142,7 @@ def test_reporta_el_avance_de_cada_comprobante(monkeypatch):
         "descargados_pdf": 3,
         "sin_pdf": 0,
         "pendientes": 0,
+        "omitidos_sin_detalle": 0,
     }
 
     reportes = salida["reportes"]

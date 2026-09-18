@@ -9,7 +9,7 @@ from app.domain.comprobante import Libro
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import periodos as repo_periodos
 from app.repositories._mongo import monto_a_float
-from app.schemas.comprobante import ComprobanteResponse, ComprobanteUpdate
+from app.schemas.comprobante import CoberturaSunat, ComprobanteResponse, ComprobanteUpdate
 from app.schemas.generic import MessageResponse
 from app.services import export_service, plantilla_excel, propuesta_service
 from app.services.comprobante_service import serializar, serializar_lote
@@ -76,7 +76,7 @@ async def anulados_sunat(
     return serializar_lote(await repo_comprobantes.listar_anulados_sunat(db, empresa, periodo, libro))
 
 
-@router.get("/cobertura-sunat", response_model=dict[str, int])
+@router.get("/cobertura-sunat", response_model=CoberturaSunat)
 async def cobertura_sunat(
     periodo: str = Depends(periodo_valido),
     empresa: str = Depends(empresa_id),

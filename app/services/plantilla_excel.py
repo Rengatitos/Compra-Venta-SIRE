@@ -48,6 +48,7 @@ from app.domain.comprobante import (
     normalizar_fecha,
     normalizar_tipo_cp,
 )
+from app.services.glosa import ETIQUETA_ESTADO_GLOSA
 
 RUTA_PLANTILLA = Path(__file__).resolve().parents[1] / "resources" / "plantilla_registro.xlsx"
 
@@ -614,12 +615,19 @@ def excel_plantilla(
     prototipos = _prototipos(hoja)
     _limpiar_ejemplos(hoja)
 
-    # Columna adicional al final, sin desplazar las columnas de la plantilla.
+    # Columnas adicionales al final, sin desplazar las columnas de la
+    # plantilla. Las dos letras se calculan antes de escribir nada: al llenar
+    # la primera, `max_column` ya cambia.
     columna_observacion = get_column_letter(hoja.max_column + 1)
-    hoja[f"{columna_observacion}2"] = "Observación"
-    hoja.merge_cells(f"{columna_observacion}2:{columna_observacion}3")
-    hoja[f"{columna_observacion}2"]._style = copy(hoja["I2"]._style)
-    hoja.column_dimensions[columna_observacion].width = 34
+    columna_estado = get_column_letter(hoja.max_column + 2)
+    for columna, cabecera, ancho in (
+        (columna_observacion, "Observación", 34),
+        (columna_estado, "Estado glosa", 16),
+    ):
+        hoja[f"{columna}2"] = cabecera
+        hoja.merge_cells(f"{columna}2:{columna}3")
+        hoja[f"{columna}2"]._style = copy(hoja["I2"]._style)
+        hoja.column_dimensions[columna].width = ancho
 
     columnas_fecha = _COLUMNAS_FECHA[libro]
     columnas_importe = _COLUMNAS_IMPORTE[libro]
@@ -634,6 +642,7 @@ def excel_plantilla(
             else _fila_ventas(comprobante, conversion)
         )
         valores[columna_observacion] = comprobante.get("observacion") or None
+        valores[columna_estado] = ETIQUETA_ESTADO_GLOSA.get(comprobante.get("estado_glosa"))
         descripciones_anulado = [
             item["descripcion"]
             for item in comprobante.get("detalle_sunat") or []

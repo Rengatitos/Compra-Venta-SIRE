@@ -32,9 +32,18 @@ async def extraer(
     pendientes = await repo_comprobantes.listar_pendientes_sunat(
         db, empresa_id, periodo, libro
     )
+    # Tipos que SUNAT no publica (recibos de servicios, boletos, pólizas…):
+    # quedan fuera de la lista y se informan aparte para que el job diga por
+    # qué no los visitó.
+    omitidos = await repo_comprobantes.contar_omitidos_sin_detalle(
+        db, empresa_id, periodo, libro
+    )
 
     if not pendientes:
-        await reportar(0, 0, "No hay comprobantes pendientes de detalle ni de PDF")
+        mensaje = "No hay comprobantes pendientes de detalle ni de PDF"
+        if omitidos:
+            mensaje += f"; {omitidos} de tipos sin detalle en SUNAT no se consultan"
+        await reportar(0, 0, mensaje)
         return {
             "procesados": 0,
             "con_detalle": 0,
@@ -42,6 +51,7 @@ async def extraer(
             "descargados_pdf": 0,
             "sin_pdf": 0,
             "pendientes": 0,
+            "omitidos_sin_detalle": omitidos,
         }
 
     total = len(pendientes)
@@ -49,14 +59,19 @@ async def extraer(
         db, empresa_id, periodo, libro
     )
     faltan = max(total_pendientes - total, 0)
+    nota_omitidos = (
+        f"; {omitidos} de tipos sin detalle en SUNAT no se consultan" if omitidos else ""
+    )
     if faltan:
         await reportar(
             0,
             total,
-            f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta",
+            f"Extrayendo {total} comprobantes; quedarán {faltan} para otra vuelta{nota_omitidos}",
         )
     else:
-        await reportar(0, total, f"Extrayendo detalle y PDF de {total} comprobantes")
+        await reportar(
+            0, total, f"Extrayendo detalle y PDF de {total} comprobantes{nota_omitidos}"
+        )
 
     # El scraping corre en un hilo aparte (Playwright es síncrono) y avisa desde
     # ahí. Motor está atado al loop, así que el reporte tiene que volver a él;
@@ -270,4 +285,5 @@ async def extraer(
         "descargados_pdf": len(pdfs_guardados),
         "sin_pdf": sin_pdf,
         "pendientes": faltan,
+        "omitidos_sin_detalle": omitidos,
     }
