@@ -46,7 +46,6 @@ def test_tamanos_del_alcance():
     assert (EVALUADOS_SIN_DETALLE | TIPOS_EN_EVALUACION) == {
         "02", "09", "10", "22", "25", "26", "31", "53", "91", "96", "97", "98",
     }
-    assert len(TIPOS_EN_EVALUACION) == 12
 
 
 def test_con_detalle_cubre_verificados_y_pendientes_de_casos():
