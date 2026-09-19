@@ -40,19 +40,35 @@ export interface TemasResponse {
 
 /* — auth y empresas (app/schemas/empresa.py) — */
 
-export interface EmpresaLogin {
-  ruc: string;
-  usuario: string;
-  password: string;
+/**
+ * `credential` es el nombre con el que Google Identity Services entrega el ID
+ * token en su callback; el backend lo copia para no renombrar nada por el medio.
+ */
+export interface LoginGoogle {
+  credential: string;
+}
+
+export interface UsuarioResponse {
+  email: string;
+  nombre: string | null;
+  foto: string | null;
 }
 
 export interface TokenResponse {
   access_token: string;
   token_type: string;
+  /**
+   * El perfil viene en el cuerpo y no dentro del JWT, así que el panel puede
+   * pintar el correo y el avatar sin decodificar el token a mano.
+   */
+  usuario: UsuarioResponse;
 }
 
 export interface EmpresaCreate {
   ruc: string;
+  /** Nombre visible en el selector de empresas. Opcional: el documento de
+   * empresa no guarda razón social, y sin él la lista son solo RUC. */
+  nombre?: string;
   usuario: string;
   password: string;
   sunat_client_id?: string;
@@ -65,6 +81,7 @@ export interface EmpresaCreate {
  * formulario omite las claves en lugar de enviar cadenas vacías.
  */
 export interface EmpresaUpdate {
+  nombre?: string;
   usuario?: string;
   password?: string;
   sunat_client_id?: string;
@@ -74,6 +91,7 @@ export interface EmpresaUpdate {
 export interface EmpresaResponse {
   id: string;
   ruc: string;
+  nombre: string | null;
   usuario: string;
   fecha_creacion: string | null;
   /** Deducido del CIIU dentro del token de SUNAT (`app/domain/rubro.py`). */

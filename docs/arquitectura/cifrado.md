@@ -13,8 +13,12 @@ Las contraseñas SOL (las credenciales de la empresa ante SUNAT Operaciones en L
 ## Dónde se usa
 
 - Al crear o actualizar una empresa ([empresas.py](../../app/api/v1/routes/empresas.py)), la contraseña se cifra antes de guardarse.
-- Al hacer login ([auth.py](../../app/api/v1/routes/auth.py)), al renovar el token de SUNAT ([empresas.py](../../app/api/v1/routes/empresas.py)), al obtener el token OAuth inicial ([sunat/auth.py](../../app/services/sunat/auth.py)) y al hacer scraping ([scraping_sunat.py](../../app/services/scraping_sunat.py)), la contraseña se descifra para compararla o enviarla a SUNAT.
+- Al renovar el token de SUNAT ([empresas.py](../../app/api/v1/routes/empresas.py)), al obtener el token OAuth inicial ([sunat/auth.py](../../app/services/sunat/auth.py)), al hacer scraping ([scraping_sunat.py](../../app/services/scraping_sunat.py)) y al consultar detracciones ([sunat/detracciones.py](../../app/services/sunat/detracciones.py)), la contraseña se descifra para enviarla a SUNAT.
+
+La contraseña SOL **no interviene en el acceso al panel**: eso se hace con una cuenta de Google (ver [autenticación](autenticacion.md)). Su único uso es hablar con SUNAT.
 
 ## Implicación de rotar secretos
 
 Si `SOL_USER_CRYPTO_KEY` (o, en su ausencia, `JWT_SECRET_KEY`) cambia, **todas las contraseñas ya cifradas dejan de poder descifrarse**: no hay versionado de clave ni migración automática. Rotar ese secreto en producción exige re-cifrar todas las contraseñas SOL almacenadas, o pedirle a cada empresa que las vuelva a registrar.
+
+El caso que más fácil se cuela: rotar `JWT_SECRET_KEY` para invalidar sesiones. En un despliegue sin `SOL_USER_CRYPTO_KEY` definida eso tumba el scraping, las detracciones y la renovación del token de SUNAT, y el síntoma aparece horas después. Las sesiones se invalidan con el claim `tipo` del token, no rotando el secreto (ver [autenticación](autenticacion.md)).

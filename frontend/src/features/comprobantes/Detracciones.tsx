@@ -11,6 +11,7 @@ import {
 } from '@/api/detracciones';
 import type { NpdPeriodo } from '@/api/detracciones';
 import { obtenerJob } from '@/api/jobs';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { DataTable } from '@/components/ui/DataTable';
@@ -19,9 +20,12 @@ import { Panel } from '@/components/ui/Panel';
 import { formatearMoneda } from '@/lib/format';
 import { useJobs } from '@/features/jobs/useJobs';
 import { useToast } from '@/hooks/useToast';
+import layout from '@/styles/layouts.module.css';
 import type { ComprobanteResponse } from '@/types/api';
 
 import estilos from './Detracciones.module.css';
+import { humanizarClave, normalizarNpd, presentarEstadoNpd, soloFecha } from './npd';
+import { Dato, Seccion } from './Seccion';
 
 export function DescargarDetraccionesButton({
   ruc,
@@ -133,14 +137,16 @@ function Valor({ valor }: { valor: unknown }) {
   return <>—</>;
 }
 
+/**
+ * Volcado genérico, reservado para lo que el portal mande fuera de la forma
+ * conocida. Todo lo que sí tiene forma se pinta con secciones de verdad.
+ */
 function Campos({ datos }: { datos: Record<string, unknown> }) {
   return (
     <dl className={estilos.campos}>
       {Object.entries(datos).map(([clave, valor]) => (
         <div key={clave}>
-          <dt>
-            {ETIQUETAS[clave] ?? clave.replaceAll('_', ' ').replace(/([a-z])([A-Z])/g, '$1 $2')}
-          </dt>
+          <dt>{ETIQUETAS[clave] ?? humanizarClave(clave)}</dt>
           <dd>
             <Valor valor={valor} />
           </dd>
@@ -152,6 +158,84 @@ function Campos({ datos }: { datos: Record<string, unknown> }) {
 
 export function DetraccionCelda({ fila }: { fila: ComprobanteResponse }) {
   return <>{fila.detraccion ? 'Sí' : 'No'}</>;
+}
+
+/** Cuerpo del modal de un NPD: resumen, datos del portal y sus depósitos. */
+function FichaNpd({ npd }: { npd: NpdPeriodo }) {
+  const datos = normalizarNpd(npd);
+
+  return (
+    <>
+      <Seccion
+        titulo="Resumen"
+        acciones={
+          <Badge tono={datos.estado.tono} conPunto>
+            {datos.estado.texto}
+          </Badge>
+        }
+      >
+        <dl className={layout.definiciones}>
+          <Dato termino="Importe">{formatearMoneda(datos.importe, 'PEN')}</Dato>
+          <Dato termino="Generado por">{datos.generadoPor || '—'}</Dato>
+          <Dato termino="Registro">{datos.registro || '—'}</Dato>
+          <Dato termino="Creación">{datos.creacion || '—'}</Dato>
+          <Dato termino="Vencimiento">{datos.vencimiento || '—'}</Dato>
+        </dl>
+      </Seccion>
+
+      {datos.datosPortal.length > 0 ? (
+        <Seccion titulo="Datos del NPD">
+          <dl className={layout.definiciones}>
+            {datos.datosPortal.map((dato) => (
+              <Dato key={dato.clave} termino={dato.etiqueta}>
+                {dato.valor}
+              </Dato>
+            ))}
+          </dl>
+        </Seccion>
+      ) : null}
+
+      {datos.depositos.length > 0 ? (
+        <Seccion titulo="Depósitos de detracciones">
+          {datos.depositos.map((deposito) => (
+            <article key={deposito.indice} className={estilos.deposito}>
+              <div className={estilos.depositoCabecera}>
+                <h4 className={estilos.depositoTitulo}>{deposito.titulo}</h4>
+                {deposito.monto ? (
+                  <p className={estilos.depositoMonto}>{deposito.monto}</p>
+                ) : null}
+              </div>
+              <dl className={layout.definiciones}>
+                {deposito.campos.map((campo) => (
+                  <Dato key={campo.clave} termino={campo.etiqueta}>
+                    {campo.valor}
+                  </Dato>
+                ))}
+              </dl>
+            </article>
+          ))}
+        </Seccion>
+      ) : null}
+
+      {datos.otrosListado.length > 0 ? (
+        <Seccion titulo="Otros datos del listado">
+          <dl className={layout.definiciones}>
+            {datos.otrosListado.map((dato) => (
+              <Dato key={dato.clave} termino={dato.etiqueta}>
+                {dato.valor || '—'}
+              </Dato>
+            ))}
+          </dl>
+        </Seccion>
+      ) : null}
+
+      {Object.keys(datos.restoDetalle).length > 0 ? (
+        <Seccion titulo="Resto del detalle">
+          <Campos datos={datos.restoDetalle} />
+        </Seccion>
+      ) : null}
+    </>
+  );
 }
 
 export function NpdPanel({
@@ -194,17 +278,18 @@ export function NpdPanel({
     {
       clave: 'registro',
       cabecera: 'Registro',
-      render: (fila) => fila.cabecera.fecRegistro ?? '—',
+      // La hora del registro solo sale en la ficha: en la tabla no aporta.
+      render: (fila) => soloFecha(fila.cabecera.fecRegistro) || '—',
     },
     {
       clave: 'creacion',
       cabecera: 'Creación',
-      render: (fila) => fila.cabecera.fecCreacion ?? '—',
+      render: (fila) => soloFecha(fila.cabecera.fecCreacion) || '—',
     },
     {
       clave: 'limite',
       cabecera: 'Vencimiento',
-      render: (fila) => fila.cabecera.fecLimitePago ?? '—',
+      render: (fila) => soloFecha(fila.cabecera.fecLimitePago) || '—',
     },
     {
       clave: 'importe',
@@ -213,7 +298,18 @@ export function NpdPanel({
       render: (fila) =>
         fila.cabecera.importe == null ? '—' : formatearMoneda(fila.cabecera.importe, 'PEN'),
     },
-    { clave: 'estado', cabecera: 'Estado', render: (fila) => fila.cabecera.estado ?? '—' },
+    {
+      clave: 'estado',
+      cabecera: 'Estado',
+      render: (fila) => {
+        const estado = presentarEstadoNpd(fila.cabecera.estado);
+        return (
+          <Badge tono={estado.tono} conPunto>
+            {estado.texto}
+          </Badge>
+        );
+      },
+    },
     {
       clave: 'descarga',
       cabecera: 'Descarga',
@@ -228,7 +324,7 @@ export function NpdPanel({
             Descargar PDF
           </Button>
 
-          {fila.error_pdf ? <p>{fila.error_pdf}</p> : null}
+          {fila.error_pdf ? <p className={layout.textoSecundario}>{fila.error_pdf}</p> : null}
         </div>
       ),
     },
@@ -269,12 +365,7 @@ export function NpdPanel({
         onCerrar={() => setSeleccionado(null)}
         acciones={<Button onClick={() => setSeleccionado(null)}>Cerrar</Button>}
       >
-        {seleccionado ? (
-          <>
-            <Campos datos={seleccionado.cabecera} />
-            <Campos datos={seleccionado.detalle} />
-          </>
-        ) : null}
+        {seleccionado ? <FichaNpd npd={seleccionado} /> : null}
       </Dialog>
     </Panel>
   );

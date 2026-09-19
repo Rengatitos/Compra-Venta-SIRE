@@ -37,32 +37,19 @@
   border-block-end: 1px solid var(--color-border);
 }
 
+/* `text-align: start` explícito: un `th` lo centra por defecto en el navegador,
+   y aquí la primera columna es una cabecera de fila. */
 .celda {
   padding: var(--space-2) var(--space-3);
+  text-align: start;
   border-block-end: 1px solid var(--color-border);
 }
 
 .celdaNumerica {
   padding: var(--space-2) var(--space-3);
-  text-align: end;
   font-variant-numeric: tabular-nums;
+  text-align: start;
   border-block-end: 1px solid var(--color-border);
-}
-
-.alternar {
-  align-self: flex-start;
-  padding: var(--space-1) var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--text-label-md);
-  color: var(--color-text-label);
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-
-.alternar:hover {
-  color: var(--color-text-primary);
 }
 
 /* Entrada escalonada de los paneles, como pide design.md. Solo transform y

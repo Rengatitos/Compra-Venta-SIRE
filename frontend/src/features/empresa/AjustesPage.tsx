@@ -14,18 +14,20 @@ import { Dialog } from '@/components/ui/Dialog';
 import { ErrorState, Skeleton } from '@/components/ui/Feedback';
 import { TextField } from '@/components/ui/Field';
 import { Panel } from '@/components/ui/Panel';
-import { useAuth, useRuc } from '@/features/auth/useAuth';
+import { useRuc } from '@/features/auth/useAuth';
+import { useEmpresas } from '@/features/empresas/useEmpresas';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useToast } from '@/hooks/useToast';
 import { formatearFechaHora } from '@/lib/format';
 import { ApiError } from '@/lib/http';
+import { guardarEmpresaActiva } from '@/lib/session';
 import layout from '@/styles/layouts.module.css';
 
 export function AjustesPage() {
   useDocumentTitle('Ajustes de la empresa');
 
   const ruc = useRuc();
-  const { salir } = useAuth();
+  const { recargar } = useEmpresas();
   const cliente = useQueryClient();
   const { mostrar } = useToast();
 
@@ -53,6 +55,9 @@ export function AjustesPage() {
       setPassword('');
       setClientSecret('');
       await cliente.invalidateQueries({ queryKey: ['empresa', ruc] });
+      // El selector de la barra lateral sale de esta lista: si cambió el
+      // nombre, tiene que reflejarlo.
+      recargar();
     },
     onError: (fallo) => {
       mostrar({
@@ -89,7 +94,11 @@ export function AjustesPage() {
     onSuccess: () => {
       setConfirmarBorrado(false);
       mostrar({ tono: 'exito', titulo: 'La empresa se eliminó del sistema' });
-      salir();
+      // Antes esto cerraba la sesión, porque la sesión *era* la empresa. Ahora
+      // la sesión es de una persona: se suelta la empresa activa y el gate
+      // vuelve a pedir cuál —o muestra el estado vacío si era la última.
+      guardarEmpresaActiva(null);
+      recargar();
     },
     onError: (fallo) => {
       mostrar({

@@ -136,7 +136,10 @@ async function ejecutar(url: string, init: RequestInit): Promise<Response> {
 
   const mensaje = await extraerDetalle(respuesta);
 
-  if (respuesta.status === 401) {
+  // Solo es "sesión expirada" si había una sesión. El 401 de `POST
+  // /auth/google` es el rechazo de un intento de entrar, no la caducidad de
+  // nada: tratarlo igual anunciaba una expiración que no había ocurrido.
+  if (respuesta.status === 401 && obtenerToken()) {
     limpiarSesion();
     alExpirar?.();
   }

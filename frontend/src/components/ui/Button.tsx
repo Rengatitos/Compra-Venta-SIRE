@@ -12,6 +12,8 @@ interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className
   bloque?: boolean;
   /** Muestra el girador, marca `aria-busy` y bloquea el botón. */
   cargando?: boolean;
+  /** Adorno a la izquierda del texto. Cede su sitio al girador al cargar. */
+  icono?: ReactNode;
   children: ReactNode;
 }
 
@@ -48,6 +50,7 @@ export function Button({
   pastilla = false,
   bloque = false,
   cargando = false,
+  icono,
   disabled = false,
   type = 'button',
   children,
@@ -63,7 +66,7 @@ export function Button({
       disabled={disabled || cargando}
       aria-busy={cargando || undefined}
     >
-      {cargando ? <span className={estilos.girador} aria-hidden="true" /> : null}
+      {cargando ? <span className={estilos.girador} aria-hidden="true" /> : icono}
       {children}
     </button>
   );

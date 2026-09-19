@@ -1,6 +1,7 @@
 # Frontend — Panel SIRE
 
-SPA en React 19 + TypeScript que opera la API de [Sire](../README.md): alta y login de empresa,
+SPA en React 19 + TypeScript que opera la API de [Sire](../README.md): acceso con cuenta de Google,
+alta de empresas y cambio de una a otra desde el panel,
 periodos, sincronización de la propuesta de compras y ventas del SIRE, extracción de detalle y PDF
 del portal SOL como job asíncrono, estado de la glosa por comprobante, detracciones, consulta /
 edición / exportación de comprobantes, auditoría, reporte asociado, maestro de cuentas y el
@@ -19,8 +20,13 @@ npm run dev --prefix frontend
 ```
 
 Queda en `http://localhost:5173`. En desarrollo, `/api` pasa por el proxy de Vite hacia el backend,
-así que el navegador ve un solo origen y CORS no interviene. Para apuntar a otra API, copia
-`.env.example` a `.env` y define `VITE_API_BASE_URL`.
+así que el navegador ve un solo origen y CORS no interviene. Copia `.env.example` a `.env` y define
+`VITE_GOOGLE_CLIENT_ID` con el Client ID del cliente OAuth de Google —el mismo que usa el backend—,
+y `VITE_API_BASE_URL` si quieres apuntar a otra API.
+
+`http://localhost:5173` tiene que estar en los «Orígenes de JavaScript autorizados» de ese cliente en
+Google Cloud; si no, el botón de Google falla en silencio. Sin `VITE_GOOGLE_CLIENT_ID`, `/login` lo
+dice en pantalla en vez de pintar un botón que no responde.
 
 ## Scripts
 
@@ -63,10 +69,72 @@ React Query viven junto a la pantalla que los usa, y `src/api/` solo contiene fu
 
 ## Decisiones que conviene conocer
 
-**Sesión.** El token y el RUC van en `sessionStorage`, no en `localStorage`: el JWT del backend dura
-`JWT_EXPIRE_HOURS` (2 h), así que persistirlo entre sesiones del navegador solo dejaría credenciales
-muertas en disco. Un `401` limpia la sesión y devuelve al login con un aviso, porque caducar en
-pantalla es el caso normal, no la excepción.
+**Sesión.** El JWT identifica a una **persona** (el correo con el que entró por Google), no a una
+empresa. Va en `sessionStorage` y no en `localStorage`: dura `JWT_EXPIRE_HOURS` (2 h), así que
+persistirlo entre sesiones del navegador solo dejaría credenciales muertas en disco. Un `401` limpia
+la sesión y devuelve al login con un aviso, porque caducar en pantalla es el caso normal.
+
+La **empresa activa** se guarda dentro del mismo objeto de sesión, lo que la ata al correo por
+construcción: si en la misma pestaña entra otra persona, no hereda la cuenta que dejó elegida la
+anterior. Una sesión con la forma anterior (`{token, ruc}`, sin correo) no valida al leerse y manda a
+`/login`: su JWT identificaba a una empresa y el backend ya no lo acepta.
+
+**Multiempresa.** `useRuc()` sigue siendo el único punto del que las pantallas obtienen el RUC, pero
+ahora sale de `features/empresas` y no de la sesión. `EmpresaGate` se monta entre `ProtectedRoute`
+(que exige sesión) y `AppShell` (que exige empresa activa): carga `GET /empresas`, entra directo si
+solo hay una, pide elegir si hay varias y ofrece el alta incrustada si no hay ninguna — ese último
+estado antes era inalcanzable, porque se entraba con las credenciales de una empresa que por
+definición existía.
+
+**Fuera del armazón.** `/login`, las pantallas del gate y `/empresas/nueva` comparten el componente
+`Marco` y no se montan dentro de `AppShell`. La razón es la misma en los tres casos: `AppShell` da
+por hecha una empresa activa, su barra lateral la anuncia y marca además la sección en curso.
+Una pantalla anterior a esa elección no tiene empresa, y el alta habla de una distinta de la activa,
+así que dentro del armazón la barra contradice al contenido y la navegación se queda sin ninguna
+sección marcada. Se llega al alta desde el selector de cuentas y se vuelve con «Volver al panel».
+
+**La barra lateral.** `SideNav` reúne todo lo que no es contenido: la marca, la empresa activa, la
+campana de los trabajos, las secciones y la zona de cuenta (tema, cierre de sesión y quién está
+dentro). **En escritorio no hay barra superior**: con la campana dentro, una banda arriba solo
+dejaba una franja vacía y un escalón contra la tarjeta lateral, que empieza 12 px más abajo.
+`TopBar` reaparece por debajo de 60rem, que es donde hace falta un sitio para el botón del cajón y
+para la campana; la de la barra se oculta ahí para no duplicarla.
+
+Que se quede fija al desplazar condiciona la maqueta de `AppShell`: un elemento `sticky` no puede
+salir de su bloque contenedor, y el de un ítem de rejilla es su área, así que una cabecera metida
+en una fila `auto` no tendría recorrido —no lo tenía—. Por eso la barra ocupa una columna propia de
+alto completo y el contenido y el pie viven en una segunda columna de flujo normal. La barra lleva
+`z-index` propio porque `position: sticky` crea contexto de apilado: sin él, la columna de
+contenido taparía el panel de notificaciones, que se despliega desde el encabezado hacia la
+derecha (`alineacion="inicio"`, porque alineado al final se saldría de una columna de 16rem).
+
+«Periodos» es el único ítem con segundo nivel, y no es una lista fija: son las tres pantallas del
+periodo que se está mirando (`/periodos/:periodo`, `…/auditoria` y `…/reporte`), que antes solo se
+alcanzaban desde enlaces dentro del contenido. El grupo se abre solo al entrar en la sección y se
+puede cerrar a mano; fuera de un periodo no hay ni chevron. El padre lleva `end` a propósito: sin
+él, `/periodos` y el hijo activo reclamarían `aria-current="page"` a la vez.
+
+Por debajo de 60rem la barra sale de la maqueta y se sirve como cajón desde el botón de la
+cabecera. Es un `<dialog>` nativo por el mismo motivo que el selector de cuentas: el atrapado de
+foco, Escape, la devolución del foco al disparador y la capa superior los pone el navegador.
+
+Cambiar de empresa **no vacía el caché de React Query**. Todas las claves llevan ya el RUC
+(`['comprobantes', ruc, …]`, `['periodos', ruc]`, `['jobs', ruc, …]`…), así que al cambiarlo ninguna
+consulta encuentra caché y cada pantalla pinta su `Skeleton`; un `clear()` además tiraría la lista de
+empresas y perdería la caché de la cuenta anterior, que es lo que hace instantáneo volver a ella. Lo
+único que sí se hace es navegar a `/`: `/periodos/202607` puede no existir en la empresa nueva.
+`clear()` se reserva para cerrar sesión.
+
+**Google Identity Services sin dependencias.** Se carga el script oficial a mano desde
+`src/lib/google.ts`, único punto que toca `window.google` (mismo criterio que `http.ts` con `fetch`).
+`@react-oauth/google` es un envoltorio del mismo script: no evita el iframe, ni el `client_id`, ni
+registrar el origen en Google Cloud. Encapsularlo es además lo que permite simularlo entero en los
+tests, porque en jsdom un `<script src>` externo nunca se ejecuta. Los tipos están en
+`src/types/google.d.ts` y no en `@types/google.one-tap`: `tsconfig.app.json` fija el array `types`,
+así que un paquete de tipos globales no se cargaría sin tocarlo.
+
+El Client ID viaja en el bundle y no pasa nada: no es un secreto, lo que protege el acceso son los
+orígenes autorizados de Google Cloud y la lista de correos del backend.
 
 **Dos libros.** Compras (RCE) y ventas (RVIE) comparten pantalla y se alternan con el control
 segmentado de la cabecera; al crear un periodo se sincronizan ambos en serie. La barra de progreso de
@@ -82,11 +150,16 @@ propuesta para el periodo, y tiene su propio badge.
 **Jobs.** `POST …/detalle` responde `202` con un `job_id`. `JobsProvider` (en `features/jobs/`)
 guarda los ids en `sessionStorage` y sondea cada uno con `useJobPolling`: `GET /jobs/{job_id}` cada
 3 s, y **deja de consultar** al llegar a `completado` o `fallido`. El seguimiento es global, así que
-el avance se ve en la campana de la barra superior desde cualquier pantalla y sobrevive a recargar.
+el avance se ve en la campana de la barra lateral desde cualquier pantalla y sobrevive a recargar.
 El historial completo sale de `GET /jobs` y vive en `/procesos`.
 
-**Sin pantalla de administración.** `GET /api/v1/empresas` exige el header `X-Admin-Token`. Meter ese
-secreto en un bundle de navegador sería filtrarlo, así que ese endpoint se queda fuera del frontend.
+**Selector de cuentas.** `GET /api/v1/empresas` ya no exige el token de administrador, así que la
+lista de empresas vive en la barra lateral. Es un diálogo con filtro y no un `<select>` nativo: el
+desplegable nativo lo pinta el sistema operativo, fuera del alcance de `tokens.css`, y en tema oscuro
+aparecería una lista clara del sistema; además cada fila lleva dos niveles de texto y un `<option>`
+solo admite una línea. Tampoco es un listbox ARIA a medida, donde el foco virtual y el `tabindex`
+rotativo se rompen con facilidad y **axe no lo detecta**: los tests darían verde con algo inservible
+por teclado. Con `Dialog` sobre el `<dialog>` nativo, las opciones son `<button>` de verdad.
 
 ## Diseño
 
@@ -152,8 +225,16 @@ temas**. Además:
 - Sin desbordamiento horizontal del `body` a 375 px: la tabla ancha se desplaza dentro de su propia
   región, enfocable y con nombre accesible.
 - El diálogo modal abre moviendo el foco dentro, cierra con `cancel` y devuelve el foco al botón que
-  lo abrió.
+  lo abrió. Vale también para el selector de cuentas, que se apoya en el mismo componente.
+
+**El botón de Google es la excepción del sistema de diseño.** Lo renderiza Google dentro de un
+iframe de otro origen, así que axe no puede entrar —ni en Vitest ni en el navegador— y su apariencia
+no se puede tocar desde aquí. Su nombre accesible, su contraste y su anillo de foco son cosa de
+Google; lo que sí se verifica es la página alrededor, y el `<div>` que lo contiene va sin `role` ni
+`tabIndex` (envolverlo en un `role="button"` sería la violación clásica). Lo único que hace el
+proyecto es repintarlo al cambiar de tema, porque si no queda blanco sobre fondo oscuro.
 
 Lo que conviene repetir a mano tras cambios de estilo: activar `prefers-reduced-motion: reduce` en
 DevTools y comprobar que no queda ninguna animación, revisar el zoom al 200 %, y pasar axe por las
-dos variantes de tema (no solo por la activa).
+dos variantes de tema (no solo por la activa) en `/login`, en la pantalla de elección de empresa y
+con el selector de cuentas abierto.

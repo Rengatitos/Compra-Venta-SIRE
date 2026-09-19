@@ -36,7 +36,7 @@ async def obtener(db: AsyncIOMotorDatabase, job_id: str) -> Job | None:
 
 async def listar(
     db: AsyncIOMotorDatabase,
-    ruc: str,
+    ruc: str | None = None,
     *,
     periodo: str | None = None,
     tipo: TipoJob | None = None,

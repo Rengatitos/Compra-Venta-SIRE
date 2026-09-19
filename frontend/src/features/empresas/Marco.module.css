@@ -1,0 +1,47 @@
+/* Mismo marco que las pantallas de acceso: el gate se pinta antes de que exista
+   el armazón del panel, así que no puede apoyarse en él. */
+
+.pagina {
+  display: grid;
+  place-items: center;
+  min-block-size: 100dvh;
+  padding: var(--space-6);
+  background-color: var(--color-bg);
+}
+
+.tarjeta {
+  inline-size: min(34rem, 100%);
+  padding: var(--space-7);
+  background-color: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.encabezado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: var(--space-5);
+}
+
+.marca {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  color: var(--color-text-label);
+}
+
+.titulo {
+  margin-block-end: var(--space-3);
+  font-size: var(--text-title);
+}
+
+.intro {
+  margin-block-end: var(--space-5);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+}
+
+.pie {
+  margin-block-start: var(--space-6);
+  text-align: center;
+}

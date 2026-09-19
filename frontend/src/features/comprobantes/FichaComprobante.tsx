@@ -1,7 +1,7 @@
 import { formatearImporteComprobante } from '@/lib/importesComprobante';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { Link } from 'react-router';
 
 import { actualizarDescripcion } from '@/api/comprobantes';
@@ -17,25 +17,8 @@ import type { ComprobanteResponse } from '@/types/api';
 
 import { presentarEstadoComprobante } from './estadoComprobante';
 import { presentarEstadoGlosa } from './estadoGlosa';
-import estilos from './FichaComprobante.module.css';
+import { Dato, Seccion } from './Seccion';
 import { TablaDetalleSunat } from './TablaDetalleSunat';
-
-function Dato({
-  termino,
-  children,
-  className,
-}: {
-  termino: string;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={className}>
-      <dt className={layout.termino}>{termino}</dt>
-      <dd className={layout.descripcion}>{children}</dd>
-    </div>
-  );
-}
 
 /**
  * Un comprobante tiene desglose que mostrar solo si alguna adquisición fue a
@@ -48,30 +31,6 @@ function hayDesglose(datos: ComprobanteResponse): boolean {
     datos.igv_dgng !== 0 ||
     datos.base_imponible_dng !== 0 ||
     datos.igv_dng !== 0
-  );
-}
-
-function Seccion({
-  titulo,
-  acciones,
-  children,
-}: {
-  titulo: string;
-  acciones?: ReactNode;
-  children: ReactNode;
-}) {
-  const idTitulo = useId();
-
-  return (
-    <section className={estilos.seccion} aria-labelledby={idTitulo}>
-      <div className={estilos.cabecera}>
-        <h3 className={estilos.titulo} id={idTitulo}>
-          {titulo}
-        </h3>
-        {acciones}
-      </div>
-      {children}
-    </section>
   );
 }
 

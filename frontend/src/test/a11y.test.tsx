@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { Badge } from '@/components/ui/Badge';
@@ -119,21 +119,6 @@ describe('conmutador de tema', () => {
     expect(document.documentElement.dataset.theme).toBe('dark');
     expect(screen.getByRole('button', { name: 'Activar el modo claro' })).toBeInTheDocument();
   });
-});
-
-/**
- * `jsdom` no implementa `showModal`/`close`, que es lo único que `Dialog`
- * delega en el navegador. Se sustituyen por lo mínimo para poder comprobar la
- * estructura y el árbol accesible; el atrapado de foco y el cierre con Escape
- * se verifican en el navegador, no aquí.
- */
-beforeAll(() => {
-  HTMLDialogElement.prototype.showModal = function abrir(this: HTMLDialogElement) {
-    this.open = true;
-  };
-  HTMLDialogElement.prototype.close = function cerrar(this: HTMLDialogElement) {
-    this.open = false;
-  };
 });
 
 describe('diálogo modal', () => {

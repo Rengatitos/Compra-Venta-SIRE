@@ -19,62 +19,89 @@
 
 .armazon {
   display: grid;
-  grid-template-areas:
-    'cabecera cabecera'
-    'nav contenido'
-    'nav pie';
   grid-template-columns: var(--shell-nav-width) minmax(0, 1fr);
-  grid-template-rows: auto 1fr auto;
-  min-block-size: 100vh;
+  min-block-size: 100dvh;
 }
 
-.cabecera {
-  grid-area: cabecera;
-  position: sticky;
-  inset-block-start: 0;
-  z-index: 10;
-  backdrop-filter: blur(12px);
-  background-color: var(--color-header-bg);
-  border-block-end: 1px solid var(--color-border);
-}
-
+/*
+ * La tarjeta lateral. Tres cosas la hacen funcionar:
+ *   - `align-self: start`: sin eso el ítem se estira a todo el alto de la fila
+ *     y `sticky` se queda sin recorrido, porque su bloque contenedor es su
+ *     propia área de rejilla;
+ *   - un alto explícito, para que la tarjeta llegue de borde a borde;
+ *   - `z-index`: `position: sticky` crea contexto de apilado, y sin él la
+ *     columna de contenido —posterior en el DOM— taparía el panel de
+ *     notificaciones que se despliega desde el encabezado de la barra.
+ *
+ * Nada de `overflow: hidden` aquí, por ese mismo panel: el desplazamiento vive
+ * en el cuerpo del panel lateral (ver SideNav.module.css), que se contiene solo.
+ */
 .nav {
-  grid-area: nav;
-  padding: var(--space-5) var(--space-4);
-  border-inline-end: 1px solid var(--color-border);
+  position: sticky;
+  inset-block-start: var(--shell-nav-inset);
+  z-index: 20;
+  align-self: start;
+  block-size: calc(100dvh - var(--shell-nav-inset) * 2);
+  margin: var(--shell-nav-inset);
+  background-color: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
 }
 
+/* Flujo normal, y no otra fila de rejilla: es lo que le da recorrido a la
+   cabecera pegajosa. */
+.columna {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+/*
+ * En escritorio no hay barra superior: la marca, la empresa, las secciones, el
+ * tema, la sesión y la campana viven en la barra lateral, así que una banda
+ * arriba solo añadiría una franja vacía y un escalón contra la tarjeta. La
+ * cabecera reaparece por debajo de 60rem, que es donde hace falta un sitio para
+ * el botón del cajón y la campana.
+ */
+.cabecera {
+  display: none;
+}
+
+/* `flex: 1` sustituye a la fila `1fr` de la rejilla anterior: empuja el pie al
+   fondo cuando el contenido no llena la pantalla. */
 .contenido {
-  grid-area: contenido;
+  flex: 1;
   inline-size: 100%;
   max-inline-size: var(--content-max-width);
   padding: var(--space-6) var(--space-5) var(--space-7);
 }
 
 .pie {
-  grid-area: pie;
   padding: var(--space-5);
   font-size: var(--text-body-sm);
   color: var(--color-text-secondary);
   border-block-start: 1px solid var(--color-border);
 }
 
-/* Por debajo de 60rem la navegación lateral pasa a una barra horizontal bajo la
-   cabecera: mismo orden de lectura, sin scroll horizontal de página. */
+/* Por debajo de 60rem la barra lateral sale de la maqueta y pasa a servirse
+   como cajón desde el botón de la cabecera (ver MenuLateralMovil). */
 @media (width <= 60rem) {
   .armazon {
-    grid-template-areas:
-      'cabecera'
-      'nav'
-      'contenido'
-      'pie';
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto 1fr auto;
   }
 
   .nav {
-    padding: var(--space-3) var(--space-4);
-    border-inline-end: none;
+    display: none;
+  }
+
+  .cabecera {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 10;
+    display: block;
+    backdrop-filter: blur(12px);
+    background-color: var(--color-header-bg);
     border-block-end: 1px solid var(--color-border);
   }
 

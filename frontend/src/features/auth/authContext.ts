@@ -1,12 +1,12 @@
 import { createContext } from 'react';
 
-import type { EmpresaLogin } from '@/types/api';
-
 export interface ContextoAuth {
-  /** RUC de la empresa autenticada, o null si no hay sesión. */
-  ruc: string | null;
+  /** Correo de la persona autenticada, o null si no hay sesión. */
+  correo: string | null;
+  nombre: string | null;
   autenticado: boolean;
-  iniciarSesion: (credenciales: EmpresaLogin) => Promise<void>;
+  /** Recibe el ID token de Google y guarda a cambio el JWT del backend. */
+  iniciarSesionConGoogle: (idToken: string) => Promise<void>;
   salir: () => void;
 }
 

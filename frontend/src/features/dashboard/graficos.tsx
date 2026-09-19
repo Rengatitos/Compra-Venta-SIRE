@@ -65,6 +65,7 @@ export function TopContrapartes({ datos }: { datos: readonly ContraparteTop[] })
       leyenda="Contrapartes con mayor monto acumulado en el periodo"
       encabezadoNombre="Contraparte"
       encabezadoValor="Monto"
+      tabla="visible"
       filas={datos.map((fila) => ({
         nombre: fila.name,
         valor: formatearMontoCompacto(fila.total),

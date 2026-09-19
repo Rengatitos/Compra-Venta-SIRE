@@ -17,11 +17,13 @@ class EmpresaBase(BaseModel):
 class EmpresaCreate(EmpresaBase):
     usuario: str
     password: str
+    nombre: str | None = None
     sunat_client_id: str | None = None
     sunat_client_secret: str | None = None
 
 
 class EmpresaUpdate(BaseModel):
+    nombre: str | None = None
     usuario: str | None = None
     password: str | None = None
     sunat_token: str | None = None
@@ -29,19 +31,9 @@ class EmpresaUpdate(BaseModel):
     sunat_client_secret: str | None = None
 
 
-class EmpresaLogin(BaseModel):
-    ruc: str
-    usuario: str
-    password: str
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
 class EmpresaResponse(EmpresaBase):
     id: str = Field(validation_alias="_id")
+    nombre: str | None = None
     usuario: str
     fecha_creacion: str | None = None
     rubro: str | None = None

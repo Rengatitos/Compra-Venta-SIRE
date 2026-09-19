@@ -14,11 +14,16 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Automatización SUNAT API"
     API_V1_PREFIX: str = "/api/v1"
 
-    ADMIN_TOKEN: str
     JWT_SECRET_KEY: str
     SOL_USER_CRYPTO_KEY: str | None = None
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 2
+
+    # Cliente OAuth de Google (tipo "aplicación web") contra el que se valida el
+    # `aud` de los ID tokens. Sin él no se puede entrar: ver el guard explícito
+    # en `app.services.google_oauth`, donde se explica por qué dejarlo vacío no
+    # puede degradarse a "no valides la audiencia".
+    GOOGLE_CLIENT_ID: str | None = None
 
     MONGO_URI: str | None = None
     MONGO_FACTURASDB_NAME: str | None = None
@@ -97,6 +102,19 @@ class Settings(BaseSettings):
     # con comas reventaba el arranque con JSONDecodeError.
     CORS_ORIGINS: Annotated[list[str], NoDecode] = CORS_ORIGINS_POR_DEFECTO
 
+    # Correos autorizados a entrar al panel. Mismo formato que CORS_ORIGINS
+    # —lista separada por comas o JSON— y por el mismo motivo lleva `NoDecode`:
+    # sin él, pydantic-settings intenta leer el valor como JSON en
+    # `prepare_field_value` y un correo suelto tumba el arranque con
+    # JSONDecodeError antes de que el validador llegue a ejecutarse.
+    #
+    # La diferencia con CORS_ORIGINS está en el valor vacío, y es deliberada:
+    # allí significa "no lo configuré" y cae al default, porque una lista vacía
+    # dejaría al frontend bloqueado sin ninguna pista. Aquí significa "no entra
+    # nadie". Un default permisivo abriría el panel a cualquier cuenta de
+    # Google, así que este campo falla cerrado.
+    GOOGLE_ALLOWED_EMAILS: Annotated[list[str], NoDecode] = []
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def _parsear_origenes(cls, v):
@@ -124,6 +142,37 @@ class Settings(BaseSettings):
             return [str(origen).strip() for origen in decodificado if str(origen).strip()]
 
         return [origen.strip() for origen in texto.split(",") if origen.strip()]
+
+    @field_validator("GOOGLE_ALLOWED_EMAILS", mode="before")
+    @classmethod
+    def _parsear_correos(cls, v):
+        # Google entrega el correo en minúsculas, pero el .env lo escribe una
+        # persona: se normaliza en las tres formas de llegada (lista ya
+        # construida, JSON y la cadena con comas) para que la comparación de
+        # `app.domain.usuario` no dependa de cómo se tecleó.
+        if isinstance(v, list):
+            return [str(correo).strip().lower() for correo in v if str(correo).strip()]
+
+        if not isinstance(v, str):
+            return v
+
+        texto = v.strip()
+        if not texto:
+            return []
+
+        if texto.startswith("["):
+            try:
+                decodificado = json.loads(texto)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "GOOGLE_ALLOWED_EMAILS parece una lista JSON pero no se pudo decodificar. "
+                    "Usa una lista separada por comas o un JSON válido."
+                ) from exc
+            if not isinstance(decodificado, list):
+                raise ValueError("GOOGLE_ALLOWED_EMAILS en JSON debe ser una lista de cadenas")
+            return [str(correo).strip().lower() for correo in decodificado if str(correo).strip()]
+
+        return [correo.strip().lower() for correo in texto.split(",") if correo.strip()]
 
 
 settings = Settings()

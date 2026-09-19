@@ -52,6 +52,14 @@ async def lifespan(app: FastAPI):
     except PyMongoError:
         logger.exception("No se pudieron crear todos los índices; el servicio sigue activo")
 
+    # El acceso al panel falla cerrado: sin estas dos variables nadie entra. Sin
+    # este aviso, el síntoma en producción sería que todo el mundo recibe 403 sin
+    # ninguna pista de por qué. No se convierte en fallo de arranque porque el
+    # resto del servicio (y /health) sigue siendo útil.
+    if not settings.GOOGLE_CLIENT_ID:
+        logger.warning("GOOGLE_CLIENT_ID no está configurado: nadie podrá iniciar sesión")
+    if not settings.GOOGLE_ALLOWED_EMAILS:
+        logger.warning("GOOGLE_ALLOWED_EMAILS está vacía: ninguna cuenta tiene acceso al panel")
 
     yield
 

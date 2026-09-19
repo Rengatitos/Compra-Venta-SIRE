@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/hooks/useToast';
 import type { Libro } from '@/types/domain';
 
+import { IconoZip } from './IconosExportacion';
+
 export function DescargarPdfsButton({
   ruc,
   periodo,
@@ -42,11 +44,13 @@ export function DescargarPdfsButton({
   return (
     <>
       <Button
+        pequeno
+        icono={<IconoZip />}
         cargando={descarga.isPending}
         onClick={() => descarga.mutate()}
         title={`Descargar desde SUNAT los PDFs de compras y ventas del periodo ${periodo}`}
       >
-        ZIP de PDFs SUNAT
+        ZIP de PDFs
       </Button>
       {descarga.isPending && (
         <span role="status">{avance || 'Iniciando descarga desde SUNAT…'}</span>

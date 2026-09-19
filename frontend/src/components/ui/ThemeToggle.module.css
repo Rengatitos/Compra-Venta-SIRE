@@ -20,3 +20,61 @@
   inline-size: 1.25rem;
   block-size: 1.25rem;
 }
+
+/* Variante de la barra lateral: etiqueta a la vista e interruptor a la derecha. */
+
+/* Misma métrica que las filas de la barra lateral —borde transparente incluido,
+   que es lo que las corre 1px— para que icono y texto caigan en columna. */
+.fila {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  inline-size: 100%;
+  padding: var(--space-3);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+}
+
+.etiquetaFila {
+  flex: 1;
+  text-align: start;
+}
+
+.fila .icono {
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+}
+
+.fila:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-2);
+}
+
+.pista {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  inline-size: 2.25rem;
+  block-size: 1.25rem;
+  padding: 2px;
+  background-color: var(--color-surface-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+}
+
+.pomo {
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  background-color: var(--color-accent-strong);
+  border-radius: var(--radius-pill);
+
+  /* Solo `transform`: los colores nunca se transicionan (ver global.css). */
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.fila[aria-checked='true'] .pomo {
+  transform: translateX(1rem);
+}

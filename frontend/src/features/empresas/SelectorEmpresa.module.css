@@ -1,0 +1,29 @@
+.disparador,
+.estatico {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+
+  /* `100%` para que el contenido no quede centrado cuando el botón va en
+     bloque, y `min-inline-size: 0` para que el recorte con puntos suspensivos
+     funcione dentro de un flex. */
+  inline-size: 100%;
+  min-inline-size: 0;
+  text-align: start;
+}
+
+.ruc {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  color: var(--color-text-primary);
+}
+
+.descripcion {
+  max-inline-size: 100%;
+  overflow: hidden;
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

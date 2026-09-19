@@ -1,0 +1,7 @@
+/* Los iconos acompañan al texto: se miden en «em» para que crezcan y encojan
+   con la letra del botón en lugar de quedarse fijos cuando el botón es pequeño. */
+.icono {
+  flex-shrink: 0;
+  inline-size: 1.15em;
+  block-size: 1.15em;
+}

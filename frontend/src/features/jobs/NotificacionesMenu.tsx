@@ -71,7 +71,17 @@ function unir(seguidos: readonly JobResponse[], recientes: readonly JobResponse[
   ].slice(0, RECIENTES);
 }
 
-export function NotificacionesMenu() {
+interface Props {
+  /**
+   * Hacia dónde se abre el panel. `fin` lo alinea con el borde final del
+   * disparador —lo que quiere una campana arrimada a la derecha— e `inicio` lo
+   * despliega hacia el otro lado, que es lo que necesita la barra lateral: ahí
+   * un panel de 22rem alineado al final se saldría de la pantalla.
+   */
+  alineacion?: 'inicio' | 'fin';
+}
+
+export function NotificacionesMenu({ alineacion = 'fin' }: Props) {
   const ruc = useRuc();
   const { seguidos, porId, dejarDeSeguir } = useJobs();
 
@@ -79,9 +89,14 @@ export function NotificacionesMenu() {
   const contenedor = useRef<HTMLDivElement>(null);
   const idPanel = useId();
 
+  // Los ids en seguimiento viven en `sessionStorage` y, desde que se puede
+  // cambiar de empresa sin salir, mezclan trabajos de varias. El seguimiento en
+  // sí no se limpia —un trabajo pertenece a la persona y su aviso de
+  // «completado» debe llegar igual—, pero la campana solo cuenta los de la
+  // empresa que está a la vista; si no, la insignia mentiría.
   const enSeguimiento = seguidos
     .map((jobId) => porId[jobId])
-    .filter((job): job is JobResponse => job !== undefined);
+    .filter((job): job is JobResponse => job !== undefined && job.ruc === ruc);
 
   const activos = enSeguimiento.filter((job) => !ESTADOS_JOB_TERMINALES.includes(job.estado));
 
@@ -89,7 +104,7 @@ export function NotificacionesMenu() {
   // costar una petición por cada carga de la aplicación.
   const recientes = useQuery({
     queryKey: ['jobs', ruc, { limit: RECIENTES }],
-    queryFn: () => listarJobs({ limit: RECIENTES }),
+    queryFn: () => listarJobs(ruc, { limit: RECIENTES }),
     enabled: abierto,
   });
 
@@ -139,7 +154,7 @@ export function NotificacionesMenu() {
 
       {abierto ? (
         <div
-          className={estilos.panel}
+          className={`${estilos.panel} ${alineacion === 'inicio' ? (estilos.panelInicio ?? '') : ''}`}
           id={idPanel}
           role="dialog"
           aria-label="Procesos recientes"

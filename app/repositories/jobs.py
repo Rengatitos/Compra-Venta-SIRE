@@ -66,7 +66,7 @@ async def obtener(db: AsyncIOMotorDatabase, job_id: str) -> Job | None:
 
 async def listar(
     db: AsyncIOMotorDatabase,
-    ruc: str,
+    ruc: str | None = None,
     *,
     periodo: str | None = None,
     libro: Libro | None = None,
@@ -75,8 +75,11 @@ async def listar(
     limit: int = 50,
     skip: int = 0,
 ) -> list[Job]:
-    """Historial de trabajos de una empresa, del mas reciente al mas antiguo."""
-    filtro: dict[str, Any] = {"ruc": ruc}
+    """Historial de trabajos, del mas reciente al mas antiguo.
+
+    Sin `ruc` devuelve el de todas las empresas: el panel ya no es de una sola.
+    """
+    filtro: dict[str, Any] = {"ruc": ruc} if ruc else {}
     if periodo:
         filtro["periodo"] = periodo
     if libro:

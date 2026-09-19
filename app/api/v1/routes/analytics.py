@@ -1,21 +1,13 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, Query, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Depends, Query
 
-from app.core.auth import decode_token
+from app.core.auth import usuario_actual
 from app.db.database import get_db
 from app.domain.comprobante import Libro
 from app.services import analytics_service
 
 router = APIRouter()
-security = HTTPBearer()
-
-
-async def token_dashboard(
-    credentials: HTTPAuthorizationCredentials = Security(security),
-) -> dict:
-    return decode_token(credentials.credentials)
 
 
 @router.get("/summary", summary="Totales del periodo")
@@ -24,7 +16,7 @@ async def summary(
     rucs: str | None = None,
     libro: Libro = Query(Libro.COMPRAS),
     db=Depends(get_db),
-    _: dict = Depends(token_dashboard),
+    _usuario: dict = Depends(usuario_actual),
 ):
     ids = await analytics_service.get_target_empresa_ids(rucs, db)
     return await analytics_service.get_summary(ids, periodo, libro, db)
@@ -37,7 +29,7 @@ async def top_contrapartes(
     limit: int = 5,
     libro: Libro = Query(Libro.COMPRAS),
     db=Depends(get_db),
-    _: dict = Depends(token_dashboard),
+    _usuario: dict = Depends(usuario_actual),
 ):
     ids = await analytics_service.get_target_empresa_ids(rucs, db)
     return await analytics_service.get_top_contrapartes(ids, periodo, limit, libro, db)
@@ -49,7 +41,7 @@ async def comprobantes_por_dia(
     rucs: str | None = None,
     libro: Libro = Query(Libro.COMPRAS),
     db=Depends(get_db),
-    _: dict = Depends(token_dashboard),
+    _usuario: dict = Depends(usuario_actual),
 ):
     ids = await analytics_service.get_target_empresa_ids(rucs, db)
     return await analytics_service.get_comprobantes_by_day(ids, periodo, libro, db)
@@ -59,7 +51,7 @@ async def comprobantes_por_dia(
 async def periodos_disponibles(
     rucs: str | None = None,
     db=Depends(get_db),
-    _: dict = Depends(token_dashboard),
+    _usuario: dict = Depends(usuario_actual),
 ):
     ids = await analytics_service.get_target_empresa_ids(rucs, db)
     return await analytics_service.periodos_disponibles(ids, db)
@@ -71,7 +63,7 @@ async def dashboard_data(
     rucs: str | None = None,
     libro: Libro = Query(Libro.COMPRAS),
     db=Depends(get_db),
-    _: dict = Depends(token_dashboard),
+    _usuario: dict = Depends(usuario_actual),
 ):
     ids = await analytics_service.get_target_empresa_ids(rucs, db)
 

@@ -145,7 +145,15 @@
   --duration-slow: 480ms;
 
   /* Layout */
-  --shell-nav-width: 15rem;
+
+  /* La barra lateral es una tarjeta con margen propio, así que la columna mide
+     el ancho de la tarjeta más los dos márgenes. */
+  --shell-nav-width: 18rem;
+  --shell-nav-inset: 0.75rem;
+
+  /* El cajón de móvil puede ser más ancho: ahí no compite con el contenido. */
+  --shell-nav-drawer-width: 20rem;
+
   --content-max-width: 90rem;
   --z-popover: 50;
   --z-dialog: 100;

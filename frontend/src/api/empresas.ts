@@ -9,7 +9,16 @@ import type {
 
 const base = (ruc: string) => `/empresas/${segmento(ruc)}`;
 
-/** `POST /api/v1/empresas`. Alta de empresa, sin autenticación. Límite 5/min. */
+/**
+ * `GET /api/v1/empresas`. Todas las empresas registradas; es lo que alimenta el
+ * selector de cuentas. Ya no exige el token de administrador: va con el JWT de
+ * la persona, que tiene acceso a todas.
+ */
+export function listarEmpresas(): Promise<EmpresaResponse[]> {
+  return pedir<EmpresaResponse[]>('/empresas');
+}
+
+/** `POST /api/v1/empresas`. Alta de empresa. Requiere sesión. Límite 5/min. */
 export function crearEmpresa(datos: EmpresaCreate): Promise<EmpresaResponse> {
   return pedir<EmpresaResponse>('/empresas', { metodo: 'POST', cuerpo: datos });
 }

@@ -1,31 +1,57 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.core.auth import create_token
-from app.core.encryption import decrypt_password
-from app.db.database import get_db
-from app.repositories import empresas as repo_empresas
-from app.schemas.empresa import EmpresaLogin, TokenResponse
+from app.core.config import settings
+from app.domain.usuario import esta_permitido
+from app.schemas.auth import LoginGoogle, TokenResponse, UsuarioResponse
+from app.services import google_oauth
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+limiter = Limiter(key_func=get_remote_address)
 
 
-@router.post("/login", response_model=TokenResponse, summary="Iniciar sesión y obtener JWT")
-async def login(payload: EmpresaLogin, db=Depends(get_db)):
-    empresa = await repo_empresas.obtener_por_ruc(db, payload.ruc)
+@router.post("/google", response_model=TokenResponse, summary="Iniciar sesión con Google")
+# El login anterior no tenía límite pese a ser el endpoint más atacable. Éste va
+# más holgado que el 5/min del alta de empresa porque cerrar el diálogo de
+# Google y volver a intentarlo es una maniobra normal del usuario.
+@limiter.limit("10/minute")
+async def login_google(request: Request, payload: LoginGoogle):
+    try:
+        datos = await google_oauth.verificar_id_token(payload.credential)
+    except google_oauth.ErrorRedGoogle:
+        # 503 y no 401: si Google no responde, el token del usuario no tiene
+        # nada de malo, y devolver 401 mandaría a buscar el problema en el sitio
+        # equivocado.
+        logger.exception("No se pudo validar el ID token contra Google")
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo contactar con Google para validar la sesión",
+        ) from None
+    except google_oauth.ErrorIdTokenGoogle as exc:
+        logger.warning("ID token de Google rechazado: %s", exc)
+        raise HTTPException(status_code=401, detail="Token de Google inválido") from None
 
-    valido = False
-    if empresa and empresa.get("usuario") == payload.usuario:
-        try:
-            valido = decrypt_password(empresa.get("password", "")) == payload.password
-        except Exception:
-            valido = False
+    correo = datos["email"]
+    if not esta_permitido(correo, settings.GOOGLE_ALLOWED_EMAILS):
+        # Autenticado pero no autorizado, así que 403. Es la única traza que
+        # queda de un intento de acceso, de ahí el warning.
+        logger.warning("Acceso denegado a %s: no está en GOOGLE_ALLOWED_EMAILS", correo)
+        raise HTTPException(
+            status_code=403,
+            detail="Esta cuenta de Google no tiene acceso al panel",
+        )
 
-    if not valido:
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
-
+    logger.info("Sesión iniciada por %s", correo)
     return TokenResponse(
-        access_token=create_token(empresa_id=str(empresa["_id"]), ruc=empresa["ruc"])
+        access_token=create_token(email=correo, nombre=datos.get("nombre")),
+        usuario=UsuarioResponse(
+            email=correo,
+            nombre=datos.get("nombre"),
+            foto=datos.get("foto"),
+        ),
     )

@@ -52,7 +52,7 @@ export function ProcesosPage() {
   const jobs = useQuery({
     queryKey: ['jobs', ruc, { periodo, estado, pagina }],
     queryFn: () =>
-      listarJobs({
+      listarJobs(ruc, {
         periodo: periodo || undefined,
         estado: (estado || undefined) as EstadoJob | undefined,
         limit: POR_PAGINA,

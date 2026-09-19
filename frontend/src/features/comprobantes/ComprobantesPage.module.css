@@ -24,6 +24,22 @@
   color: var(--color-text-secondary);
 }
 
+/* Descargas de la cabecera: mismo aire de grupo que .libros, pero con
+   scroll horizontal para que quepan en pantallas angostas sin apilarse. */
+.descargas {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  overflow-x: auto;
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+}
+
+.descargas > * {
+  flex-shrink: 0;
+}
+
 .respaldo {
   display: flex;
   flex-wrap: wrap;

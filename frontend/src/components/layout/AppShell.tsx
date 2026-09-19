@@ -1,10 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
 import { Suspense } from 'react';
 import { Outlet } from 'react-router';
 
-import { obtenerEmpresa } from '@/api/empresas';
 import { Skeleton } from '@/components/ui/Feedback';
-import { useAuth, useRuc } from '@/features/auth/useAuth';
 import { JobsProvider } from '@/features/jobs/JobsProvider';
 
 import { AmbientBackground } from './AmbientBackground';
@@ -13,22 +10,17 @@ import { SideNav } from './SideNav';
 import { TopBar } from './TopBar';
 
 /**
- * Armazón de las rutas autenticadas: landmarks semánticos (`header`, `nav`,
- * `main`, `footer`), enlace de salto al contenido y el fondo ambiental.
+ * Armazón de las rutas autenticadas.
  *
- * `JobsProvider` se monta aquí y no en `App`: sondea `GET /jobs/{id}`, así que
- * solo debe existir dentro de la zona ya autenticada.
+ * La barra lateral ocupa una columna propia de alto completo y se queda fija; la
+ * cabecera, el contenido y el pie viven en una segunda columna de flujo normal.
+ * Ese reparto no es decorativo: un elemento `sticky` no puede salir de su bloque
+ * contenedor, y el bloque contenedor de un ítem de rejilla es su área. Una
+ * cabecera en una fila `auto` mide exactamente lo que su área, así que no tiene
+ * dónde moverse y `sticky` no hace nada. Metida en una columna de flujo normal
+ * sí tiene recorrido.
  */
 export function AppShell() {
-  const ruc = useRuc();
-  const { salir } = useAuth();
-
-  const empresa = useQuery({
-    queryKey: ['empresa', ruc],
-    queryFn: () => obtenerEmpresa(ruc),
-    staleTime: 5 * 60_000,
-  });
-
   return (
     <JobsProvider>
       <AmbientBackground />
@@ -37,26 +29,28 @@ export function AppShell() {
       </a>
 
       <div className={estilos.armazon}>
-        <header className={estilos.cabecera}>
-          <TopBar ruc={ruc} rubro={empresa.data?.rubro ?? null} onSalir={salir} />
-        </header>
-
-        <nav className={estilos.nav} aria-label="Secciones de la aplicación">
+        <aside className={estilos.nav} aria-label="Barra lateral">
           <SideNav />
-        </nav>
+        </aside>
 
-        <main className={estilos.contenido} id="contenido">
-          <Suspense fallback={<Skeleton lineas={5} etiqueta="Cargando la sección" />}>
-            <Outlet />
-          </Suspense>
-        </main>
+        <div className={estilos.columna}>
+          <header className={estilos.cabecera}>
+            <TopBar />
+          </header>
 
-        <footer className={estilos.pie}>
-          <p>
-            Se sincronizan los dos libros: compras (RCE) y ventas (RVIE). Cada uno se descarga,
-            se extrae y se analiza por separado.
-          </p>
-        </footer>
+          <main className={estilos.contenido} id="contenido">
+            <Suspense fallback={<Skeleton lineas={5} etiqueta="Cargando la sección" />}>
+              <Outlet />
+            </Suspense>
+          </main>
+
+          <footer className={estilos.pie}>
+            <p>
+              Se sincronizan los dos libros: compras (RCE) y ventas (RVIE). Cada uno se
+              descarga, se extrae y se analiza por separado.
+            </p>
+          </footer>
+        </div>
       </div>
     </JobsProvider>
   );

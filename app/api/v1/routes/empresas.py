@@ -5,7 +5,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.api.v1.deps import empresa_actual
-from app.core.auth import verify_admin
+from app.core.auth import usuario_actual
 from app.core.encryption import decrypt_password, encrypt_password
 from app.db.database import get_db
 from app.domain import rubro as dominio_rubro
@@ -27,7 +27,12 @@ def _con_rubro(empresa: dict) -> dict:
     return empresa
 
 
-@router.post("", response_model=EmpresaResponse, summary="Registrar empresa")
+@router.post(
+    "",
+    response_model=EmpresaResponse,
+    dependencies=[Depends(usuario_actual)],
+    summary="Registrar empresa",
+)
 @limiter.limit("5/minute")
 async def crear_empresa(request: Request, datos: EmpresaCreate, db=Depends(get_db)):
     if await repo_empresas.obtener_por_ruc(db, datos.ruc):
@@ -37,6 +42,7 @@ async def crear_empresa(request: Request, datos: EmpresaCreate, db=Depends(get_d
         db,
         {
             "ruc": datos.ruc,
+            "nombre": datos.nombre,
             "usuario": datos.usuario,
             "password": encrypt_password(datos.password),
             "sunat_token": None,
@@ -50,8 +56,8 @@ async def crear_empresa(request: Request, datos: EmpresaCreate, db=Depends(get_d
 @router.get(
     "",
     response_model=list[EmpresaResponse],
-    dependencies=[Depends(verify_admin)],
-    summary="Listar empresas (admin)",
+    dependencies=[Depends(usuario_actual)],
+    summary="Listar empresas",
 )
 async def listar_empresas(db=Depends(get_db)):
     return [_con_rubro(e) for e in await repo_empresas.listar(db)]

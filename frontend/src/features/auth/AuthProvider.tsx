@@ -3,23 +3,31 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
-import { login } from '@/api/auth';
+import { iniciarSesionConGoogle as entrarConGoogle } from '@/api/auth';
+import { olvidarSeleccionGoogle } from '@/lib/google';
 import { useToast } from '@/hooks/useToast';
 import { registrarManejadorDeSesionExpirada } from '@/lib/http';
 import { guardarSesion, limpiarSesion, obtenerSesion, suscribirSesion } from '@/lib/session';
-import type { EmpresaLogin } from '@/types/api';
 
 import { ContextoAuthReact } from './authContext';
 
+/**
+ * Identidad de la persona. La empresa sobre la que se trabaja vive aparte, en
+ * `features/empresas`: son dos ciclos de vida distintos y el de la empresa
+ * necesita una consulta que no debe dispararse en la pantalla de acceso.
+ */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const navegar = useNavigate();
   const cliente = useQueryClient();
+
   const { mostrar } = useToast();
 
   const sesion = useSyncExternalStore(suscribirSesion, obtenerSesion, () => null);
 
   const salir = useCallback(() => {
     limpiarSesion();
+    // Sin esto Google volvería a entrar sola con la última cuenta usada.
+    olvidarSeleccionGoogle();
     cliente.clear();
     void navegar('/login', { replace: true });
   }, [cliente, navegar]);
@@ -28,6 +36,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * El JWT dura 2 h (`JWT_EXPIRE_HOURS`), así que caducar en pantalla es el caso
    * normal. La capa HTTP avisa aquí y se sale de la sesión con un mensaje, en
    * lugar de dejar la interfaz llena de errores 401.
+   *
+   * El aviso sale por un toast, que es el canal de todo el panel. Para que no
+   * se apile con otro mensaje del mismo suceso, la capa HTTP solo llama aquí
+   * cuando de verdad había una sesión: un 401 de `POST /auth/google` es un
+   * intento de entrar rechazado, no una caducidad.
    */
   useEffect(() => {
     registrarManejadorDeSesionExpirada(() => {
@@ -44,19 +57,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [cliente, mostrar, navegar]);
 
-  const iniciarSesion = useCallback(async (credenciales: EmpresaLogin) => {
-    const respuesta = await login(credenciales);
-    guardarSesion({ token: respuesta.access_token, ruc: credenciales.ruc });
+  const iniciarSesionConGoogle = useCallback(async (idToken: string) => {
+    const respuesta = await entrarConGoogle(idToken);
+    guardarSesion({
+      token: respuesta.access_token,
+      correo: respuesta.usuario.email,
+      nombre: respuesta.usuario.nombre ?? undefined,
+      // Todavía sin empresa: la elige `EmpresaGate` con la lista del backend.
+      ruc: null,
+    });
   }, []);
 
   const valor = useMemo(
     () => ({
-      ruc: sesion?.ruc ?? null,
+      correo: sesion?.correo ?? null,
+      nombre: sesion?.nombre ?? null,
       autenticado: sesion !== null,
-      iniciarSesion,
+      iniciarSesionConGoogle,
       salir,
     }),
-    [sesion, iniciarSesion, salir],
+    [sesion, iniciarSesionConGoogle, salir],
   );
 
   return <ContextoAuthReact.Provider value={valor}>{children}</ContextoAuthReact.Provider>;
