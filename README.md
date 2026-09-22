@@ -17,6 +17,7 @@ app/
 tests/             domain/ (modelo y catálogos) y services/ (glosa, Excel, scraper simulado, jobs); sin I/O
 scripts/           utilidades de operación (plantilla, recálculo, bandejas SOL, informe por tipo)
 frontend/          SPA en React + TypeScript que consume esta API (README propio)
+chatbot_whatsapp/  cliente WhatsApp de esta API; captura documental, OCR local e inventario en React
 ```
 
 La regla que sostiene la separación: **`domain/` no importa `app.db`, `app.repositories` ni `requests`**. Todo lo que entra son estructuras de datos, y por eso se puede testear sin Mongo ni SUNAT.

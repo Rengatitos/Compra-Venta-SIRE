@@ -1,0 +1,39 @@
+.tablaContenedor {
+  overflow: auto;
+  max-inline-size: 100%;
+}
+
+.tabla {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-body-sm);
+}
+
+.celda {
+  padding: var(--space-3);
+  text-align: start;
+  border-block-end: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.detalle {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.original {
+  inline-size: 100%;
+  min-block-size: 32rem;
+  max-block-size: 75vh;
+  object-fit: contain;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.observacion {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-inline-start: 4px solid var(--color-text-secondary);
+}

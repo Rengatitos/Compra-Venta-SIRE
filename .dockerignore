@@ -18,6 +18,7 @@ __pycache__/
 # Archivos de entorno y secretos
 .env
 .env.local
+**/.env
 
 
 # PDFs descargados: van en un volumen, no en la imagen

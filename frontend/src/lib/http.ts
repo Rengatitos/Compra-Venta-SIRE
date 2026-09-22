@@ -228,3 +228,9 @@ export async function descargar(
 export function segmento(valor: string): string {
   return encodeURIComponent(valor);
 }
+
+/** Vista previa autenticada; el JWT no se expone en la URL. */
+export async function obtenerArchivo(ruta: string): Promise<Blob> {
+  const respuesta = await ejecutar(construirUrl(ruta), { method: 'GET', headers: cabeceras() });
+  return respuesta.blob();
+}

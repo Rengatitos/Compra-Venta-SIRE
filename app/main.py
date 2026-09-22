@@ -13,6 +13,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.database import close_mongo_connection, connect_to_mongo, get_db
 from app.repositories import comprobantes as repo_comprobantes
+from app.repositories import captura as repo_captura
 from app.repositories import empresas as repo_empresas
 from app.repositories import jobs as repo_jobs
 from app.repositories import periodos as repo_periodos
@@ -42,6 +43,9 @@ async def lifespan(app: FastAPI):
     logger.info("Iniciando la API de automatización SUNAT")
     await connect_to_mongo()
     db = get_db()
+
+    # La captura requiere índices únicos para garantizar idempotencia.
+    await repo_captura.crear_indices(db)
 
     try:
         await repo_empresas.crear_indices(db)

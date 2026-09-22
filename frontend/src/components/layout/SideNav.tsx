@@ -12,6 +12,8 @@ interface Entrada {
 const ENTRADAS: readonly Entrada[] = [
   { a: '/', texto: 'Dashboard', exacto: true },
   { a: '/periodos', texto: 'Periodos' },
+  { a: '/comprobantes', texto: 'Inventario documental' },
+  { a: '/lotes', texto: 'Lotes y WhatsApp' },
   { a: '/procesos', texto: 'Procesos' },
   { a: '/plan-cuentas', texto: 'Maestro de cuentas' },
   { a: '/ajustes', texto: 'Ajustes' },

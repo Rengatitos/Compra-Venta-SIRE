@@ -4,6 +4,7 @@ from app.api.v1.routes import (
     analytics,
     auditoria,
     auth,
+    captura,
     comprobantes,
     detalle,
     detracciones,
@@ -17,6 +18,7 @@ from app.api.v1.routes import (
 )
 
 api_router = APIRouter()
+api_router.include_router(captura.router)
 api_router.include_router(
     detracciones.router,
     prefix="/empresas/{ruc}/periodos/{periodo}/detracciones",

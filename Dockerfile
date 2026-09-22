@@ -4,10 +4,12 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /app
 
 # Instalar dependencias del proyecto
-COPY pyproject.toml ./
+COPY pyproject.toml uv.lock ./
+ARG INSTALL_CAPTURE=false
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-install-project --no-dev
+    if [ "$INSTALL_CAPTURE" = "true" ]; then uv sync --frozen --no-install-project --no-dev --extra captura; \
+    else uv sync --frozen --no-install-project --no-dev; fi
 
 # Limpiar venv para reducir peso
 RUN find .venv -type d -name "__pycache__" -exec rm -rf {} + && \
@@ -19,7 +21,7 @@ WORKDIR /app
 
 # Instalar dependencias del sistema necesarias para Playwright y Healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+    curl libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar el entorno virtual y dependencias del workspace
@@ -37,6 +39,7 @@ RUN python -m playwright install --with-deps chromium \
 
 # Copiar el código de la aplicación
 COPY app/ ./app/
+COPY chatbot_whatsapp/ ./chatbot_whatsapp/
 COPY pyproject.toml ./
 
 # Crear usuario no-root y asignar permisos

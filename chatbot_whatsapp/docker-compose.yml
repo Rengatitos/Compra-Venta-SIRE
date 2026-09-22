@@ -1,0 +1,88 @@
+# Ejecutar desde la raíz: docker compose -f docker-compose.yml -f chatbot_whatsapp/docker-compose.yml up --build
+services:
+  api:
+    build:
+      context: .
+      args:
+        INSTALL_CAPTURE: "true"
+    env_file:
+      - .env
+      - chatbot_whatsapp/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/data/captura
+
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, "yes"]
+    volumes:
+      - captura_redis:/data
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  captura-worker:
+    build:
+      context: .
+      args:
+        INSTALL_CAPTURE: "true"
+    env_file:
+      - .env
+      - chatbot_whatsapp/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/data/captura
+    command: [celery, -A, app.workers.captura, worker, --loglevel=WARNING]
+    volumes:
+      - pdfs:/app/data
+      - captura_models:/home/appuser/.cache
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
+  captura-beat:
+    build:
+      context: .
+      args:
+        INSTALL_CAPTURE: "true"
+    env_file:
+      - .env
+      - chatbot_whatsapp/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    command: [celery, -A, app.workers.captura, beat, --loglevel=WARNING, --schedule=/tmp/celerybeat]
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
+  chatbot-whatsapp:
+    build:
+      context: .
+    environment:
+      API_BASE_URL: http://api:9007/api/v1
+    command: [uvicorn, chatbot_whatsapp.main:app, --host, 0.0.0.0, --port, "9008", --no-access-log]
+    ports:
+      - "9008:9008"
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9008/health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  captura_redis:
+  captura_models:

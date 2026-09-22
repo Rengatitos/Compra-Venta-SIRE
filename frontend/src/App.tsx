@@ -44,6 +44,16 @@ const ReportePage = lazy(() =>
   import('@/features/reporte/ReportePage').then((m) => ({ default: m.ReportePage })),
 );
 
+const InventarioPage = lazy(() =>
+  import('@/features/captura/InventarioPage').then((m) => ({ default: m.InventarioPage })),
+);
+const DocumentoPage = lazy(() =>
+  import('@/features/captura/DocumentoPage').then((m) => ({ default: m.DocumentoPage })),
+);
+const LotesPage = lazy(() =>
+  import('@/features/captura/LotesPage').then((m) => ({ default: m.LotesPage })),
+);
+
 export function App() {
   return (
     <BrowserRouter>
@@ -63,6 +73,10 @@ export function App() {
                 <Route path="procesos" element={<ProcesosPage />} />
                 <Route path="plan-cuentas" element={<PlanCuentasPage />} />
                 <Route path="ajustes" element={<AjustesPage />} />
+                <Route path="comprobantes" element={<InventarioPage />} />
+                <Route path="comprobantes/:id" element={<DocumentoPage />} />
+                <Route path="lotes" element={<LotesPage />} />
+                <Route path="lotes/:id" element={<InventarioPage />} />
                 <Route path="*" element={<NoEncontradaPage />} />
               </Route>
             </Route>
