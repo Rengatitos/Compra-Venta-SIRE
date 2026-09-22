@@ -45,6 +45,7 @@ FastAPI servido con Uvicorn (un solo worker en producción, para ahorrar RAM). M
 - [Reporte y comprobantes asociados](endpoints/reporte-asociado.md)
 - [Jobs](endpoints/jobs.md)
 - [Analytics](endpoints/analytics.md)
+- [Apaclla Bot](endpoints/apaclla-bot.md) — vinculación del bot y comprobantes externos
 
 ## Flujo de negocio
 
@@ -67,6 +68,7 @@ Todas las colecciones viven en una sola base lógica de MongoDB. No hay un ODM: 
 - [periodos](modelo-datos/periodos.md)
 - [comprobantes](modelo-datos/comprobantes.md)
 - [jobs](modelo-datos/jobs.md)
+- [comprobantes externos y códigos de vinculación](modelo-datos/comprobantes-externos.md)
 - [Índices creados en el arranque](modelo-datos/indices.md)
 
 ## Fuera de alcance hoy

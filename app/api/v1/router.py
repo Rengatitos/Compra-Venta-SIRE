@@ -5,6 +5,7 @@ from app.api.v1.routes import (
     auditoria,
     auth,
     comprobantes,
+    comprobantes_externos,
     detalle,
     detracciones,
     empresas,
@@ -14,6 +15,7 @@ from app.api.v1.routes import (
     plan_cuentas,
     propuesta,
     reporte_asociado,
+    vinculacion,
 )
 
 api_router = APIRouter()
@@ -70,4 +72,17 @@ api_router.include_router(
     reporte_asociado.router,
     prefix="/empresas/{ruc}/periodos/{periodo}",
     tags=["Auditoría"],
+)
+
+# Integración con sire-bot (Apaclla Bot). El canje y la recepción se autentican
+# con `X-Api-Key`, no con la sesión del panel: ver `app.core.servicio`.
+api_router.include_router(
+    vinculacion.router,
+    prefix="/empresas/{ruc}/codigos-vinculacion",
+    tags=["Apaclla Bot"],
+)
+api_router.include_router(
+    comprobantes_externos.router,
+    prefix="/empresas/{ruc}/comprobantes-externos",
+    tags=["Apaclla Bot"],
 )

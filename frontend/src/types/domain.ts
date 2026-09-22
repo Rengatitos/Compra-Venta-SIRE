@@ -58,3 +58,14 @@ export function esPeriodoValido(periodo: string): boolean {
 export function esRucValido(ruc: string): boolean {
   return /^\d{11}$/.test(ruc.trim());
 }
+
+/** `app/domain/comprobante_externo.py::Fuente`: de qué foto salió el comprobante. */
+export type FuenteExterna =
+  | 'yape'
+  | 'plin'
+  | 'mercado_pago'
+  | 'niubiz'
+  | 'boleta'
+  | 'factura'
+  | 'otro'
+  | (string & {});

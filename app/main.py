@@ -12,7 +12,9 @@ from slowapi.util import get_remote_address
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.database import close_mongo_connection, connect_to_mongo, get_db
+from app.repositories import codigos_vinculacion as repo_codigos_vinculacion
 from app.repositories import comprobantes as repo_comprobantes
+from app.repositories import comprobantes_externos as repo_comprobantes_externos
 from app.repositories import empresas as repo_empresas
 from app.repositories import jobs as repo_jobs
 from app.repositories import periodos as repo_periodos
@@ -49,6 +51,8 @@ async def lifespan(app: FastAPI):
         await repo_comprobantes.crear_indices(db)
         await repo_jobs.crear_indices(db)
         await repo_plan_cuentas.crear_indices(db)
+        await repo_codigos_vinculacion.crear_indices(db)
+        await repo_comprobantes_externos.crear_indices(db)
     except PyMongoError:
         logger.exception("No se pudieron crear todos los índices; el servicio sigue activo")
 
@@ -60,6 +64,8 @@ async def lifespan(app: FastAPI):
         logger.warning("GOOGLE_CLIENT_ID no está configurado: nadie podrá iniciar sesión")
     if not settings.GOOGLE_ALLOWED_EMAILS:
         logger.warning("GOOGLE_ALLOWED_EMAILS está vacía: ninguna cuenta tiene acceso al panel")
+    if not settings.SIRE_BOT_API_KEY:
+        logger.warning("SIRE_BOT_API_KEY no está configurada: Apaclla Bot no podrá conectarse")
 
     yield
 

@@ -23,6 +23,8 @@ import { ApiError } from '@/lib/http';
 import { guardarEmpresaActiva } from '@/lib/session';
 import layout from '@/styles/layouts.module.css';
 
+import { VinculacionBotPanel } from './VinculacionBotPanel';
+
 export function AjustesPage() {
   useDocumentTitle('Ajustes de la empresa');
 
@@ -120,7 +122,7 @@ export function AjustesPage() {
     <>
       <PageHeader
         titulo="Ajustes de la empresa"
-        descripcion="Credenciales SOL, credenciales de la API SIRE y ciclo de vida de la cuenta."
+        descripcion="Credenciales SOL, credenciales de la API SIRE, vinculación con Apaclla Bot y ciclo de vida de la cuenta."
       />
 
       <div className={layout.pilaAmplia}>
@@ -223,6 +225,8 @@ export function AjustesPage() {
             </Button>
           </div>
         </Panel>
+
+        <VinculacionBotPanel ruc={ruc} />
 
         <Panel
           titulo="Eliminar la empresa"
