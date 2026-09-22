@@ -1,5 +1,6 @@
 import { pedir, segmento } from '@/lib/http';
 import type {
+  CodigoVinculacion,
   EmpresaCreate,
   EmpresaResponse,
   EmpresaUpdate,
@@ -49,4 +50,12 @@ export function eliminarEmpresa(ruc: string): Promise<MessageResponse> {
 /** `POST …/token-sunat`. Fuerza un OAuth nuevo contra la API SIRE. */
 export function renovarTokenSunat(ruc: string): Promise<StatusResponse> {
   return pedir<StatusResponse>(`${base(ruc)}/token-sunat`, { metodo: 'POST' });
+}
+
+/**
+ * `POST …/codigos-vinculacion`. Código de 6 dígitos para vincular Apaclla Bot
+ * con la empresa. Vive 10 minutos, sirve una vez y anula los anteriores.
+ */
+export function generarCodigoVinculacion(ruc: string): Promise<CodigoVinculacion> {
+  return pedir<CodigoVinculacion>(`${base(ruc)}/codigos-vinculacion`, { metodo: 'POST' });
 }

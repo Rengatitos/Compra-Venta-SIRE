@@ -9,6 +9,7 @@ import type {
   EstadoPeriodo,
   EstadoProcesamiento,
   FuenteDato,
+  FuenteExterna,
   Libro,
   TipoJob,
 } from './domain';
@@ -404,4 +405,47 @@ export interface DashboardData {
   top_contrapartes: ContraparteTop[];
   comprobantes_por_dia: ComprobantesPorDia[];
   comprobantes: ComprobanteResponse[];
+}
+
+/** `app/schemas/comprobante_externo.py`. Los montos llegan como texto ("1234.50"). */
+export interface ComprobanteExternoResponse {
+  id: string;
+  ruc: string;
+  periodo: string;
+  estado: string;
+  creado_en: string;
+  id_externo: string;
+  libro: Libro;
+  fuente: FuenteExterna;
+  tipo_evidencia: 'voucher' | 'comprobante' | (string & {});
+  tipo_cp: string;
+  tipo_cp_descripcion: string;
+  serie: string;
+  numero: string;
+  nro_operacion: string | null;
+  fecha_operacion: string | null;
+  hora_operacion: string | null;
+  moneda: string;
+  total: string;
+  base_imponible: string | null;
+  igv: string | null;
+  contraparte: { tipo_doc_identidad?: string; documento?: string; nombre?: string };
+  descripcion: string;
+  confianza: number | null;
+  campos_dudosos: string[];
+  dispositivo_id: string;
+  enviado_en: string | null;
+  tiene_imagen: boolean;
+}
+
+export interface ListaComprobantesExternos {
+  items: ComprobanteExternoResponse[];
+  total: number;
+  /** Periodos que tienen externos, para el selector. */
+  periodos: string[];
+}
+
+export interface CodigoVinculacion {
+  codigo: string;
+  expira_en: string;
 }

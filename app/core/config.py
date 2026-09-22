@@ -93,6 +93,15 @@ class Settings(BaseSettings):
 
 
 
+    # Clave con la que sire-bot (Apaclla Bot) se autentica en la cabecera
+    # `X-Api-Key`. Sin ella los endpoints del bot responden 503: la integración
+    # falla cerrada en vez de quedar abierta a cualquiera. Debe ser la misma
+    # cadena que el bot tiene en su `SIRE_API_KEY`.
+    SIRE_BOT_API_KEY: str | None = None
+    # Dónde se guardan las fotos que manda el bot, una carpeta por empresa.
+    # Vive dentro de `data/`, que docker-compose ya monta como volumen.
+    COMPROBANTES_EXTERNOS_DIR: str = "data/comprobantes-externos"
+
     # Orígenes permitidos por CORS. Se acepta tanto la lista separada por comas
     # que documenta `.env.example` como una lista JSON.
     #

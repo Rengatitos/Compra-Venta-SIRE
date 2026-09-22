@@ -9,12 +9,15 @@ from app.core.auth import usuario_actual
 from app.core.encryption import decrypt_password, encrypt_password
 from app.db.database import get_db
 from app.domain import rubro as dominio_rubro
+from app.repositories import codigos_vinculacion as repo_codigos_vinculacion
 from app.repositories import comprobantes as repo_comprobantes
+from app.repositories import comprobantes_externos as repo_comprobantes_externos
 from app.repositories import empresas as repo_empresas
 from app.repositories import periodos as repo_periodos
 from app.repositories import plan_cuentas as repo_plan_cuentas
 from app.schemas.empresa import EmpresaCreate, EmpresaResponse, EmpresaUpdate
 from app.schemas.generic import MessageResponse, StatusResponse
+from app.services import imagenes_externas
 from app.services.sunat.auth import credenciales_cliente, obtener_token
 
 router = APIRouter()
@@ -95,6 +98,9 @@ async def eliminar_empresa(empresa: dict = Depends(empresa_actual), db=Depends(g
     await repo_comprobantes.eliminar_de_empresa(db, empresa_id)
     await repo_periodos.eliminar_de_empresa(db, empresa_id)
     await repo_plan_cuentas.eliminar_de_empresa(db, empresa_id)
+    await repo_comprobantes_externos.eliminar_de_empresa(db, empresa_id)
+    await repo_codigos_vinculacion.eliminar_de_empresa(db, empresa_id)
+    imagenes_externas.eliminar_de_empresa(empresa_id)
 
     if await repo_empresas.eliminar(db, empresa["_id"]) == 0:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")

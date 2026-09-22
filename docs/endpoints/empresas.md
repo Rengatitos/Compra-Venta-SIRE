@@ -24,7 +24,7 @@
 
 ## `DELETE /api/v1/empresas/{ruc}`
 
-[eliminar_empresa](../../app/api/v1/routes/empresas.py). Borra en cascada: comprobantes, periodos y plan de cuentas de la empresa, y finalmente la propia empresa. Los PDFs guardados en `SUNAT_DATA_DIR` no se tocan. `404` si no existe.
+[eliminar_empresa](../../app/api/v1/routes/empresas.py). Borra en cascada: comprobantes, periodos, plan de cuentas, comprobantes externos (con sus fotos) y códigos de vinculación de la empresa, y finalmente la propia empresa. Los PDFs guardados en `SUNAT_DATA_DIR` no se tocan. `404` si no existe.
 
 Cualquier sesión válida puede eliminar **cualquier** empresa: el panel no tiene roles. Con un único correo autorizado el riesgo es bajo, pero al ampliar `GOOGLE_ALLOWED_EMAILS` habrá que introducirlos.
 

@@ -104,6 +104,16 @@ export function IconoAuditoria() {
   );
 }
 
+/** Burbuja de chat con un recibo: lo que llega desde Apaclla Bot. */
+export function IconoExternos() {
+  return (
+    <Lienzo>
+      <path d="M5.25 4.25h13.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.25 3.5v-3.5h-.5a1.5 1.5 0 0 1-1.5-1.5v-9a1.5 1.5 0 0 1 1.5-1.5Z" />
+      <path d="M8.5 8.75h7M8.5 12h4.5" />
+    </Lienzo>
+  );
+}
+
 /** Barras: el reporte del periodo. */
 export function IconoReporte() {
   return (

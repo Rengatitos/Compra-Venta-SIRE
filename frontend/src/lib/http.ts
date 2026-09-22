@@ -227,6 +227,20 @@ export async function descargar(
   }
 }
 
+/**
+ * Binario autenticado para mostrarlo en la página (p. ej. la foto de un
+ * comprobante externo): un `<img src>` no puede enviar el Bearer, así que se
+ * pide aquí y quien llama lo convierte en `URL.createObjectURL`.
+ */
+export async function pedirBlob(ruta: string, signal?: AbortSignal): Promise<Blob> {
+  const respuesta = await ejecutar(construirUrl(ruta), {
+    method: 'GET',
+    headers: cabeceras(),
+    signal: signal ?? null,
+  });
+  return respuesta.blob();
+}
+
 /** Los `serie_numero` pueden traer caracteres reservados: codificar siempre. */
 export function segmento(valor: string): string {
   return encodeURIComponent(valor);
