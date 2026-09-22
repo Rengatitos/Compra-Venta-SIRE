@@ -10,6 +10,7 @@ MONTHS = (
 
 def parse_period(text: str, today: date | None = None) -> str | None:
     text = text.strip().upper()
+    text = re.sub(r"^SETIEMBRE\b", "SEPTIEMBRE", text)
     if today and text in {"1", "MES ACTUAL", "ACTUAL"}:
         return today.strftime("%Y%m")
     if today and text in {"2", "MES ANTERIOR", "ANTERIOR"}:
@@ -31,8 +32,10 @@ def decide_period(
     target: str | None = None,
 ) -> PeriodDecision:
     """La fecha de recepción nunca participa en la asignación contable."""
-    if target and parse_period(target) is None:
-        raise ValueError("Periodo inválido")
+    if target:
+        target = parse_period(target)
+        if target is None:
+            raise ValueError("Periodo inválido")
     trusted = ocr_date is not None and confidence >= 0.85
     result = PeriodDecision(
         document_date=ocr_date if trusted else None,

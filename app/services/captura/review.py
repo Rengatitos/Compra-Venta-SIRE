@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from app.domain.captura.classification import NAMES, RULES
 from app.domain.captura.models import TERMINAL_STATUSES, ExtractedDocument, ExtractedField
-from app.domain.captura.validation import validate
+from app.domain.captura.validation import fingerprint, validate
 from app.repositories import captura as repo
 from app.services.captura.privacy import SensitiveDataMasker
 
@@ -28,8 +28,13 @@ async def mutate(
             raise HTTPException(409, "El documento cambió. Actualiza la pantalla.")
         if previous["status"] not in TERMINAL_STATUSES and action != "CANCEL":
             raise HTTPException(409, "Espera a que termine el procesamiento")
-        if previous["status"] == "CONFIRMED":
-            raise HTTPException(409, "Un documento confirmado no se puede modificar")
+        if previous["status"] in {"CONFIRMED", "EXPORTED"}:
+            raise HTTPException(409, "Un documento confirmado o exportado no se puede modificar")
+        if action in {"EDIT", "MOVE_PERIOD", "RESOLVE"} and previous["status"] not in {
+            "READY",
+            "NEEDS_REVIEW",
+        }:
+            raise HTTPException(409, "Reprocesa el documento antes de revisarlo")
         if (
             previous.get("associated_payment") or previous.get("tax_document_id")
         ) and action != "CONFIRM":
@@ -39,6 +44,28 @@ async def mutate(
         actual = dict(changes)
         if action == "EDIT":
             actual = edit_changes(previous, changes)
+            duplicate_id = await repo.sync_identity(
+                db, company, identifier, previous.get("fingerprint"), actual["fingerprint"], tx
+            )
+            if not duplicate_id and previous.get("file_hash"):
+                duplicate = await repo.collection(db, "documents").find_one(
+                    {
+                        "company_id": company,
+                        "_id": {"$ne": identifier},
+                        "file_hash": previous["file_hash"],
+                    },
+                    session=tx,
+                )
+                duplicate_id = duplicate["_id"] if duplicate else None
+            issues = [issue for issue in actual["issues"] if issue != "POSSIBLE_DUPLICATE"]
+            if duplicate_id:
+                issues.append("POSSIBLE_DUPLICATE")
+            actual.update(
+                possible_duplicate=bool(duplicate_id),
+                duplicate_of=duplicate_id,
+                issues=issues,
+                status="NEEDS_REVIEW" if issues else "READY",
+            )
         if action == "MOVE_PERIOD":
             remaining = [
                 issue
@@ -61,6 +88,15 @@ async def mutate(
             if previous.get("period_validation") == "MISMATCH":
                 raise HTTPException(409, "Resuelve primero el periodo")
             actual.update(status="READY", issues=[], reviewed_issues=previous.get("issues", []))
+        if previous.get("batch_id"):
+            batch = await repo.get(db, "batches", company, previous["batch_id"], tx)
+            if batch:
+                batch_changes = {"$inc": {"revision": 1}}
+                if action == "REPROCESS" and batch["status"] not in {"RECEIVING", "CANCELLED"}:
+                    batch_changes["$set"] = {"status": "PROCESSING"}
+                await repo.collection(db, "batches").update_one(
+                    {"_id": batch["_id"], "company_id": company}, batch_changes, session=tx
+                )
         actual["updated_at"] = repo.now()
         await repo.collection(db, "documents").update_one(
             {"_id": identifier, "company_id": company, "revision": revision},
@@ -134,7 +170,8 @@ def edit_changes(previous: dict, changes: dict) -> dict:
         if not item.startswith("VALIDATION:") and item != "DATE_PERIOD_MISMATCH"
     ]
     issues += ["VALIDATION:" + check["rule"] for check in checks if check["status"] != "PASS"]
-    issue_date = extracted.fields["document.issue_date"].value
+    date_field = extracted.fields["document.issue_date"]
+    issue_date = date_field.value if date_field.confidence >= 0.85 else None
     period_validation = previous.get("period_validation", "UNVERIFIED")
     date_edited = "document.issue_date" in changes.get("fields", {}) or "document_date" in changes
     if issue_date and (period_validation != "MANUALLY_CONFIRMED" or date_edited):
@@ -150,6 +187,7 @@ def edit_changes(previous: dict, changes: dict) -> dict:
         period_validation = "UNVERIFIED"
     return {
         "extracted": extracted.model_dump(mode="json"),
+        "fingerprint": fingerprint(extracted),
         "validations": checks,
         "issues": issues,
         "document_type": extracted.classification.type,

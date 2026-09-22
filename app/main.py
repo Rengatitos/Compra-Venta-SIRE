@@ -2,18 +2,20 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.api.v1.router import api_router
+from app.core.captura_errors import TransactionsUnavailableError
 from app.core.config import settings
 from app.db.database import close_mongo_connection, connect_to_mongo, get_db
-from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import captura as repo_captura
+from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import empresas as repo_empresas
 from app.repositories import jobs as repo_jobs
 from app.repositories import periodos as repo_periodos
@@ -71,6 +73,16 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(TransactionsUnavailableError)
+async def transactions_unavailable_handler(request: Request, error: TransactionsUnavailableError):
+    logger.error("Captura no disponible: %s. %s", error.code, error.detail)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": error.detail, "code": error.code},
+        headers={"Retry-After": "60"},
+    )
 
 app.add_middleware(
     CORSMiddleware,

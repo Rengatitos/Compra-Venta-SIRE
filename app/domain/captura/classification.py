@@ -63,7 +63,7 @@ NAMES = {
 
 
 def classify(text: str) -> Classification:
-    normalized = normalize(text)
+    normalized = re.sub(r"\s+", " ", normalize(text))
     scores = {
         kind: sum(
             weight

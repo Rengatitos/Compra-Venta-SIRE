@@ -1,0 +1,26 @@
+# MongoDB local con transacciones, conservando el volumen existente.
+# Arrancar por separado: docker compose -f chatbot_whatsapp/docker-compose.mongo-local.yml up -d
+# Si ya existe sire-mongodb independiente, seguir la conversión del README primero.
+name: sire-mongo-local
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: sire-mongodb
+    command: [mongod, --replSet, sire-rs, --bind_ip_all]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, "quit(db.adminCommand({ping: 1}).ok ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mongo_data:
+    # external evita crear por accidente una base vacía si falta el volumen.
+    external: true
+    name: ${MONGO_LOCAL_VOLUME:-sire-mongodb-data}

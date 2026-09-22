@@ -69,6 +69,8 @@ export function LotesPage() {
           titulo="Teléfono autorizado"
           descripcion="El número podrá registrar documentos para esta empresa por WhatsApp."
         >
+          {phones.error && <p role="alert">{phones.error.message}</p>}
+          {phones.isLoading && <p role="status">Cargando teléfonos…</p>}
           {phones.data
             ?.filter((item) => item.active)
             .map((item) => (
@@ -106,7 +108,8 @@ export function LotesPage() {
       </div>
       <Panel titulo="Lotes recibidos">
         {batches.error && <p role="alert">{batches.error.message}</p>}
-        {!batches.data?.length && <p>Aún no hay lotes en esta página.</p>}
+        {batches.isLoading && <p role="status">Cargando lotes…</p>}
+        {!batches.isLoading && !batches.error && !batches.data?.length && <p>Aún no hay lotes en esta página.</p>}
         <ul>
           {batches.data?.map((batch) => (
             <li key={batch.id}>

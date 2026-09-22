@@ -40,7 +40,7 @@ LABELS = {
     "customer.address": r"DIRECCION CLIENTE",
     "document.issue_date": (
         r"(?:FECHA(?: DE)? EMISION|"
-        r"FECHA(?!\s+(?:DE\s+)?(?:VENCIMIENTO|PAGO|TRASLADO)))"
+        r"FECHA(?!\s+(?:DE\s+)?(?:VENCIMIENTO|PAGO|TRASLADO|DOCUMENTO|REFERENCIA)))"
     ),
     "document.issue_time": r"HORA",
     "document.currency": r"MONEDA",
@@ -88,18 +88,15 @@ LABELS = {
 
 
 def money(value: str) -> str | None:
-    value = re.sub(r"^(?:S/\.?|PEN|USD|US\$|\$)\s*", "", value.strip())
-    if not re.fullmatch(r"-?[\d.,]+", value):
+    value = re.sub(r"^(?:S/\.?|PEN|USD|US\$|EUR|€|\$)\s*", "", value.strip(), flags=re.I)
+    if re.fullmatch(r"-?\d+(?:[.,]\d{1,2})?", value):
+        value = value.replace(",", ".")
+    elif re.fullmatch(r"-?\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?", value):
+        value = value.replace(",", "")
+    elif re.fullmatch(r"-?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?", value):
+        value = value.replace(".", "").replace(",", ".")
+    else:
         return None
-    if "," in value and "." in value:
-        if value.rfind(",") > value.rfind("."):
-            value = value.replace(".", "").replace(",", ".")
-        else:
-            value = value.replace(",", "")
-    elif "," in value:
-        value = (
-            value.replace(",", ".") if len(value.rsplit(",", 1)[1]) == 2 else value.replace(",", "")
-        )
     try:
         return str(Decimal(value).quantize(Decimal(".01")))
     except InvalidOperation:
@@ -107,17 +104,50 @@ def money(value: str) -> str | None:
 
 
 def parse_date(value: str) -> date | None:
-    match = re.search(r"\b(\d{1,4})[-/.](\d{1,2})[-/.](\d{2,4})\b", value)
-    if not match:
+    matches = list(re.finditer(
+        r"(?<![\d/.-])(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|"
+        r"\d{1,2}[-/.]\d{1,2}[-/.](?:\d{4}|\d{2}))(?![\d/.-])",
+        value,
+    ))
+    if not matches:
         return None
-    a, b, c = map(int, match.groups())
-    year, month, day = (a, b, c) if len(match[1]) == 4 else (c, b, a)
-    if year < 100:
-        year += 2000
+    dates = set()
     try:
-        return date(year, month, day)
+        for match in matches:
+            parts = re.split(r"[-/.]", match[0])
+            a, b, c = map(int, parts)
+            year, month, day = (a, b, c) if len(parts[0]) == 4 else (c, b, a)
+            if len(parts[0]) != 4 and len(parts[2]) == 2:
+                year += 2000
+            dates.add(date(year, month, day))
     except ValueError:
         return None
+    return dates.pop() if len(dates) == 1 else None
+
+
+def raw_group(text: str, match: re.Match, group: str | int) -> str:
+    """Devuelve el fragmento original incluso si Unicode cambió su longitud."""
+    offsets = [index for index, char in enumerate(text) for _ in normalize(char)]
+    start, end = match.span(group)
+    if start == end:
+        return ""
+    return text[offsets[start] : offsets[end] if end < len(offsets) else len(text)].strip()
+
+
+def choose(candidates: list[ExtractedField]) -> ExtractedField:
+    chosen = max(candidates, key=lambda field: field.confidence)
+    if len({str(field.value) for field in candidates if field.value is not None}) > 1:
+        return chosen.model_copy(update={"value": None, "status": FieldStatus.ILLEGIBLE})
+    return chosen
+
+
+def currency(value: str) -> str | None:
+    aliases = {
+        "PEN": "PEN", "S/": "PEN", "S/.": "PEN", "SOL": "PEN", "SOLES": "PEN",
+        "NUEVOS SOLES": "PEN", "USD": "USD", "US$": "USD", "DOLARES": "USD",
+        "DOLARES AMERICANOS": "USD", "EUR": "EUR", "EUROS": "EUR", "€": "EUR",
+    }
+    return aliases.get(normalize(value).strip())
 
 
 def evidence(block: OCRBlock, value: str | None) -> ExtractedField:
@@ -152,8 +182,7 @@ class LabelExtractor:
             for block in ocr.blocks:
                 match = re.fullmatch(rf"\s*{label}\s*(?::|\s)\s*(.*?)\s*", normalize(block.text))
                 if match:
-                    # El índice del texto normalizado conserva los caracteres de origen.
-                    raw = block.text[match.start(1) : match.end(1)].strip()
+                    raw = raw_group(block.text, match, 1)
                     field = evidence(block, raw or None)
                     if raw and (key.startswith("amounts.") or key.startswith("honorarios.")):
                         field.value = money(raw)
@@ -167,28 +196,31 @@ class LabelExtractor:
                         )
                     if raw and key == "issuer.ruc":
                         field.value = raw if re.fullmatch(r"\d{11}", raw) else None
+                    if raw and key == "document.currency":
+                        field.value = currency(raw)
                     if raw and field.value is None:
                         field.status = FieldStatus.ILLEGIBLE
                     candidates.append(field)
             if candidates:
                 # Varios valores distintos necesitan revisión; no elegir uno arbitrariamente.
-                chosen = max(candidates, key=lambda field: field.confidence)
-                if len({str(field.value) for field in candidates if field.value}) > 1:
-                    chosen = chosen.model_copy(
-                        update={"value": None, "status": FieldStatus.ILLEGIBLE}
-                    )
-                fields[key] = chosen
+                fields[key] = choose(candidates)
         self._document_number(ocr, result)
         self._payment(ocr, result)
         self._date(ocr, result)
         self._items(ocr, result)
-        for block in ocr.blocks:
-            text = normalize(block.text)
-            if re.search(r"S/\.?\s*\d", text) and fields["document.currency"].value is None:
-                fields["document.currency"] = evidence(block, "PEN")
-            elif re.search(r"(?:US\$|USD)\s*\d", text):
-                fields["document.currency"] = evidence(block, "USD")
+        self._currency(ocr, result)
         return result
+
+    def _currency(self, ocr: OCRResult, result: ExtractedDocument) -> None:
+        if result.fields["document.currency"].status != FieldStatus.NOT_PRESENT:
+            return
+        candidates = []
+        for block in ocr.blocks:
+            for symbol, value in ((r"S/\.?|PEN", "PEN"), (r"US\$|USD", "USD"), (r"EUR|€", "EUR")):
+                if re.search(rf"(?<!\w)(?:{symbol})\s*-?\d", normalize(block.text)):
+                    candidates.append(evidence(block, value))
+        if candidates:
+            result.fields["document.currency"] = choose(candidates)
 
     def _items(self, ocr: OCRResult, result: ExtractedDocument) -> None:
         table = False
@@ -204,8 +236,8 @@ class LabelExtractor:
                 continue
             row = re.fullmatch(
                 r"(?P<quantity>\d+(?:[.,]\d+)?)\s+(?P<unit>UND|UNIDAD|NIU|KG|LTR|GAL|M3)\s+"
-                r"(?P<description>.+?)\s+(?P<unit_price>\d+[.,]\d{2})\s+"
-                r"(?P<total>\d+[.,]\d{2})",
+                r"(?P<description>.+?)\s+(?P<unit_price>[\d.,]+)\s+"
+                r"(?P<total>[\d.,]+)",
                 text,
             )
             if row:
@@ -226,25 +258,55 @@ class LabelExtractor:
                         value = money(value)
                     elif key == "quantity":
                         value = value.replace(",", ".")
+                    elif key == "description":
+                        value = raw_group(block.text, row, key)
                     item[key] = evidence(block, value)
+                    if value is None:
+                        item[key].status = FieldStatus.ILLEGIBLE
                 result.items.append(item)
 
     def _document_number(self, ocr: OCRResult, result: ExtractedDocument) -> None:
+        candidates = {prefix: [] for prefix in ("document", "references")}
+        reference = False
+        reference_page = None
+        is_note = result.classification.sunat_code in {"07", "08", "87", "88", "97", "98"}
         for block in ocr.blocks:
             text = normalize(block.text)
-            match = re.search(r"\b([FEBT][A-Z0-9]{3})\s*-\s*(\d{1,12})\b", text)
-            if not match:
-                continue
-            reference = any(word in text for word in ("AFECTADO", "REFERENCIA", "MODIFICA"))
+            if reference_page != block.page:
+                reference = False
+            reference_page = block.page
+            if re.search(r"\b(?:AFECTAD[OA]|REFERENCIA|MODIFICAD[OA]|MODIFICA)\b", text):
+                reference = True
+            elif is_note and re.search(r"\b(?:FACTURA|BOLETA|RECIBO POR HONORARIOS)\b", text):
+                reference = True
+            elif re.search(r"\bNOTA DE (?:CREDITO|DEBITO)\b", text):
+                reference = False
+            elif reference and re.match(r"(?:MOTIVO|RAZON|SUBTOTAL|TOTAL|IGV|FECHA)\b", text):
+                reference = False
             prefix = "references" if reference else "document"
-            if result.fields[f"{prefix}.series"].value is None:
-                result.fields[f"{prefix}.series"] = evidence(block, match[1])
-                result.fields[f"{prefix}.number"] = evidence(block, match[2])
+            if reference:
+                for title, code in (("FACTURA", "01"), ("BOLETA", "03"), ("RECIBO POR HONORARIOS", "02")):
+                    if re.search(rf"\b{title}\b", text):
+                        result.fields["references.document_type"] = evidence(block, code)
+            for match in re.finditer(r"\b([FEBT][A-Z0-9]{3})\s*-\s*(\d{1,12})\b", text):
+                candidates[prefix].append((block, match[1], match[2]))
+        for prefix, matches in candidates.items():
+            if not matches:
+                continue
+            ambiguous = len({(series, number) for _, series, number in matches}) > 1
+            block, series, number = max(matches, key=lambda row: row[0].confidence)
+            for key, value in (("series", series), ("number", number)):
+                field = evidence(block, value)
+                if ambiguous:
+                    field.value = None
+                    field.status = FieldStatus.ILLEGIBLE
+                result.fields[f"{prefix}.{key}"] = field
 
     def _payment(self, ocr: OCRResult, result: ExtractedDocument) -> None:
         if result.classification.family != "PAYMENT":
             return
         result.fields["vehicle.plate"] = ExtractedField(status=FieldStatus.NOT_APPLICABLE)
+        amounts = []
         for block in ocr.blocks:
             text = normalize(block.text)
             for channel in ("YAPE", "PLIN", "VISA", "MASTERCARD"):
@@ -258,23 +320,36 @@ class LabelExtractor:
             match = re.search(r"(?:\*{2,}|X{2,})\s*(\d{4})\b", text)
             if match:
                 result.fields["payment.card_last4"] = evidence(block, match[1])
-            if result.fields["amounts.total"].value is None and re.fullmatch(
-                r"\s*(?:S/\.?|US\$|USD)\s*[\d.,]+\s*", text
+            if result.fields["amounts.total"].status == FieldStatus.NOT_PRESENT and re.fullmatch(
+                r"\s*(?:S/\.?|PEN|US\$|USD|EUR|€)\s*[\d.,]+\s*", text
             ):
-                result.fields["amounts.total"] = evidence(block, money(text))
+                field = evidence(block, money(text))
+                if field.value is None:
+                    field.status = FieldStatus.ILLEGIBLE
+                amounts.append(field)
+        if amounts:
+            result.fields["amounts.total"] = choose(amounts)
 
     def _date(self, ocr: OCRResult, result: ExtractedDocument) -> None:
         if result.fields["document.issue_date"].status != FieldStatus.NOT_PRESENT:
             return
-        candidates = [
-            (block, parse_date(block.text))
-            for block in ocr.blocks
-            if re.fullmatch(r"\s*\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4}\s*", block.text)
-        ]
-        valid = [(block, value) for block, value in candidates if value]
-        if len({value for _, value in valid}) == 1:
-            block, value = valid[0]
-            result.fields["document.issue_date"] = evidence(block, value.isoformat())
+        candidates = []
+        for index, block in enumerate(ocr.blocks):
+            if not re.fullmatch(r"\s*\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4}\s*", block.text):
+                continue
+            previous = ocr.blocks[index - 1] if index else None
+            if previous and previous.page == block.page and re.search(
+                r"\b(?:VENCIMIENTO|PAGO|TRASLADO|PERIODO|AFECTADO|REFERENCIA)\b",
+                normalize(previous.text),
+            ):
+                continue
+            parsed = parse_date(block.text)
+            field = evidence(block, parsed.isoformat() if parsed else None)
+            if not parsed:
+                field.status = FieldStatus.ILLEGIBLE
+            candidates.append(field)
+        if candidates:
+            result.fields["document.issue_date"] = choose(candidates)
 
 
 def extract(ocr: OCRResult) -> ExtractedDocument:

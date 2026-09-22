@@ -1,10 +1,19 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger("chatbot_whatsapp")
+TRANSACTIONS_REQUIRED = "MONGO_TRANSACTIONS_REQUIRED"
+TRANSACTIONS_DETAIL = (
+    "La captura requiere MongoDB con transacciones. Configura MongoDB como replica set "
+    "o usa MongoDB Atlas y actualiza MONGO_URI del backend. "
+    "Vuelve a intentar la operación después de corregir la conexión."
+)
 
 
 class Settings(BaseSettings):
@@ -41,8 +50,24 @@ async def webhook(request: Request):
                 "X-Twilio-Signature": request.headers.get("X-Twilio-Signature", ""),
             },
         )
-    except httpx.HTTPError:
+    except httpx.HTTPError as error:
+        logger.error("Backend de captura no disponible: %s", type(error).__name__)
         raise HTTPException(503, "Backend no disponible; reintentar entrega") from None
+    if response.status_code >= 500:
+        try:
+            problem = response.json()
+        except ValueError:
+            problem = None
+        code = problem.get("code") if isinstance(problem, dict) else None
+        if response.status_code == 503 and code == TRANSACTIONS_REQUIRED:
+            logger.error("Backend de captura no disponible: %s. %s", code, TRANSACTIONS_DETAIL)
+            return JSONResponse(
+                status_code=503,
+                content={"detail": TRANSACTIONS_DETAIL, "code": TRANSACTIONS_REQUIRED},
+                headers={"Retry-After": "60"},
+            )
+        logger.error("Backend de captura no disponible: HTTP %s", response.status_code)
+        raise HTTPException(503, "Backend no disponible; reintentar entrega")
     return Response(
         response.content,
         status_code=response.status_code,

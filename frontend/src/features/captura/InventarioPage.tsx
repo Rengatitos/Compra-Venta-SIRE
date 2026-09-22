@@ -11,6 +11,7 @@ import {
   listarDocumentos,
   listarPeriodosCaptura,
   obtenerLote,
+  resumenPeriodoCaptura,
 } from '@/api/captura';
 import type { Documento } from '@/api/captura';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -21,6 +22,7 @@ import { useRuc } from '@/features/auth/useAuth';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import layout from '@/styles/layouts.module.css';
 import styles from './Inventario.module.css';
+import { tiposDocumento } from './catalogo';
 
 const valor = (doc: Documento, key: string) => doc.extracted?.fields[key]?.value ?? '—';
 
@@ -30,15 +32,19 @@ export function InventarioPage() {
   const client = useQueryClient();
   const { id: batchId } = useParams();
   const [params, setParams] = useSearchParams();
-  const [page, setPage] = useState(1);
-  const [q, setQ] = useState('');
-  const [status, setStatus] = useState('');
-  const [tipo, setTipo] = useState('');
-  const [order, setOrder] = useState('received_at');
   const [message, setMessage] = useState('');
   const period = params.get('periodo') ?? '';
   const observed = params.get('observados') === 'true';
   const duplicates = params.get('duplicados') === 'true';
+  const requestedPage = Number(params.get('pagina') ?? 1);
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const q = params.get('q') ?? '';
+  const status = observed ? '' : (params.get('estado') ?? '');
+  const tipo = params.get('tipo') ?? '';
+  const requestedOrder = params.get('orden') ?? 'received_at';
+  const order = ['received_at', 'document_date', 'accounting_period'].includes(requestedOrder)
+    ? requestedOrder
+    : 'received_at';
   const documents = useQuery({
     queryKey: [
       'captura',
@@ -78,6 +84,23 @@ export function InventarioPage() {
     enabled: Boolean(batchId),
     refetchInterval: 5000,
   });
+  const operationPeriod = period || batch.data?.accounting_period || '';
+  const summary = useQuery({
+    queryKey: ['captura', ruc, 'summary', operationPeriod],
+    queryFn: () => resumenPeriodoCaptura(operationPeriod),
+    enabled: /^\d{4}(0[1-9]|1[0-2])$/.test(operationPeriod),
+    refetchInterval: 5000,
+  });
+  const countStatus = (statuses: string[]) =>
+    (summary.data ?? []).reduce(
+      (sum, item) => sum + (statuses.includes(item._id.status) ? item.count : 0),
+      0,
+    );
+  const countsByType = (summary.data ?? []).reduce<Record<string, number>>((counts, item) => {
+    const type = item._id.type ?? 'UNKNOWN';
+    counts[type] = (counts[type] ?? 0) + item.count;
+    return counts;
+  }, {});
   const refresh = () => client.invalidateQueries({ queryKey: ['captura', ruc] });
   const upload = useMutation({
     mutationFn: async (files: File[]) => {
@@ -108,11 +131,11 @@ export function InventarioPage() {
   const operation = useMutation({
     mutationFn: async (kind: string) => {
       if (kind === 'export') {
-        await exportarInventario(period);
+        await exportarInventario(operationPeriod);
         return 'Exportación descargada.';
       }
       if (kind === 'reconcile') {
-        const result = await conciliarPeriodo(period);
+        const result = await conciliarPeriodo(operationPeriod);
         return `Coincidencias sugeridas: ${result.suggested}. Revisa el detalle de los documentos.`;
       }
       const result = await accionLote(batchId!, kind === 'close' ? 'close' : 'confirm');
@@ -125,11 +148,13 @@ export function InventarioPage() {
     onError: (error) => setMessage(error.message),
   });
   function filter(key: string, value: string) {
-    setPage(1);
     setParams((current) => {
-      if (value) current.set(key, value);
-      else current.delete(key);
-      return current;
+      const next = new URLSearchParams(current);
+      if (key !== 'pagina') next.delete('pagina');
+      if (key === 'observados' && value) next.delete('estado');
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
     });
   }
   return (
@@ -139,6 +164,23 @@ export function InventarioPage() {
         descripcion="Documentos recibidos por WhatsApp y cargas web, organizados por periodo contable."
         acciones={<Link to="/lotes">Ver lotes</Link>}
       />
+      {summary.data && (
+        <Panel titulo={`Resumen del periodo ${operationPeriod}`}>
+          <dl className={layout.fila}>
+            <div><dt>Total recibidos</dt><dd>{summary.data.reduce((sum, item) => sum + item.count, 0)}</dd></div>
+            <div><dt>Listos para confirmar</dt><dd>{countStatus(['READY'])}</dd></div>
+            <div><dt>Observados</dt><dd>{countStatus(['NEEDS_REVIEW', 'FAILED'])}</dd></div>
+            <div><dt>Confirmados</dt><dd>{countStatus(['CONFIRMED', 'EXPORTED'])}</dd></div>
+          </dl>
+          <p>Incluye todos los documentos del periodo, independientemente de los filtros y del lote.</p>
+          <ul>
+            {Object.entries(countsByType).map(([type, count]) => (
+              <li key={type}>{tiposDocumento.find((item) => item.valor === type)?.texto ?? type}: {count}</li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+      {summary.error && <p role="alert">{summary.error.message}</p>}
       {batch.data && (
         <Panel titulo={`Periodo ${batch.data.accounting_period}`}>
           <p>
@@ -193,18 +235,14 @@ export function InventarioPage() {
           <TextField
             etiqueta="Buscar RUC, proveedor, documento o concepto"
             value={q}
-            onChange={(event) => {
-              setQ(event.target.value);
-              setPage(1);
-            }}
+            onChange={(event) => filter('q', event.target.value)}
           />
           <SelectField
             etiqueta="Estado"
             value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
-              setPage(1);
-            }}
+            disabled={observed}
+            ayuda={observed ? 'Solo observados incluye documentos por revisar y fallidos.' : undefined}
+            onChange={(event) => filter('estado', event.target.value)}
             opciones={[
               { valor: '', texto: 'Todos' },
               ...[
@@ -213,6 +251,7 @@ export function InventarioPage() {
                 'READY',
                 'NEEDS_REVIEW',
                 'CONFIRMED',
+                'EXPORTED',
                 'FAILED',
                 'CANCELLED',
               ].map((key) => ({ valor: key, texto: key })),
@@ -221,29 +260,16 @@ export function InventarioPage() {
           <SelectField
             etiqueta="Tipo"
             value={tipo}
-            onChange={(event) => {
-              setTipo(event.target.value);
-              setPage(1);
-            }}
+            onChange={(event) => filter('tipo', event.target.value)}
             opciones={[
               { valor: '', texto: 'Todos' },
-              ...[
-                'FACTURA',
-                'BOLETA',
-                'NOTA_CREDITO',
-                'HONORARIOS',
-                'YAPE_TRANSFER',
-                'YAPE_SERVICE_PAYMENT',
-                'PLIN_TRANSFER',
-                'POS_VOUCHER',
-                'UNKNOWN',
-              ].map((key) => ({ valor: key, texto: key })),
+              ...tiposDocumento,
             ]}
           />
           <SelectField
             etiqueta="Ordenar por"
             value={order}
-            onChange={(event) => setOrder(event.target.value)}
+            onChange={(event) => filter('orden', event.target.value)}
             opciones={[
               { valor: 'received_at', texto: 'Fecha de ingreso' },
               { valor: 'document_date', texto: 'Fecha documental' },
@@ -283,13 +309,13 @@ export function InventarioPage() {
             Posibles duplicados
           </label>
           <Button
-            disabled={!period || operation.isPending}
+            disabled={!operationPeriod || operation.isPending}
             onClick={() => operation.mutate('export')}
           >
             Exportar confirmados
           </Button>
           <Button
-            disabled={!period || operation.isPending}
+            disabled={!operationPeriod || operation.isPending}
             onClick={() => operation.mutate('reconcile')}
           >
             Buscar medios de pago
@@ -299,7 +325,9 @@ export function InventarioPage() {
       <p role="status">{upload.isPending ? 'Cargando documentos…' : message}</p>
       {documents.error && <p role="alert">{documents.error.message}</p>}
       {batch.error && <p role="alert">{batch.error.message}</p>}
+      {periods.error && <p role="alert">{periods.error.message}</p>}
       <Panel titulo={`Documentos (${documents.data?.total ?? 0})`}>
+        {documents.isLoading && <p role="status">Cargando documentos…</p>}
         <div
           className={styles.tablaContenedor}
           role="region"
@@ -348,10 +376,11 @@ export function InventarioPage() {
                     valor(doc, 'issuer.name'),
                     valor(doc, 'service.description'),
                     valor(doc, 'amounts.total'),
-                    valor(doc, 'payment.channel') !== '—'
-                      ? valor(doc, 'payment.channel')
-                      : valor(doc, 'payment.method'),
-                    valor(doc, 'payment.operation_number'),
+                    doc.associated_payment?.channel ||
+                      doc.extracted?.fields['payment.channel']?.value ||
+                      doc.associated_payment?.method ||
+                      valor(doc, 'payment.method'),
+                    doc.associated_payment?.operation_number || valor(doc, 'payment.operation_number'),
                     doc.accounting_period ?? 'Sin asignar',
                     doc.source,
                   ].map((text, index) => (
@@ -371,17 +400,17 @@ export function InventarioPage() {
             </tbody>
           </table>
         </div>
-        {!documents.isLoading && !documents.data?.items.length && (
+        {!documents.isLoading && !documents.error && !documents.data?.items.length && (
           <p>No hay documentos con estos filtros.</p>
         )}
         <div className={layout.fila}>
-          <Button disabled={page === 1} onClick={() => setPage(page - 1)}>
+          <Button disabled={page === 1 || documents.isLoading} onClick={() => filter('pagina', String(page - 1))}>
             Anterior
           </Button>
           <span>Página {page}</span>
           <Button
-            disabled={page * 25 >= (documents.data?.total ?? 0)}
-            onClick={() => setPage(page + 1)}
+            disabled={documents.isLoading || page * 25 >= (documents.data?.total ?? 0)}
+            onClick={() => filter('pagina', String(page + 1))}
           >
             Siguiente
           </Button>

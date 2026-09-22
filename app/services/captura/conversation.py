@@ -85,11 +85,15 @@ class Conversation:
         period = parse_period(text, datetime.now(ZoneInfo("America/Lima")).date())
         if not period:
             return "Periodo no reconocido. Escribe SEPTIEMBRE 2026 o 202609."
-        self.session["selected_period"] = period
         if not self.session.get("selecting_batch"):
             identifier = self.session.get("document_id")
             document = await repo.get(self.db, "documents", self.company_id, identifier, self.tx)
             if document and document["status"] in {"READY", "NEEDS_REVIEW"}:
+                if document.get("associated_payment") or document.get("tax_document_id"):
+                    self.session["state"] = SessionState.WAITING_SINGLE_CONFIRMATION
+                    return (
+                        "Un documento conciliado no puede cambiar de periodo. Revisa el inventario."
+                    )
                 issues = [
                     issue
                     for issue in document.get("issues", [])
@@ -127,9 +131,11 @@ class Conversation:
                     period,
                     self.tx,
                 )
-                self.session["state"] = SessionState.WAITING_SINGLE_CONFIRMATION
+                self.session.update(
+                    state=SessionState.WAITING_SINGLE_CONFIRMATION, selected_period=period
+                )
                 return f"Periodo asignado: {period}. Escribe CONFIRMAR o CORREGIR."
-            self.session["state"] = SessionState.IDLE
+            self.session.update(state=SessionState.IDLE, selected_period=period)
             return f"Periodo de referencia: {period}. La fecha OCR se comprobará contra él."
         batch_id = uuid4().hex
         await repo.collection(self.db, "batches").insert_one(
@@ -146,7 +152,9 @@ class Conversation:
             },
             session=self.tx,
         )
-        self.session.update(batch_id=batch_id, state=SessionState.BATCH_RECEIVING)
+        self.session.update(
+            batch_id=batch_id, state=SessionState.BATCH_RECEIVING, selected_period=period
+        )
         return (
             f"📚 Lote #{batch_id[:8]} — {period}\nEnvía tus comprobantes. Escribe FIN al terminar."
         )
@@ -167,6 +175,8 @@ class Conversation:
                 return "Hay un comprobante pendiente. Escribe CONFIRMAR, CORREGIR o CANCELAR."
         if batch_id:
             batch = await repo.get(self.db, "batches", self.company_id, batch_id, self.tx)
+            if not batch or batch["status"] != "RECEIVING":
+                return "El lote está cerrado. Confirma o cancela la revisión antes de iniciar otro."
             if batch["received_count"] + len(media) > captura_settings().MAX_BATCH_DOCUMENTS:
                 return "Alcanzaste el límite del lote. Escribe FIN."
             await repo.collection(self.db, "batches").update_one(
@@ -287,17 +297,29 @@ class Conversation:
 
     async def cancel(self) -> str:
         batch_id = self.session.get("batch_id")
+        query = {
+            "company_id": self.company_id,
+            **({"batch_id": batch_id} if batch_id else {"_id": self.session.get("document_id")}),
+            "status": {"$nin": ["CONFIRMED", "EXPORTED"]},
+        }
+        linked = await repo.collection(self.db, "documents").find_one(
+            {
+                **query,
+                "$or": [
+                    {"associated_payment": {"$ne": None}},
+                    {"tax_document_id": {"$ne": None}},
+                ],
+            },
+            session=self.tx,
+        )
+        if linked:
+            return "Hay un documento conciliado que no se puede cancelar. Revisa el inventario."
         if batch_id:
             await repo.collection(self.db, "batches").update_one(
                 {"_id": batch_id, "company_id": self.company_id},
                 {"$set": {"status": "CANCELLED"}},
                 session=self.tx,
             )
-        query = {
-            "company_id": self.company_id,
-            **({"batch_id": batch_id} if batch_id else {"_id": self.session.get("document_id")}),
-            "status": {"$nin": ["CONFIRMED", "EXPORTED"]},
-        }
         await repo.collection(self.db, "documents").update_many(
             query, {"$set": {"status": "CANCELLED"}, "$inc": {"revision": 1}}, session=self.tx
         )

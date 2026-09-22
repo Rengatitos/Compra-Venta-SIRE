@@ -22,6 +22,7 @@ export interface Documento {
   sunat_code?: string | null;
   mime?: string;
   issues: string[];
+  tax_document_id?: string | null;
   associated_payment?: {
     document_id: string;
     channel: string | null;
@@ -49,6 +50,10 @@ export const obtenerDocumento = (id: string) =>
   pedir<Documento>(`${base}/documents/${segmento(id)}`);
 export const listarPeriodosCaptura = () =>
   pedir<{ _id: string | null; count: number }[]>(`${base}/periods`);
+export const resumenPeriodoCaptura = (period: string) =>
+  pedir<{ _id: { type: string | null; status: string }; count: number }[]>(
+    `${base}/periods/${segmento(period.slice(0, 4))}/${segmento(period.slice(4))}/summary`,
+  );
 export const listarLotes = (page: number) =>
   pedir<Lote[]>(`${base}/batches`, { consulta: { page } });
 export const obtenerLote = (id: string) => pedir<Lote>(`${base}/batches/${segmento(id)}`);

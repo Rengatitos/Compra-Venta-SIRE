@@ -153,7 +153,8 @@ async def upload(
         raise HTTPException(
             422, "Archivo inválido, excede límites o no es JPG/PNG/WebP/PDF"
         ) from None
-    key = await asyncio.to_thread(storage(settings).put, content)
+    provider = storage(settings)
+    key = await asyncio.to_thread(provider.put, content)
     document = repo.new_document(
         company,
         "WEB",
@@ -178,7 +179,13 @@ async def upload(
         await repo.collection(db, "documents").insert_one(document, session=tx)
         await repo.audit(db, company, document["_id"], "EMPRESA:" + company, "UPLOAD", session=tx)
 
-    await repo.transaction(db, apply)
+    try:
+        await repo.transaction(db, apply)
+    except HTTPException:
+        # Un rechazo de negocio aborta la transacción; el archivo no tiene propietario.
+        await asyncio.to_thread(provider.delete, key)
+        raise
+    # Si Mongo pierde la respuesta del commit, conservar el original permite recuperación.
     return repo.public(document)
 
 
@@ -429,12 +436,21 @@ async def batch_documents(
 
 @router.post("/batches/{identifier}/close")
 async def close_batch(identifier: str, company: str = Depends(company_id), db=Depends(get_db)):
-    result = await repo.collection(db, "batches").update_one(
-        {"_id": identifier, "company_id": company, "status": "RECEIVING"},
-        {"$set": {"status": "PROCESSING", "closed_at": repo.now()}},
-    )
-    if not result.modified_count:
-        raise HTTPException(409, "Lote inexistente o ya cerrado")
+    async def apply(tx):
+        result = await repo.collection(db, "batches").update_one(
+            {"_id": identifier, "company_id": company, "status": "RECEIVING"},
+            {"$set": {"status": "PROCESSING", "closed_at": repo.now()}},
+            session=tx,
+        )
+        if not result.modified_count:
+            raise HTTPException(409, "Lote inexistente o ya cerrado")
+        await repo.collection(db, "sessions").update_many(
+            {"company_id": company, "batch_id": identifier},
+            {"$set": {"state": "BATCH_PROCESSING"}},
+            session=tx,
+        )
+
+    await repo.transaction(db, apply)
     return {"status": "PROCESSING"}
 
 
@@ -446,8 +462,23 @@ async def confirm_batch(identifier: str, company: str = Depends(company_id), db=
         batch = await repo.get(db, "batches", company, identifier, tx)
         if not batch:
             raise HTTPException(404, "Lote no encontrado")
+        if batch["status"] not in {"READY_FOR_REVIEW", "PARTIALLY_CONFIRMED"}:
+            raise HTTPException(409, "El lote no está disponible para confirmar")
         handler = Conversation(db, {"_id": company}, {"batch_id": identifier}, tx)
-        return await handler.confirm()
+        message = await handler.confirm()
+        await repo.collection(db, "sessions").update_many(
+            {"company_id": company, "batch_id": identifier},
+            {
+                "$set": {
+                    "state": "IDLE",
+                    "batch_id": None,
+                    "document_id": None,
+                    "selected_period": None,
+                }
+            },
+            session=tx,
+        )
+        return message
 
     return {"message": await repo.transaction(db, apply)}
 

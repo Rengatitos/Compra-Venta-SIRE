@@ -4,6 +4,9 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from pymongo import ReturnDocument
+from pymongo.errors import OperationFailure
+
+from app.core.captura_errors import TransactionsUnavailableError
 
 
 def now() -> datetime:
@@ -86,8 +89,42 @@ async def audit(
 
 async def transaction(db, callback):
     # Atlas ya es replica set. No degradar a escrituras parciales si no hay transacciones.
-    async with await db.client.start_session() as session:
-        return await session.with_transaction(callback)
+    try:
+        async with await db.client.start_session() as session:
+            return await session.with_transaction(callback)
+    except OperationFailure as error:
+        if error.code == 20:
+            # Mongo standalone rechaza los números de transacción con IllegalOperation.
+            # No propagar detalles del driver que podrían incluir datos de conexión.
+            raise TransactionsUnavailableError from None
+        raise
+
+
+async def sync_identity(
+    db, company: str, identifier: str, old_fingerprint: str | None,
+    new_fingerprint: str | None, session=None,
+) -> str | None:
+    """Serializa cambios de huella y devuelve el documento duplicado, si existe."""
+    await collection(db, 'company_settings').update_one(
+        {'_id': company}, {'$inc': {'identity_revision': 1}}, upsert=True, session=session,
+    )
+    if old_fingerprint and old_fingerprint != new_fingerprint:
+        await collection(db, 'identities').delete_one(
+            {'_id': company + ':' + old_fingerprint, 'document_id': identifier}, session=session,
+        )
+    if not new_fingerprint:
+        return None
+    key = company + ':' + new_fingerprint
+    # La consulta cubre también documentos anteriores a la creación del registro de identidades.
+    other = await collection(db, 'documents').find_one(
+        {'company_id': company, 'fingerprint': new_fingerprint, '_id': {'$ne': identifier}},
+        session=session,
+    )
+    owner = other['_id'] if other else identifier
+    await collection(db, 'identities').update_one(
+        {'_id': key}, {'$set': {'document_id': owner}}, upsert=True, session=session,
+    )
+    return owner if owner != identifier else None
 
 
 async def batch_counts(db, company: str, batch_id: str, session=None) -> dict:

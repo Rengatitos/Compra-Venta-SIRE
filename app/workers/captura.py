@@ -55,6 +55,8 @@ async def dispatch(db):
                         {"lease_until": {"$exists": False}},
                         {"lease_until": {"$lt": repo.now()}},
                     ],
+                    '$and': [{'$or': [{'dispatch_until': {'$exists': False}},
+                                      {'dispatch_until': {'$lt': repo.now()}}]}],
                 }
             )
             .limit(100)

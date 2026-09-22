@@ -11,6 +11,7 @@ from app.core.captura_config import CapturaSettings
 class StorageProvider(Protocol):
     def put(self, content: bytes) -> str: ...
     def read(self, key: str) -> bytes: ...
+    def delete(self, key: str) -> None: ...
 
 
 class LocalStorage:
@@ -35,6 +36,10 @@ class LocalStorage:
 
     def read(self, key: str) -> bytes:
         return self.path(key).read_bytes()
+
+    def delete(self, key: str) -> None:
+        """Sólo para archivos nuevos cuya transacción de recepción fue rechazada."""
+        self.path(key).unlink(missing_ok=True)
 
 
 def storage(settings: CapturaSettings) -> StorageProvider:

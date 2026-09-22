@@ -14,6 +14,10 @@ from app.services.captura.storage import inspect_file, storage
 from app.services.captura.twilio import download_media, send_message
 
 
+class RetriesExhausted(ValueError):
+    """El proceso fue interrumpido repetidamente antes de poder guardar el resultado."""
+
+
 def summary(document: dict) -> str:
     fields = document.get("extracted", {}).get("fields", {})
 
@@ -44,6 +48,8 @@ async def process_document(db, identifier: str) -> None:
     settings = captura_settings()
     ownership = {"_id": identifier, "lease_id": document["lease_id"], "status": "OCR_PROCESSING"}
     try:
+        if document['attempts'] > 3:
+            raise RetriesExhausted
         provider = storage(settings)
         if document.get("storage_key"):
             content = await asyncio.to_thread(provider.read, document["storage_key"])
@@ -53,7 +59,7 @@ async def process_document(db, identifier: str) -> None:
             info = await asyncio.to_thread(inspect_file, content, settings)
             key = await asyncio.to_thread(provider.put, content)
             document.update(storage_key=key, mime=info["mime"], file_hash=info["sha256"])
-            await repo.collection(db, "documents").update_one(
+            stored = await repo.collection(db, "documents").update_one(
                 ownership,
                 {
                     "$set": {
@@ -64,6 +70,9 @@ async def process_document(db, identifier: str) -> None:
                     }
                 },
             )
+            if not stored.modified_count:
+                await asyncio.to_thread(provider.delete, key)
+                return
         if document.get("ocr"):
             ocr = OCRResult.model_validate(document["ocr"])
         else:
@@ -76,12 +85,14 @@ async def process_document(db, identifier: str) -> None:
                     "_id": {"$ne": identifier},
                 }
             )
+            if document.get('generation', 0) > 0:
+                cached = None  # Reproceso explícito: no reutilizar la inferencia anterior.
             ocr = (
                 OCRResult.model_validate(cached["ocr"])
                 if cached
                 else await asyncio.to_thread(recognize, content, info["mime"])
             )
-            await repo.collection(db, "documents").update_one(
+            saved_ocr = await repo.collection(db, "documents").update_one(
                 ownership,
                 {
                     "$set": {
@@ -90,6 +101,8 @@ async def process_document(db, identifier: str) -> None:
                     }
                 },
             )
+            if not saved_ocr.modified_count:
+                return
         metadata = await asyncio.to_thread(extract_file_metadata, content, info["mime"])
         extracted = extract(ocr)
         field = extracted.fields["document.issue_date"]
@@ -144,24 +157,14 @@ async def process_document(db, identifier: str) -> None:
         }
 
         async def finish(tx):
-            if identity:
-                identity_key = document["company_id"] + ":" + identity
-                await repo.collection(db, "identities").update_one(
-                    {"_id": identity_key},
-                    {"$setOnInsert": {"document_id": identifier}},
-                    upsert=True,
-                    session=tx,
-                )
-                owner = await repo.collection(db, "identities").find_one(
-                    {"_id": identity_key}, session=tx
-                )
-                if owner["document_id"] != identifier:
-                    changes.update(
-                        possible_duplicate=True,
-                        duplicate_of=owner["document_id"],
-                        status="NEEDS_REVIEW",
-                    )
-                    changes["issues"] = list(set([*changes["issues"], "POSSIBLE_DUPLICATE"]))
+            current = await repo.collection(db, 'documents').find_one(ownership, session=tx)
+            if current is None:
+                return
+            owner = await repo.sync_identity(db, document['company_id'], identifier,
+                                             current.get('fingerprint'), identity, tx)
+            if owner:
+                changes.update(possible_duplicate=True, duplicate_of=owner, status='NEEDS_REVIEW')
+                changes['issues'] = list(set([*changes['issues'], 'POSSIBLE_DUPLICATE']))
             updated = await repo.collection(db, "documents").update_one(
                 ownership,
                 {
@@ -202,7 +205,7 @@ async def process_document(db, identifier: str) -> None:
     except Exception as error:
         # No persistir str(error): los clientes HTTP pueden incluir URLs y credenciales.
         final = document["attempts"] >= 3 or isinstance(error, ValueError)
-        await repo.collection(db, "documents").update_one(
+        failed = await repo.collection(db, "documents").update_one(
             ownership,
             {
                 "$set": {
@@ -213,10 +216,10 @@ async def process_document(db, identifier: str) -> None:
                 "$unset": {"lease_until": "", "lease_id": ""},
             },
         )
-        if final and document.get("phone") and not document.get("batch_id"):
+        if failed.modified_count and final and document.get("phone") and not document.get("batch_id"):
             await repo.notify(
                 db,
-                "failed:" + identifier,
+                f"failed:{identifier}:{document.get('generation', 0)}",
                 document["company_id"],
                 document["phone"],
                 "No pudimos procesar el archivo. Revisa el inventario o envía otra imagen.",
@@ -228,11 +231,10 @@ async def finish_batches(db) -> None:
         await repo.collection(db, "batches").find({"status": "PROCESSING"}).limit(100).to_list(100)
     )
     for batch in batches:
-        counts = await repo.batch_counts(db, batch["company_id"], batch["_id"])
-        if any(key not in TERMINAL_STATUSES for key in counts):
-            continue
-
-        async def finish(tx, batch=batch, counts=counts):
+        async def finish(tx, batch=batch):
+            counts = await repo.batch_counts(db, batch['company_id'], batch['_id'], tx)
+            if any(key not in TERMINAL_STATUSES for key in counts):
+                return
             result = await repo.collection(db, "batches").update_one(
                 {"_id": batch["_id"], "status": "PROCESSING"},
                 {"$set": {"status": "READY_FOR_REVIEW", "completed_at": repo.now()}},
@@ -264,6 +266,24 @@ async def deliver_notification(db, identifier: str) -> None:
     if not message:
         return
     query = {"_id": identifier, "lease_id": message["lease_id"]}
+    parts = identifier.split(':')
+    current = None
+    if parts[0] in {'document', 'failed'} and len(parts) >= 2:
+        current = await repo.get(db, 'documents', message['company_id'], parts[1])
+        expected = {'FAILED'} if parts[0] == 'failed' else {'READY', 'NEEDS_REVIEW'}
+        if current and current.get('status') not in expected:
+            current = None
+        if current and len(parts) > 2 and str(current.get('generation', 0)) != parts[2]:
+            current = None
+    elif parts[0] == 'batch' and len(parts) == 2:
+        current = await repo.get(db, 'batches', message['company_id'], parts[1])
+        if current and current.get('status') != 'READY_FOR_REVIEW':
+            current = None
+    if current is None:
+        await repo.collection(db, 'notifications').update_one(query, {'$set': {'status': 'CANCELLED'}})
+        return
+    if parts[0] == 'document':
+        message['body'] = summary(current)
     phone = await repo.collection(db, "phones").find_one(
         {
             "company_id": message["company_id"],

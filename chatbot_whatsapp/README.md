@@ -33,6 +33,9 @@ npm run dev --prefix frontend
 Para Celery en Windows usar `--pool=solo`; para procesamiento paralelo, contenedores Linux.
 MongoDB debe ser un replica set con transacciones, como Atlas. Los índices nuevos se crean
 al iniciar la API; no se migran ni reemplazan colecciones SIRE existentes.
+Para el contenedor MongoDB local existente, consulta [MONGO_LOCAL.md](MONGO_LOCAL.md).
+El Compose de captura toma `MONGO_URI` del `.env` de la raíz para los tres procesos
+(API, worker y beat); no reemplaza esa conexión por una dirección fija.
 
 ## Activar WhatsApp
 
@@ -42,6 +45,19 @@ al iniciar la API; no se migran ni reemplazan colecciones SIRE existentes.
 3. Inicia sesión en React y autoriza el número del cliente desde **Lotes y WhatsApp**.
 4. En Sandbox, el cliente debe unirse también al Sandbox de Twilio.
 5. Envía `HOLA`, una fotografía o `LOTE` desde el número autorizado.
+
+`TWILIO_PHONE_NUMBER` es el **emisor de Twilio**, que llega como `To` en el webhook.
+En Sandbox es `+14155238886`; un número comprado en Twilio no lo sustituye.
+El teléfono del cliente se autoriza desde React. Si cambias el emisor o las credenciales,
+recrea los servicios con el comando de arranque para que carguen el nuevo entorno.
+
+### Diagnóstico
+
+- `403 Destino inválido`: `TWILIO_PHONE_NUMBER` no coincide con el `To` de Twilio.
+- `403 Firma inválida`: revisar el token y la URL pública exacta, sin desactivar la firma.
+- `503 MONGO_TRANSACTIONS_REQUIRED`: MongoDB no admite transacciones; habilitar un replica
+  set en la base existente. La captura conserva transacciones para evitar escrituras parciales.
+- Mensaje de teléfono no autorizado: volver a autorizar el número del cliente en su empresa.
 
 El cliente conserva la firma original; la API la verifica sobre la URL pública configurada.
 Mantén `TWILIO_VALIDATE_SIGNATURE=true`. Las credenciales sólo van en `.env`, excluido del
