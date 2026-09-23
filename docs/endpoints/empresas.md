@@ -22,6 +22,8 @@
 
 [actualizar_empresa](../../app/api/v1/routes/empresas.py). Acepta cambios parciales (`EmpresaUpdate`). Si se envía `password`, se re-cifra. Un `sunat_client_id`/`sunat_client_secret` vacío en el body **no borra** el valor existente — se interpreta como "no lo toques".
 
+`actividades_economicas` (lista de `{tipo, ciiu, descripcion}`, la ficha RUC) es el contexto que usa el [clasificador contable](clasificacion.md). Enviarla reemplaza la lista completa. Para traerla de SUNAT en vez de escribirla: [`POST /empresas/{ruc}/ficha-ruc`](clasificacion.md).
+
 ## `DELETE /api/v1/empresas/{ruc}`
 
 [eliminar_empresa](../../app/api/v1/routes/empresas.py). Borra en cascada: comprobantes, periodos, plan de cuentas, comprobantes externos (con sus fotos) y códigos de vinculación de la empresa, y finalmente la propia empresa. Los PDFs guardados en `SUNAT_DATA_DIR` no se tocan. `404` si no existe.

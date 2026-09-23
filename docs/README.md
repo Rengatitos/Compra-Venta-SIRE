@@ -41,6 +41,7 @@ FastAPI servido con Uvicorn (un solo worker en producción, para ahorrar RAM). M
 - [Detalle SUNAT (asíncrono)](endpoints/detalle.md)
 - [PDFs de comprobantes (asíncrono)](endpoints/pdfs.md) — descarga por libro, ZIP con manifiesto y ZIP completo
 - [Detracciones (NPD)](endpoints/detracciones.md)
+- [Clasificación contable](endpoints/clasificacion.md) — cuenta base y total por comprobante (RAG + Gemini)
 - [Auditoría](endpoints/auditoria.md)
 - [Reporte y comprobantes asociados](endpoints/reporte-asociado.md)
 - [Jobs](endpoints/jobs.md)

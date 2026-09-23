@@ -16,6 +16,7 @@ import { TextField } from '@/components/ui/Field';
 import { Panel } from '@/components/ui/Panel';
 import { useRuc } from '@/features/auth/useAuth';
 import { useEmpresas } from '@/features/empresas/useEmpresas';
+import { GestionAccesos } from '@/features/usuarios/GestionAccesos';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useToast } from '@/hooks/useToast';
 import { formatearFechaHora } from '@/lib/format';
@@ -23,6 +24,7 @@ import { ApiError } from '@/lib/http';
 import { guardarEmpresaActiva } from '@/lib/session';
 import layout from '@/styles/layouts.module.css';
 
+import { ActividadesEmpresaPanel } from './ActividadesEmpresaPanel';
 import { VinculacionBotPanel } from './VinculacionBotPanel';
 
 export function AjustesPage() {
@@ -122,7 +124,7 @@ export function AjustesPage() {
     <>
       <PageHeader
         titulo="Ajustes de la empresa"
-        descripcion="Credenciales SOL, credenciales de la API SIRE, vinculación con Apaclla Bot y ciclo de vida de la cuenta."
+        descripcion="Actividades económicas, credenciales SOL, credenciales de la API SIRE, vinculación con Apaclla Bot y ciclo de vida de la cuenta."
       />
 
       <div className={layout.pilaAmplia}>
@@ -166,6 +168,8 @@ export function AjustesPage() {
             </dl>
           ) : null}
         </Panel>
+
+        <ActividadesEmpresaPanel ruc={ruc} empresa={datos} />
 
         <Panel
           titulo="Actualizar credenciales"
@@ -227,6 +231,10 @@ export function AjustesPage() {
         </Panel>
 
         <VinculacionBotPanel ruc={ruc} />
+
+        {/* No depende de la empresa, pero es el sitio que un administrador ya
+            conoce; para el resto no se pinta. */}
+        <GestionAccesos />
 
         <Panel
           titulo="Eliminar la empresa"

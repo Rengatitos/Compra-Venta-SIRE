@@ -18,6 +18,11 @@ __pycache__/
 # Archivos de entorno y secretos
 .env
 .env.local
+# Credencial de la cuenta de servicio de Google (Vertex AI / Gemini).
+# `*.json` ya la cubre en .gitignore; va explícita para que nadie la
+# destape al tocar ese patrón.
+service-account.json
+*service-account*.json
 
 
 # PDFs descargados: van en un volumen, no en la imagen

@@ -27,6 +27,7 @@ const TIPOS: Record<TipoJob, string> = {
   extraccion_detalles: 'Detalle y PDF SUNAT',
   descarga_pdfs: 'Descarga de PDFs',
   detracciones: 'Consulta de detracciones',
+  clasificacion_cuentas: 'Clasificación contable',
 };
 
 export function presentarTipoJob(tipo: string): string {

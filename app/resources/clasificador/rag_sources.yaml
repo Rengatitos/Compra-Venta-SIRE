@@ -1,0 +1,18 @@
+default_weight: 0.85
+sources:
+  - pattern: "plan_cuentas/cuentas_reporte_compras_RAG.xlsx"
+    weight: 1.08
+  - pattern: "plan_cuentas/cuentas_reporte_ventas_RAG.xlsx"
+    weight: 1.08
+  - pattern: "plan_cuentas/PLAN_DE_CUENTAS_CONTASIS.xlsx"
+    weight: 1.03
+  - pattern: "tributario/catalogo_reglas_sunat_normalizado.xlsx"
+    weight: 1.05
+  - pattern: "tributario/"
+    weight: 0.96
+  - pattern: "ciiu/"
+    weight: 1.00
+  - pattern: "pcge/"
+    weight: 0.96
+  - pattern: "contasis/"
+    weight: 0.78

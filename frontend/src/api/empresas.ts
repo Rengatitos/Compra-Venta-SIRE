@@ -47,6 +47,15 @@ export function eliminarEmpresa(ruc: string): Promise<MessageResponse> {
   return pedir<MessageResponse>(base(ruc), { metodo: 'DELETE' });
 }
 
+/**
+ * `POST …/ficha-ruc`. Obtiene el CIIU de la empresa: consulta su ficha en la
+ * Consulta RUC de SUNAT y guarda sus actividades económicas, que el
+ * clasificador contable usa como contexto. Tarda unos segundos.
+ */
+export function obtenerCiiuEmpresa(ruc: string): Promise<EmpresaResponse> {
+  return pedir<EmpresaResponse>(`${base(ruc)}/ficha-ruc`, { metodo: 'POST' });
+}
+
 /** `POST …/token-sunat`. Fuerza un OAuth nuevo contra la API SIRE. */
 export function renovarTokenSunat(ruc: string): Promise<StatusResponse> {
   return pedir<StatusResponse>(`${base(ruc)}/token-sunat`, { metodo: 'POST' });

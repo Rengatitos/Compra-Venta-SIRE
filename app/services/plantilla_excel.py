@@ -17,8 +17,11 @@ dólares se convierte multiplicando por su tipo de cambio, y el importe
 original en dólares va aparte, en la columna «EQUIVALENTE EN DOLARES
 AMERICANOS». Ver `_Conversion` más abajo.
 
-La glosa viene del detalle SUNAT o de la edición manual. La cuenta base y
-el centro de costos quedan vacíos.
+La glosa viene del detalle SUNAT o de la edición manual. La cuenta base sale
+del clasificador contable (`clasificacion_contable`), y sólo cuando éste no
+pide revisión: una cuenta dudosa en el Excel se importa a Contasis sin que
+nadie la mire, mientras que una celda vacía obliga al contador a ponerla. El
+centro de costos queda vacío.
 
 Otras columnas se llenan con una regla en vez de con un dato de SUNAT, porque
 así aparecen en el 100 % de los registros reales con los que se comparó esta
@@ -320,7 +323,14 @@ def _glosa(comprobante: dict[str, Any]) -> str | None:
 
 
 def _cuenta_contable(comprobante: dict[str, Any]) -> str | None:
-    return None
+    clasificacion = comprobante.get("clasificacion_contable") or {}
+    if clasificacion.get("requiere_revision", True):
+        return None
+    codigo = _texto((clasificacion.get("cuenta_base") or {}).get("codigo"))
+    # Un código no se recorta: cortado sería otra cuenta.
+    if not codigo or len(codigo) > MAX_CUENTA_CONTABLE:
+        return None
+    return codigo
 
 
 def _cuenta_total(comprobante: dict[str, Any], libro: Libro) -> str:

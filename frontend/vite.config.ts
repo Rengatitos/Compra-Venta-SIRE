@@ -7,7 +7,9 @@ import { defineConfig } from 'vitest/config';
 // .claude/launch.json). Al pasar por el proxy de Vite en desarrollo, el
 // navegador ve un mismo origen y CORS deja de ser un factor; en produccion se
 // sirve con VITE_API_BASE_URL apuntando a la API real.
-const BACKEND = 'http://127.0.0.1:9007';
+// API_PROXY_TARGET apunta el proxy a otra API, p. ej. la de docker-compose.local.yml
+// en el 9010 cuando el 9007 lo ocupa otra copia del proyecto.
+const BACKEND = process.env.API_PROXY_TARGET || 'http://127.0.0.1:9007';
 
 export default defineConfig({
   plugins: [react()],

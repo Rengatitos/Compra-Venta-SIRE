@@ -7,6 +7,7 @@ import { listarEmpresas } from '@/api/empresas';
 import { Button } from '@/components/ui/Button';
 import { ErrorState, Skeleton } from '@/components/ui/Feedback';
 import { useAuth } from '@/features/auth/useAuth';
+import { GestionAccesos } from '@/features/usuarios/GestionAccesos';
 import { useToast } from '@/hooks/useToast';
 import { guardarEmpresaActiva, obtenerSesion, suscribirSesion } from '@/lib/session';
 import type { EmpresaResponse } from '@/types/api';
@@ -158,6 +159,8 @@ export function EmpresaGate() {
           iniciar sesión.
         </p>
         <ListaEmpresas empresas={empresas} onElegir={(elegido) => guardarEmpresaActiva(elegido)} />
+        {/* Solo se pinta para administradores. */}
+        <GestionAccesos />
       </MarcoDelGate>
     );
   }

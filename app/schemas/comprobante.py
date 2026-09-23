@@ -14,6 +14,30 @@ class PdfSunat(BaseModel):
     descargado_en: datetime | None = None
 
 
+class CuentaClasificada(BaseModel):
+    codigo: str
+    descripcion: str | None = None
+
+
+class ClasificacionContable(BaseModel):
+    """Resultado del clasificador contable (`app/services/clasificacion_service.py`)."""
+
+    cuenta_base: CuentaClasificada | None = None
+    cuenta_total: CuentaClasificada | None = None
+    clasificacion: str = ""
+    subtipo: str = ""
+    condicion_igv: str = ""
+    centro_costos: str | None = None
+    confianza: float = 0.0
+    confianza_rag: float = 0.0
+    # Con `True` la cuenta base no pasa al Excel: la confianza no llega al
+    # umbral, falta alguna cuenta o hubo candidatos ambiguos.
+    requiere_revision: bool = True
+    razon: str = ""
+    modelo: str = ""
+    clasificado_en: datetime | None = None
+
+
 class ComprobanteResponse(BaseModel):
     serie_numero: str
     libro: str
@@ -79,6 +103,8 @@ class ComprobanteResponse(BaseModel):
     # Referencia al comprobante que modifica una nota de crédito o débito.
     # Sólo el RVIE la manda; en compras (RCE) queda siempre vacía.
     documentos_modificados: list[dict[str, Any]] = []
+    # `None` mientras no se haya clasificado.
+    clasificacion_contable: ClasificacionContable | None = None
 
     model_config = {"from_attributes": True}
 

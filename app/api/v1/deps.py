@@ -68,7 +68,7 @@ async def empresa_para_usuario_o_bot(
     if x_api_key is not None:
         await bot_autorizado(x_api_key)
     else:
-        await usuario_actual(credentials)
+        await usuario_actual(credentials, db)
     return await _buscar_empresa(db, ruc)
 
 

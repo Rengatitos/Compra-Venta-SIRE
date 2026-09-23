@@ -365,6 +365,37 @@ async def guardar_glosa(db: AsyncIOMotorDatabase, documento_id, glosa: str) -> N
     await _col(db).update_one({"_id": documento_id}, {"$set": {"glosa": glosa}})
 
 
+async def guardar_clasificacion(db, documento_id, clasificacion: dict[str, Any]) -> None:
+    await _col(db).update_one(
+        {"_id": documento_id}, {"$set": {"clasificacion_contable": clasificacion}}
+    )
+
+
+def _filtro_para_clasificar(
+    empresa_id: str, periodo: str, libro: Libro, reclasificar: bool
+) -> dict[str, Any]:
+    # Sin filtro de glosa aquí: el servicio aplica la regla exacta del estado
+    # «con glosa» (`app.services.glosa`), que no se expresa bien en Mongo.
+    filtro: dict[str, Any] = {
+        "empresa_id": empresa_id,
+        "periodo": periodo,
+        "libro": libro.value,
+    }
+    if not reclasificar:
+        filtro["clasificacion_contable"] = {"$exists": False}
+    return filtro
+
+
+async def listar_para_clasificar(
+    db, empresa_id: str, periodo: str, libro: Libro, reclasificar: bool = False
+) -> list[dict[str, Any]]:
+    """Candidatos del libro, sin tope. Quien llama filtra por estado de glosa
+    (la regla vive en Python, `app.services.glosa`) y recorta al máximo del
+    trabajo; un periodo son cientos de comprobantes, no miles."""
+    cursor = _col(db).find(_filtro_para_clasificar(empresa_id, periodo, libro, reclasificar))
+    return await cursor.to_list(length=None)
+
+
 async def guardar_campos_contraparte(db, documento_id, campos):
     if campos:
         await _col(db).update_one({"_id": documento_id}, {"$set": {

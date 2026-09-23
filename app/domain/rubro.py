@@ -43,9 +43,10 @@ def desde_ciiu(ciiu: str) -> str:
     return RUBROS_POR_PREFIJO_CIIU.get(str(ciiu).strip()[:2], RUBRO_DESCONOCIDO)
 
 
-def desde_token_sunat(token: str) -> str:
+def ciiu_desde_token_sunat(token: str) -> str:
+    """CIIU principal que SUNAT declara en el token de la empresa, o ''."""
     if not token:
-        return RUBRO_POR_DEFECTO
+        return ""
     try:
         payload = jwt.decode(token, options={"verify_signature": False})
         ciiu = (
@@ -54,6 +55,10 @@ def desde_token_sunat(token: str) -> str:
             .get("ddpData", {})
             .get("ddp_ciiu", "")
         )
-        return desde_ciiu(ciiu)
+        return str(ciiu or "").strip()
     except Exception:
-        return RUBRO_POR_DEFECTO
+        return ""
+
+
+def desde_token_sunat(token: str) -> str:
+    return desde_ciiu(ciiu_desde_token_sunat(token))

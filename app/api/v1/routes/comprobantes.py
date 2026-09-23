@@ -4,14 +4,25 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.deps import empresa_actual, empresa_id, periodo_valido
+from app.api.v1.routes.clasificacion import exigir_habilitado
 from app.db.database import get_db
 from app.domain.comprobante import Libro
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import periodos as repo_periodos
 from app.repositories._mongo import monto_a_float
-from app.schemas.comprobante import CoberturaSunat, ComprobanteResponse, ComprobanteUpdate
+from app.schemas.comprobante import (
+    ClasificacionContable,
+    CoberturaSunat,
+    ComprobanteResponse,
+    ComprobanteUpdate,
+)
 from app.schemas.generic import MessageResponse
-from app.services import export_service, plantilla_excel, propuesta_service
+from app.services import (
+    clasificacion_service,
+    export_service,
+    plantilla_excel,
+    propuesta_service,
+)
 from app.services.comprobante_service import serializar, serializar_lote
 from app.services.sunat import resumen_rce
 from app.services.sunat.auth import ErrorSunat
@@ -280,6 +291,37 @@ async def actualizar_comprobante(
     })
 
     return {"mensaje": "Comprobante actualizado correctamente"}
+
+
+@router.post(
+    "/{serie_numero}/clasificacion",
+    response_model=ClasificacionContable,
+    summary="Clasificar la cuenta contable de un comprobante",
+    dependencies=[Depends(exigir_habilitado)],
+)
+async def clasificar_comprobante(
+    serie_numero: str,
+    periodo: str = Depends(periodo_valido),
+    empresa_doc: dict = Depends(empresa_actual),
+    libro: Libro | None = Query(None, description="Desambigua si existe en ambos libros"),
+    db=Depends(get_db),
+):
+    """Clasifica en el acto (tarda unos segundos: tres llamadas a Gemini) y
+    guarda el resultado en el comprobante, reemplazando el anterior."""
+    fila = await repo_comprobantes.obtener(
+        db, str(empresa_doc["_id"]), periodo, serie_numero, libro
+    )
+    if not fila:
+        raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+    try:
+        return await clasificacion_service.clasificar_comprobante(db, empresa_doc, fila)
+    except clasificacion_service.SinDescripcion as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except clasificacion_service.MotorNoDisponible as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        # Los fallos de Vertex AI llegan como RuntimeError("GEMINI_API_ERROR: ...").
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/{serie_numero}/export", summary="Exportar un comprobante")

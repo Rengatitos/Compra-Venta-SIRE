@@ -13,6 +13,8 @@ NOMBRE_COL_JOBS = "jobs"
 NOMBRE_COL_PLAN_CUENTAS = "plan_cuentas"
 NOMBRE_COL_CODIGOS_VINCULACION = "codigos_vinculacion"
 NOMBRE_COL_COMPROBANTES_EXTERNOS = "comprobantes_externos"
+NOMBRE_COL_FICHAS_RUC = "fichas_ruc"
+NOMBRE_COL_USUARIOS = "usuarios"
 
 
 def monto_a_bson(valor: Decimal | None) -> Decimal128 | None:

@@ -22,6 +22,27 @@ async def crear_indices(db: AsyncIOMotorDatabase) -> None:
     await _col(db).create_index([("ruc", 1), ("creado_en", -1)])
 
 
+async def marcar_interrumpidos(db: AsyncIOMotorDatabase, tipos: list[TipoJob]) -> int:
+    """Da por fallidos los trabajos de esos tipos que quedaron vivos en Mongo.
+
+    Se llama al arrancar: con un solo worker, un trabajo «en progreso» a esa
+    altura murió con el proceso anterior (un reinicio, un despliegue). Sin esto
+    quedaba vivo para siempre y bloqueaba el botón que lo lanza.
+    """
+    resultado = await _col(db).update_many(
+        {
+            "tipo": {"$in": [t.value for t in tipos]},
+            "estado": {"$in": [EstadoJob.PENDIENTE.value, EstadoJob.EN_PROGRESO.value]},
+        },
+        {"$set": {
+            "estado": EstadoJob.FALLIDO.value,
+            "error": "Interrumpido por un reinicio de la API; vuelve a lanzarlo",
+            "actualizado_en": datetime.now(UTC),
+        }},
+    )
+    return resultado.modified_count
+
+
 def a_documento(job: Job) -> dict[str, Any]:
     return {
         "job_id": job.job_id,

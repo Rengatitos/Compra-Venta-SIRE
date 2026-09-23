@@ -24,6 +24,7 @@ class TipoJob(str, Enum):
     EXTRACCION_DETALLES = "extraccion_detalles"
     DESCARGA_PDFS = "descarga_pdfs"
     DETRACCIONES = "detracciones"
+    CLASIFICACION_CUENTAS = "clasificacion_cuentas"
 
 
 class Progreso(BaseModel):

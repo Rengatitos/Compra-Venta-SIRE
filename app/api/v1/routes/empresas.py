@@ -17,8 +17,9 @@ from app.repositories import periodos as repo_periodos
 from app.repositories import plan_cuentas as repo_plan_cuentas
 from app.schemas.empresa import EmpresaCreate, EmpresaResponse, EmpresaUpdate
 from app.schemas.generic import MessageResponse, StatusResponse
-from app.services import imagenes_externas
+from app.services import ficha_ruc_service, imagenes_externas
 from app.services.sunat.auth import credenciales_cliente, obtener_token
+from app.services.sunat.ficha_ruc import FichaNoEncontrada
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -106,6 +107,30 @@ async def eliminar_empresa(empresa: dict = Depends(empresa_actual), db=Depends(g
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
 
     return {"mensaje": "Empresa y datos asociados eliminados"}
+
+
+@router.post(
+    "/{ruc}/ficha-ruc",
+    response_model=EmpresaResponse,
+    summary="Obtener CIIU de la empresa desde la Consulta RUC de SUNAT",
+)
+@limiter.limit("10/minute")
+async def obtener_ciiu_empresa(
+    request: Request, empresa: dict = Depends(empresa_actual), db=Depends(get_db)
+):
+    """Consulta la ficha RUC pública de la empresa y guarda sus actividades
+    económicas (CIIU), que el clasificador contable usa como contexto.
+    Reemplaza las actividades que hubiera."""
+    try:
+        actualizada = await ficha_ruc_service.actualizar_empresa(db, empresa)
+    except FichaNoEncontrada as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Consulta RUC fallida ruc=%s", empresa["ruc"])
+        raise HTTPException(
+            status_code=502, detail=f"No se pudo consultar la ficha RUC en SUNAT: {exc}"
+        ) from exc
+    return _con_rubro(actualizada)
 
 
 @router.post(

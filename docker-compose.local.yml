@@ -1,0 +1,24 @@
+# Pruebas locales en Docker, encima de docker-compose.yml:
+#
+#   docker compose -p sire-v2 -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#
+# `-p sire-v2` importa: la otra copia del proyecto también se llama
+# «compra-venta-sire» y, con el mismo nombre de proyecto, Compose reemplazaría
+# su contenedor `api`. Por lo mismo, esta API sale por el 9010.
+services:
+  api:
+    ports: !override
+      - "${API_PORT:-9010}:9007"
+    environment:
+      # Dentro del contenedor `localhost` es el propio contenedor: el Mongo
+      # local (sire-mongodb, replica set de un nodo) se alcanza por el host.
+      # `directConnection` evita que el driver busque el nombre interno del
+      # miembro del replica set, que desde aquí no resuelve.
+      MONGO_URI: mongodb://host.docker.internal:27017/?directConnection=true
+      GOOGLE_APPLICATION_CREDENTIALS: /app/service-account.json
+    volumes:
+      # Credencial de Vertex AI: montada, nunca copiada a la imagen.
+      - ./service-account.json:/app/service-account.json:ro
+      # Índice, caché de embeddings y modelo E5 ya generados en esta máquina:
+      # sin esto el primer arranque los recalcula (varios minutos).
+      - ./data/clasificador:/app/data/clasificador

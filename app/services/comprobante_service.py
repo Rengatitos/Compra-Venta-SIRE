@@ -96,6 +96,9 @@ def serializar(documento: dict[str, Any]) -> dict[str, Any]:
             for item in (documento.get("extra") or {}).get("documentos_modificados") or []
             if isinstance(item, dict)
         ],
+        # Lo escribe el clasificador contable; la exportación a Excel toma de
+        # aquí la cuenta base.
+        "clasificacion_contable": documento.get("clasificacion_contable") or None,
     }
     for campo in _CAMPOS_MONTO:
         salida[campo] = monto_a_float(documento.get(campo))

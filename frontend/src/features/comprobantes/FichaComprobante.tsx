@@ -15,6 +15,7 @@ import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
 import type { ComprobanteResponse } from '@/types/api';
 
+import { SeccionClasificacion } from './Clasificacion';
 import { presentarEstadoComprobante } from './estadoComprobante';
 import { presentarEstadoGlosa } from './estadoGlosa';
 import { Dato, Seccion } from './Seccion';
@@ -158,6 +159,8 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
           <Dato termino="Total">{formatearImporteComprobante(datos.total, datos)}</Dato>
         </dl>
       </Seccion>
+
+      <SeccionClasificacion datos={datos} ruc={ruc} periodo={periodo} />
 
       <Seccion titulo="Descripción">
         {datos.observacion || datos.leyenda_sunat.length > 0 ? (

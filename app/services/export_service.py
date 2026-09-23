@@ -25,6 +25,30 @@ def _money(valor: Any) -> str:
         return _texto(valor)
 
 
+def _cuenta(cuenta: Any) -> str:
+    if not isinstance(cuenta, dict) or not cuenta.get("codigo"):
+        return "-"
+    descripcion = cuenta.get("descripcion")
+    return f"{cuenta['codigo']} - {descripcion}" if descripcion else str(cuenta["codigo"])
+
+
+def lineas_clasificacion(comprobante: dict[str, Any]) -> list[tuple[str, str]]:
+    """La clasificación contable en pares legibles, o nada si no se clasificó."""
+    clasificacion = comprobante.get("clasificacion_contable")
+    if not isinstance(clasificacion, dict):
+        return []
+    confianza = clasificacion.get("confianza")
+    return [
+        ("Cuenta base", _cuenta(clasificacion.get("cuenta_base"))),
+        ("Cuenta total", _cuenta(clasificacion.get("cuenta_total"))),
+        ("Clasificación", _texto(clasificacion.get("clasificacion")) or "-"),
+        ("Condición IGV", _texto(clasificacion.get("condicion_igv")) or "-"),
+        ("Confianza", f"{float(confianza):.0%}" if confianza is not None else "-"),
+        ("Requiere revisión", "Sí" if clasificacion.get("requiere_revision", True) else "No"),
+        ("Motivo", _texto(clasificacion.get("razon")) or "-"),
+    ]
+
+
 def excel_de_comprobante(comprobante: dict[str, Any]) -> io.BytesIO:
     wb = Workbook()
     ws = wb.active
@@ -37,7 +61,11 @@ def excel_de_comprobante(comprobante: dict[str, Any]) -> io.BytesIO:
         celda.alignment = Alignment(horizontal="center")
 
     for clave, valor in comprobante.items():
+        if clave == "clasificacion_contable":
+            continue
         ws.append([str(clave), _texto(valor)])
+    for etiqueta, valor in lineas_clasificacion(comprobante):
+        ws.append([etiqueta, valor])
 
     ws.column_dimensions["A"].width = 30
     ws.column_dimensions["B"].width = 50
@@ -93,6 +121,12 @@ def pdf_de_comprobante(comprobante: dict[str, Any]) -> io.BytesIO:
 
     elementos.append(Paragraph("GLOSA", seccion))
     elementos.append(Paragraph(escape(_texto(comprobante.get("glosa"))) or "Sin glosa", normal))
+
+    clasificacion = lineas_clasificacion(comprobante)
+    if clasificacion:
+        elementos.append(Paragraph("CLASIFICACIÓN CONTABLE", seccion))
+        for etiqueta, valor in clasificacion:
+            elementos.append(Paragraph(f"<b>{etiqueta}:</b> {escape(valor)}", normal))
 
     documento = _texto(comprobante.get("documento_contraparte")) or "-"
     razon_social = _texto(comprobante.get("razon_social")) or "-"

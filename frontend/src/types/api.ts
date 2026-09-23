@@ -53,6 +53,21 @@ export interface UsuarioResponse {
   email: string;
   nombre: string | null;
   foto: string | null;
+  /** `admin` gestiona quién tiene acceso al panel; `usuario` no. */
+  rol?: RolUsuario;
+}
+
+/** `app/domain/usuario.py::Rol`. */
+export type RolUsuario = 'admin' | 'usuario';
+
+/** `GET /usuarios` (`app/api/v1/routes/usuarios.py::UsuarioAcceso`). */
+export interface UsuarioAcceso {
+  email: string;
+  rol: RolUsuario;
+  /** Administrador de `GOOGLE_ALLOWED_EMAILS`: no se cambia desde el panel. */
+  fijo: boolean;
+  agregado_por: string | null;
+  agregado_en: string | null;
 }
 
 export interface TokenResponse {
@@ -97,6 +112,34 @@ export interface EmpresaResponse {
   fecha_creacion: string | null;
   /** Deducido del CIIU dentro del token de SUNAT (`app/domain/rubro.py`). */
   rubro: string | null;
+  /** Actividades de la ficha RUC; contexto del clasificador contable. */
+  actividades_economicas?: ActividadEconomica[];
+  /** Última ficha RUC consultada en SUNAT (`POST /empresas/{ruc}/ficha-ruc`). */
+  ficha_ruc?: FichaRuc | null;
+}
+
+/** `app/schemas/empresa.py::ActividadEconomica`. */
+export interface ActividadEconomica {
+  /** `PRINCIPAL` o `SECUNDARIA`. */
+  tipo: string | null;
+  ciiu: string;
+  descripcion: string | null;
+}
+
+/** Ficha de la Consulta RUC de SUNAT (`app/services/sunat/ficha_ruc.py::FichaRuc`). */
+export interface FichaRuc {
+  ruc: string;
+  razon_social: string;
+  tipo_contribuyente: string;
+  nombre_comercial: string;
+  estado: string;
+  condicion: string;
+  actividades_economicas: { tipo: string; orden: number; ciiu: string; descripcion: string }[];
+  comprobantes_autorizados: string[];
+  sistema_emision_electronica: string[];
+  emisor_electronico_desde: string;
+  comprobantes_electronicos: string[];
+  consultado_en: string | null;
 }
 
 /* — periodos (app/schemas/periodo.py) — */
@@ -214,6 +257,51 @@ export interface ComprobanteResponse {
   pdf_sunat: PdfSunat | null;
   /** Referencia al comprobante que modifica una nota de crédito o débito. Sólo en ventas. */
   documentos_modificados: Record<string, unknown>[];
+  /** `null` mientras el clasificador contable no lo haya procesado. */
+  clasificacion_contable?: ClasificacionContable | null;
+}
+
+export interface CuentaClasificada {
+  codigo: string;
+  descripcion: string | null;
+}
+
+/** `app/schemas/comprobante.py::ClasificacionContable`. */
+export interface ClasificacionContable {
+  cuenta_base: CuentaClasificada | null;
+  cuenta_total: CuentaClasificada | null;
+  clasificacion: string;
+  subtipo: string;
+  condicion_igv: string;
+  centro_costos: string | null;
+  /** 0–1. */
+  confianza: number;
+  confianza_rag: number;
+  /** Con `true` la cuenta base no pasa al Excel de Contasis. */
+  requiere_revision: boolean;
+  razon: string;
+  modelo: string;
+  clasificado_en: string | null;
+}
+
+/** `resultado` del job `clasificacion_cuentas`. */
+export interface ResultadoClasificacion {
+  clasificados: number;
+  requieren_revision: number;
+  sin_descripcion: number;
+  /** Pendientes del libro que no se clasificaron por no estar «Con glosa». */
+  sin_glosa_omitidos: number;
+  errores: number;
+  contrapartes_con_ciiu: number;
+  pendientes_restantes: number;
+}
+
+/** `GET /clasificador/estado`. */
+export interface EstadoClasificador {
+  habilitado: boolean;
+  estado: 'deshabilitado' | 'sin_iniciar' | 'cargando' | 'listo' | 'error';
+  error: string | null;
+  modelo_llm: string | null;
 }
 
 /** Único campo editable de un comprobante. */

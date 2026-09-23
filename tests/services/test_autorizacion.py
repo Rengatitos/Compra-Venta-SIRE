@@ -52,7 +52,7 @@ def test_token_valido_identifica_a_la_persona(cliente):
     respuesta = cliente.get("/yo", headers=_cabecera(create_token(AUTORIZADO)))
 
     assert respuesta.status_code == 200
-    assert respuesta.json() == {"email": AUTORIZADO}
+    assert respuesta.json() == {"email": AUTORIZADO, "rol": "admin"}
 
 
 def test_el_correo_se_normaliza_al_entrar(cliente):

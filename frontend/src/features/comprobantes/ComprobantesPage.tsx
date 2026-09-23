@@ -35,6 +35,7 @@ import type { ComprobanteResponse, JobResponse, ResultadoExtraccion } from '@/ty
 import type { FormatoExport, Libro } from '@/types/domain';
 import { ESTADOS_JOB_TERMINALES, esPeriodoValido } from '@/types/domain';
 
+import { ClasificacionPanel, CuentaCelda, TIPO_JOB_CLASIFICACION } from './Clasificacion';
 import estilos from './ComprobantesPage.module.css';
 import { DialogComprobante } from './DialogComprobante';
 import { DescargarDetraccionesButton, DetraccionCelda, NpdPanel } from './Detracciones';
@@ -131,6 +132,9 @@ export function ComprobantesPage() {
       (job): job is JobResponse =>
         job !== undefined &&
         job.periodo === periodo &&
+        // La clasificación contable tiene su propio panel y no usa la sesión
+        // SOL: no debe bloquear la extracción ni pintarse como ella.
+        job.tipo !== TIPO_JOB_CLASIFICACION &&
         !ESTADOS_JOB_TERMINALES.includes(job.estado),
     );
 
@@ -320,6 +324,12 @@ export function ComprobantesPage() {
             },
           },
         ]),
+    {
+      clave: 'cuenta',
+      cabecera: 'Cuenta',
+      monoespaciada: true,
+      render: (fila) => <CuentaCelda fila={fila} />,
+    },
     {
       clave: 'igv',
       cabecera: 'IGV',
@@ -539,6 +549,8 @@ export function ComprobantesPage() {
             </p>
           ) : null}
         </Panel>
+
+        <ClasificacionPanel ruc={ruc} periodo={periodo} libro={libro} />
 
         {extraccion ? (
           <Panel

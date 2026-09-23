@@ -1,12 +1,11 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.core.auth import create_token
-from app.core.config import settings
-from app.domain.usuario import esta_permitido
+from app.core.auth import create_token, rol_de, usuario_actual
+from app.db.database import get_db
 from app.schemas.auth import LoginGoogle, TokenResponse, UsuarioResponse
 from app.services import google_oauth
 
@@ -20,7 +19,7 @@ limiter = Limiter(key_func=get_remote_address)
 # más holgado que el 5/min del alta de empresa porque cerrar el diálogo de
 # Google y volver a intentarlo es una maniobra normal del usuario.
 @limiter.limit("10/minute")
-async def login_google(request: Request, payload: LoginGoogle):
+async def login_google(request: Request, payload: LoginGoogle, db=Depends(get_db)):
     try:
         datos = await google_oauth.verificar_id_token(payload.credential)
     except google_oauth.ErrorRedGoogle:
@@ -37,10 +36,11 @@ async def login_google(request: Request, payload: LoginGoogle):
         raise HTTPException(status_code=401, detail="Token de Google inválido") from None
 
     correo = datos["email"]
-    if not esta_permitido(correo, settings.GOOGLE_ALLOWED_EMAILS):
+    rol = await rol_de(db, correo)
+    if rol is None:
         # Autenticado pero no autorizado, así que 403. Es la única traza que
         # queda de un intento de acceso, de ahí el warning.
-        logger.warning("Acceso denegado a %s: no está en GOOGLE_ALLOWED_EMAILS", correo)
+        logger.warning("Acceso denegado a %s: no tiene acceso al panel", correo)
         raise HTTPException(
             status_code=403,
             detail="Esta cuenta de Google no tiene acceso al panel",
@@ -53,5 +53,13 @@ async def login_google(request: Request, payload: LoginGoogle):
             email=correo,
             nombre=datos.get("nombre"),
             foto=datos.get("foto"),
+            rol=rol.value,
         ),
     )
+
+
+@router.get("/yo", response_model=UsuarioResponse, summary="Quién soy y con qué rol")
+async def yo(usuario: dict = Depends(usuario_actual)):
+    """El panel lo consulta al cargar para saber si mostrar la gestión de
+    accesos: el rol puede cambiar mientras la sesión sigue abierta."""
+    return UsuarioResponse(email=usuario["email"], rol=usuario["rol"])

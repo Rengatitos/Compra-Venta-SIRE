@@ -1,6 +1,24 @@
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.services.sunat.ficha_ruc import FichaRuc
+
+
+class ActividadEconomica(BaseModel):
+    """Actividad de la ficha RUC. La usa el clasificador contable como contexto."""
+
+    tipo: str | None = None  # PRINCIPAL / SECUNDARIA
+    ciiu: str
+    descripcion: str | None = None
+
+    @field_validator("ciiu")
+    @classmethod
+    def validar_ciiu(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v.isdigit():
+            raise ValueError("El CIIU debe ser numérico")
+        return v
+
 
 class EmpresaBase(BaseModel):
     ruc: str
@@ -29,6 +47,7 @@ class EmpresaUpdate(BaseModel):
     sunat_token: str | None = None
     sunat_client_id: str | None = None
     sunat_client_secret: str | None = None
+    actividades_economicas: list[ActividadEconomica] | None = None
 
 
 class EmpresaResponse(EmpresaBase):
@@ -37,6 +56,9 @@ class EmpresaResponse(EmpresaBase):
     usuario: str
     fecha_creacion: str | None = None
     rubro: str | None = None
+    actividades_economicas: list[ActividadEconomica] = []
+    # Última ficha RUC consultada en SUNAT (`POST /empresas/{ruc}/ficha-ruc`).
+    ficha_ruc: FichaRuc | None = None
 
     @field_validator("id", mode="before")
     @classmethod

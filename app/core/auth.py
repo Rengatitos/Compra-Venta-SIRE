@@ -1,11 +1,13 @@
 from datetime import UTC, datetime, timedelta
 
 import jwt
-from fastapi import HTTPException, Security, status
+from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.config import settings
-from app.domain.usuario import esta_permitido, normalizar_correo
+from app.db.database import get_db
+from app.domain.usuario import Rol, normalizar_correo, resolver_rol
+from app.repositories import usuarios as repo_usuarios
 
 bearer_scheme = HTTPBearer()
 
@@ -51,10 +53,22 @@ def decode_token(token: str) -> dict:
         ) from None
 
 
+async def rol_de(db, correo: str) -> Rol | None:
+    """Rol con el que entra ese correo, o `None` si no tiene acceso.
+
+    Los administradores fijos del entorno se resuelven sin tocar Mongo.
+    """
+    rol = resolver_rol(correo, settings.GOOGLE_ALLOWED_EMAILS, None)
+    if rol is not None:
+        return rol
+    return resolver_rol(correo, [], await repo_usuarios.rol_de(db, correo))
+
+
 async def usuario_actual(
     credentials: HTTPAuthorizationCredentials = Security(bearer_scheme),
+    db=Depends(get_db),
 ) -> dict:
-    """La persona autenticada. No toca Mongo: el panel no tiene usuarios en base.
+    """La persona autenticada y su rol (`app.domain.usuario`).
 
     Sustituye a `empresa_autenticada`. La diferencia de fondo es que el token ya
     no aporta el sujeto de datos, solo el permiso: la empresa sobre la que se
@@ -80,13 +94,24 @@ async def usuario_actual(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido: sin correo"
         )
 
-    # La allowlist se revalida en cada petición, no solo al iniciar sesión: así
-    # quitar un correo de GOOGLE_ALLOWED_EMAILS lo expulsa en el acto en vez de
-    # dejarlo dentro hasta que caduque su token.
-    if not esta_permitido(correo, settings.GOOGLE_ALLOWED_EMAILS):
+    # El acceso se revalida en cada petición, no solo al iniciar sesión: así
+    # quitar un correo (del entorno o desde el panel) lo expulsa en el acto en
+    # vez de dejarlo dentro hasta que caduque su token.
+    rol = await rol_de(db, correo)
+    if rol is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Esta cuenta no está autorizada para usar el panel",
         )
 
-    return {"email": correo}
+    return {"email": correo, "rol": rol.value}
+
+
+async def exigir_admin(usuario: dict = Depends(usuario_actual)) -> dict:
+    """Solo administradores: gestionar quién tiene acceso al panel."""
+    if usuario["rol"] != Rol.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un administrador puede gestionar los accesos",
+        )
+    return usuario

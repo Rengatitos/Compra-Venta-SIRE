@@ -17,9 +17,11 @@ RUN find .venv -type d -name "__pycache__" -exec rm -rf {} + && \
 FROM python:3.12-slim-bookworm
 WORKDIR /app
 
-# Instalar dependencias del sistema necesarias para Playwright y Healthcheck
+# Instalar dependencias del sistema necesarias para Playwright y Healthcheck.
+# libgomp1: OpenMP, que necesitan faiss y torch (clasificador contable).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar el entorno virtual y dependencias del workspace
@@ -40,7 +42,12 @@ COPY app/ ./app/
 COPY pyproject.toml ./
 
 # Crear usuario no-root y asignar permisos
+# `logs` y `data` se crean aquí para que los volúmenes con nombre de
+# docker-compose nazcan con dueño `appuser`: Docker copia el dueño de la
+# carpeta de la imagen al volumen vacío. Sin ellas el volumen sale de root y la
+# API muere al abrir el log (PermissionError).
 RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app/logs /app/data && \
     chown -R appuser:appuser /app /ms-playwright
 USER appuser
 

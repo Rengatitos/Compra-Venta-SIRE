@@ -4,8 +4,10 @@ from app.api.v1.routes import (
     analytics,
     auditoria,
     auth,
+    clasificacion,
     comprobantes,
     comprobantes_externos,
+    consulta_ruc,
     detalle,
     detracciones,
     empresas,
@@ -15,6 +17,7 @@ from app.api.v1.routes import (
     plan_cuentas,
     propuesta,
     reporte_asociado,
+    usuarios,
     vinculacion,
 )
 
@@ -26,6 +29,7 @@ api_router.include_router(
 )
 
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
+api_router.include_router(usuarios.router, prefix="/usuarios", tags=["Auth"])
 api_router.include_router(empresas.router, prefix="/empresas", tags=["Empresas"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
@@ -62,6 +66,21 @@ api_router.include_router(
     pdfs.router,
     prefix="/empresas/{ruc}/periodos/{periodo}/libros/{libro}/pdfs",
     tags=["PDFs SUNAT"],
+)
+api_router.include_router(
+    clasificacion.router,
+    prefix="/empresas/{ruc}/periodos/{periodo}/libros/{libro}/clasificacion",
+    tags=["Clasificación contable"],
+)
+api_router.include_router(
+    consulta_ruc.router,
+    prefix="/consulta-ruc",
+    tags=["Clasificación contable"],
+)
+api_router.include_router(
+    clasificacion.router_motor,
+    prefix="/clasificador",
+    tags=["Clasificación contable"],
 )
 api_router.include_router(
     auditoria.router,

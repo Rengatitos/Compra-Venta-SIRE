@@ -91,7 +91,22 @@ class Settings(BaseSettings):
     # tarda más que leer la tabla de ítems que ya está en el DOM.
     SUNAT_PDF_TIMEOUT_MS: int = 20000
 
-
+    # Clasificador contable (RAG + Gemini en `app/services/clasificador`). Va
+    # apagado por defecto: al encenderlo la API carga torch y el modelo de
+    # embeddings (~1 GB de RAM) y necesita la credencial de Vertex AI. Sus
+    # parámetros finos (modelo, pesos del RAG, rutas) se leen del mismo `.env`
+    # desde `app/services/clasificador/config.py`.
+    CLASIFICADOR_HABILITADO: bool = False
+    # Techo de comprobantes por trabajo de clasificación, en la línea de
+    # `SUNAT_MAX_COMPROBANTES`: cada uno cuesta tres llamadas a Gemini.
+    CLASIFICADOR_MAX_COMPROBANTES: int = 200
+    # Antes de clasificar, consultar en la Consulta RUC de SUNAT las
+    # actividades (CIIU) de las contrapartes que aún no están en caché. Cada
+    # consulta nueva cuesta unos segundos de navegador.
+    CLASIFICADOR_CONSULTAR_CONTRAPARTES: bool = True
+    # Días que una ficha RUC guardada se da por vigente. Las actividades de un
+    # contribuyente cambian rara vez; pasado este plazo se vuelve a consultar.
+    FICHA_RUC_VIGENCIA_DIAS: int = 90
 
     # Clave con la que sire-bot (Apaclla Bot) se autentica en la cabecera
     # `X-Api-Key`. Sin ella los endpoints del bot responden 503: la integración
@@ -111,7 +126,9 @@ class Settings(BaseSettings):
     # con comas reventaba el arranque con JSONDecodeError.
     CORS_ORIGINS: Annotated[list[str], NoDecode] = CORS_ORIGINS_POR_DEFECTO
 
-    # Correos autorizados a entrar al panel. Mismo formato que CORS_ORIGINS
+    # Administradores fijos del panel: entran siempre como admin y no se pueden
+    # quitar desde la web. El resto de correos los agregan ellos desde el panel
+    # (colección `usuarios`, ver `app.domain.usuario`). Mismo formato que CORS_ORIGINS
     # —lista separada por comas o JSON— y por el mismo motivo lleva `NoDecode`:
     # sin él, pydantic-settings intenta leer el valor como JSON en
     # `prepare_field_value` y un correo suelto tumba el arranque con

@@ -12,6 +12,8 @@ class UsuarioResponse(BaseModel):
     email: str
     nombre: str | None = None
     foto: str | None = None
+    # `admin` o `usuario` (`app.domain.usuario.Rol`).
+    rol: str = "usuario"
 
 
 class TokenResponse(BaseModel):
