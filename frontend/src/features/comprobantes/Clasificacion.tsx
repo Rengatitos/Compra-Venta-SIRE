@@ -147,7 +147,7 @@ export function SeccionClasificacion({
           </Dato>
           {/* Clasificaciones anteriores a guardar el motivo por partes solo
               tienen el texto completo. */}
-          <Dato termino="Por qué">{clasificacion.motivo_ia || clasificacion.razon || '—'}</Dato>
+          <Dato termino="Por qué">{clasificacion.motivo_ia ?? clasificacion.razon ?? '—'}</Dato>
           {clasificacion.reutilizado ? (
             <Dato termino="Reutilizada">{clasificacion.reutilizado}</Dato>
           ) : null}
@@ -289,7 +289,7 @@ export function ClasificacionPanel({
           <MetricTile
             etiqueta="Clasificados"
             valor={formatearEntero(resultado.clasificados)}
-            nota={`${formatearEntero(resultado.reutilizados)} sin consultar a la IA (clasificaciones frecuentes)${
+            nota={`${formatearEntero(resultado.reutilizados)} sin consultar a la IA · ${formatearEntero(resultado.propagados)} que estaban en revisión recibieron su cuenta${
               resultado.pendientes_restantes > 0
                 ? ` · ${formatearEntero(resultado.pendientes_restantes)} quedaron para otra vuelta`
                 : ''

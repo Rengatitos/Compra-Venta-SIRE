@@ -9,14 +9,14 @@ import {
   renovarTokenSunat,
 } from '@/api/empresas';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { ErrorState, Skeleton } from '@/components/ui/Feedback';
 import { TextField } from '@/components/ui/Field';
 import { Panel } from '@/components/ui/Panel';
 import { useRuc } from '@/features/auth/useAuth';
 import { useEmpresas } from '@/features/empresas/useEmpresas';
-import { GestionAccesos } from '@/features/usuarios/GestionAccesos';
+import { useEsAdmin } from '@/features/usuarios/useEsAdmin';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useToast } from '@/hooks/useToast';
 import { formatearFechaHora } from '@/lib/format';
@@ -31,6 +31,7 @@ export function AjustesPage() {
   useDocumentTitle('Ajustes de la empresa');
 
   const ruc = useRuc();
+  const esAdmin = useEsAdmin();
   const { recargar } = useEmpresas();
   const cliente = useQueryClient();
   const { mostrar } = useToast();
@@ -232,9 +233,18 @@ export function AjustesPage() {
 
         <VinculacionBotPanel ruc={ruc} />
 
-        {/* No depende de la empresa, pero es el sitio que un administrador ya
-            conoce; para el resto no se pinta. */}
-        <GestionAccesos />
+        {/* Los accesos tienen su propia pantalla; aquí solo el camino a ella,
+            y solo para administradores. */}
+        {esAdmin ? (
+          <Panel
+            titulo="Cuentas con Acceso"
+            descripcion="Qué correos de Google pueden entrar y quién puede dar accesos."
+          >
+            <div className={layout.filaFin}>
+              <ButtonLink a="/accesos">Gestionar accesos</ButtonLink>
+            </div>
+          </Panel>
+        ) : null}
 
         <Panel
           titulo="Eliminar la empresa"

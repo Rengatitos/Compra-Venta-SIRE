@@ -18,6 +18,9 @@ import { NoEncontradaPage } from '@/features/shared/NoEncontradaPage';
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 );
+const AccesosPage = lazy(() =>
+  import('@/features/usuarios/AccesosPage').then((m) => ({ default: m.AccesosPage })),
+);
 const ClasificacionesPage = lazy(() =>
   import('@/features/clasificaciones/ClasificacionesPage').then((m) => ({
     default: m.ClasificacionesPage,
@@ -71,6 +74,8 @@ export function App() {
                   es la que se está registrando, y la navegación lateral no
                   tiene ninguna sección para esta pantalla. */}
               <Route path="empresas/nueva" element={<NuevaEmpresaPage />} />
+              {/* También fuera: los accesos no dependen de ninguna empresa. */}
+              <Route path="accesos" element={<AccesosPage />} />
 
               {/* ProtectedRoute exige sesión; EmpresaGate, empresa activa.
                   AppShell da por hecha la segunda, así que va dentro. */}

@@ -17,11 +17,26 @@ Un comprobante sin ítems, glosa ni leyenda no se clasifica: no hay operación q
 
 **Actividad principal para clasificar.** La ficha de SUNAT no siempre describe el negocio real (un restaurante registrado como venta de electrodomésticos). En Ajustes se agregan actividades del catálogo CIIU Rev. 4 (`GET /api/v1/ciiu?q=`, 418 clases sacadas del PDF del INEI), se quitan las que sobran y se elige cuál manda (`ciiu_principal_clasificacion`, vía `PUT /empresas/{ruc}`). Esa llega al clasificador como PRINCIPAL y las demás como contexto. Volver a consultar SUNAT conserva las agregadas a mano (`origen: "manual"`).
 
+## Candidatos de cuenta
+
+A Gemini le llegan hasta **5 candidatos de cuenta base**, y solo puede elegir entre ellos. Salen de dos búsquedas que se unen:
+
+- La búsqueda semántica del RAG (familia de cuentas y sus divisionarias).
+- Una **búsqueda directa en el plan CONTASIS** ([catalogo.py](../../app/services/clasificador/catalogo.py)): las divisionarias cuyo nombre comparte palabras con lo que es la operación, con raíces para que singular y plural casen («combustible» → 603202521 SUMINISTROS COMBUSTIBLES). Antes la cuenta correcta dependía de cómo redactara la IA su interpretación, y a veces no llegaba.
+
+Filtros: solo **cuentas imputables** (divisionarias sin subcuentas; nada de padres como 603 ni códigos sacados del texto del PCGE) y del **elemento que corresponde**: 60–68 en compras (33/34 solo si la finalidad es un activo fijo), 70–77 en ventas.
+
+## Motivo
+
+Cada clasificación guarda su motivo completo: el camino de la cuenta base y de la total en el plan de cuentas (maestro de la empresa o, si no lo cargó, plan CONTASIS) y el porqué de la IA sin el rastro técnico del RAG. Si se reutilizó, lo dice. Las partes se guardan también por separado (`jerarquia_base`, `jerarquia_total`, `motivo_ia`, `reutilizado`) y el texto íntegro de la IA en `razon_ia`. `scripts/recomponer_motivos.py` pasa al formato actual las clasificaciones antiguas.
+
 ## Clasificaciones frecuentes
 
 Cada glosa que pasa por la IA queda en la colección `clasificaciones_frecuentes` (por empresa y libro) con la cuenta que se le dio. Si llega otro comprobante con una glosa **equivalente** se reutiliza esa clasificación sin consultar a la IA: se comparan las palabras significativas sin orden, tildes, palabras vacías, meses ni años (Jaccard ≥ `CLASIFICADOR_SIMILITUD_MINIMA`, 0,8), así que «SACOS DE PAPA DE PRIMERA / SACOS DE ZANAHORIA DE PRIMERA» y «SACOS DE PAPA / SACOS DE ZANAHORIA PRIMERA» son la misma ([glosa_similar.py](../../app/domain/glosa_similar.py)).
 
 Solo se reutilizan las **confiables**: las que la IA clasificó sin pedir revisión y las que un usuario corrigió o confirmó. Las dudosas quedan listadas para corregirlas.
+
+**Si la IA no da cuenta para una glosa**, el siguiente comprobante con la misma glosa vuelve a la IA, hasta `CLASIFICADOR_INTENTOS_POR_GLOSA` (3) por trabajo; pasado el tope, el resto queda en revisión sin gastar más consultas. **En cuanto un intento acierta** (o un usuario corrige la clasificación), la frecuente se actualiza y todos los comprobantes con glosa equivalente que estaban en «Requiere revisión», de cualquier periodo, reciben esa cuenta con su motivo. El resultado del job lo cuenta en `propagados`. Una respuesta dudosa de la IA nunca reemplaza a una clasificación confiable o corregida.
 
 - `GET /api/v1/empresas/{ruc}/clasificaciones-frecuentes?libro=` — la lista, de más a menos reutilizada.
 - `PATCH …/clasificaciones-frecuentes/{id}` — corrige o confirma la cuenta base (y la total). Pasa a confiable y **se aplica a todos los comprobantes que la usaban** (`clasificacion_contable.memoria_id`).

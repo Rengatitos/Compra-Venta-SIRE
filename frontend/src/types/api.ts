@@ -327,6 +327,8 @@ export interface ResultadoClasificacion {
   clasificados: number;
   /** Clasificados con una clasificación frecuente, sin consultar a la IA. */
   reutilizados: number;
+  /** Comprobantes en revisión (de cualquier periodo) que recibieron la cuenta al acertar la IA con su glosa. */
+  propagados: number;
   requieren_revision: number;
   sin_descripcion: number;
   /** Pendientes del libro que no se clasificaron por no estar «Con glosa». */

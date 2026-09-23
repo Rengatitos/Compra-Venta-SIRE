@@ -268,6 +268,20 @@ class Memoria:
 
     def __init__(self, entradas: list[dict[str, Any]]):
         self._entradas = [(palabras(e.get("glosa") or e.get("clave")), e) for e in entradas]
+        # Glosas en las que la IA no dio cuenta en este trabajo: cuántas veces
+        # y el último resultado, para dejar de insistir al llegar al tope.
+        self._fallidos: dict[str, tuple[int, dict[str, Any]]] = {}
+
+    def fallo(self, clave_glosa: str, resultado: dict[str, Any]) -> None:
+        intentos = self._fallidos.get(clave_glosa, (0, {}))[0] + 1
+        self._fallidos[clave_glosa] = (intentos, resultado)
+
+    def agotada(self, clave_glosa: str) -> tuple[int, dict[str, Any]] | None:
+        """El último fallo, si esa glosa ya gastó sus intentos con la IA."""
+        registro = self._fallidos.get(clave_glosa)
+        if registro and registro[0] >= settings.CLASIFICADOR_INTENTOS_POR_GLOSA:
+            return registro
+        return None
 
     @classmethod
     async def cargar(cls, db, empresa_id: str, libro: str) -> Memoria:
@@ -382,7 +396,7 @@ async def completar_motivo(
         # La descripción de la cuenta, la del plan si la IA no la trajo.
         if cuenta and not cuenta.get("descripcion") and camino and camino[-1].get("descripcion"):
             resultado[campo] = {**cuenta, "descripcion": camino[-1]["descripcion"]}
-    resultado["motivo_ia"] = por_que
+    resultado["motivo_ia"] = por_que or SIN_POR_QUE
     resultado["reutilizado"] = reutilizado
     resultado["razon"] = componer_motivo(
         resultado["jerarquia_base"],
@@ -429,10 +443,39 @@ async def desde_memoria(
     )
 
 
+async def propagar_a_revisiones(db, empresa_id: str, libro: str, entrada: dict[str, Any]) -> int:
+    """Aplica una clasificación confiable a los comprobantes con glosa equivalente
+    que estaban en «Requiere revisión», de cualquier periodo.
+
+    Es lo que cierra el ciclo cuando la IA falla con una glosa y acierta con
+    otra igual más tarde: los que habían quedado sin cuenta la reciben, con el
+    motivo completo, sin volver a consultar a la IA.
+    """
+    suyas = palabras(entrada.get("glosa"))
+    if not suyas:
+        return 0
+    actualizados = 0
+    for doc in await repo_comprobantes.listar_que_requieren_revision(db, empresa_id, libro):
+        parecido = similitud(palabras(obtener_glosa(doc)), suyas)
+        if parecido < settings.CLASIFICADOR_SIMILITUD_MINIMA:
+            continue
+        resultado = await desde_memoria(db, empresa_id, entrada, parecido, doc)
+        await repo_comprobantes.guardar_clasificacion(db, doc["_id"], resultado)
+        await repo_frecuentes.contar_uso(db, entrada["_id"])
+        actualizados += 1
+    if actualizados:
+        logger.info(
+            "Glosa «%s»: %s comprobantes en revisión recibieron la cuenta %s",
+            entrada.get("glosa"), actualizados, (entrada.get("cuenta_base") or {}).get("codigo"),
+        )
+    return actualizados
+
+
 async def _clasificar(
     db, empresa, documento, contextos: dict[str, dict], memoria: Memoria | None = None
 ) -> dict[str, Any]:
     glosa = obtener_glosa(documento)
+    clave_glosa = clave(glosa) if glosa else ""
     empresa_id = str(empresa["_id"])
     libro = documento.get("libro", "")
 
@@ -443,6 +486,23 @@ async def _clasificar(
             resultado = await desde_memoria(db, empresa_id, entrada, coincidencia, documento)
             await repo_comprobantes.guardar_clasificacion(db, documento["_id"], resultado)
             await repo_frecuentes.contar_uso(db, entrada["_id"])
+            return resultado
+        # Con glosas en las que la IA ya falló varias veces en este trabajo no
+        # se sigue pagando: queda en revisión con el último intento.
+        agotada = memoria.agotada(clave_glosa) if clave_glosa else None
+        if agotada:
+            intentos, ultimo = agotada
+            resultado = {**ultimo, "clasificado_en": datetime.now(UTC)}
+            por_que = ultimo.get("motivo_ia") or ""
+            await completar_motivo(
+                db, empresa_id, resultado, por_que,
+                reutilizado=(
+                    f"La IA no encontró cuenta para esta glosa en {intentos} comprobantes de "
+                    "este trabajo; no se volvió a consultar. Recibirá la cuenta en cuanto la "
+                    "IA acierte con otro igual o se corrija en Clasificaciones frecuentes."
+                ),
+            )
+            await repo_comprobantes.guardar_clasificacion(db, documento["_id"], resultado)
             return resultado
 
     ruc_contraparte = str(documento.get("documento_contraparte") or "").strip()
@@ -461,16 +521,22 @@ async def _clasificar(
     # Toda clasificación de la IA queda en las frecuentes, también las dudosas:
     # así el usuario las ve ahí y, si corrige una, la corrección vale para los
     # comprobantes que la comparten. Solo las confiables se reutilizan.
-    if glosa and clave(glosa):
+    entrada = None
+    if clave_glosa:
         entrada_id = await repo_frecuentes.registrar_de_ia(
-            db, empresa_id, libro, clave(glosa), glosa, resultado
+            db, empresa_id, libro, clave_glosa, glosa, resultado
         )
         resultado["memoria_id"] = str(entrada_id)
-        if memoria is not None and not resultado["requiere_revision"]:
-            memoria.agregar({
-                **resultado, "_id": entrada_id, "glosa": glosa, "razon": resultado["razon_ia"],
-            })
+        entrada = {**resultado, "_id": entrada_id, "glosa": glosa, "razon": resultado["razon_ia"]}
     await repo_comprobantes.guardar_clasificacion(db, documento["_id"], resultado)
+
+    if entrada is not None and not resultado["requiere_revision"]:
+        # Acierto: se reutiliza en adelante y se lleva a los que la esperaban.
+        if memoria is not None:
+            memoria.agregar(entrada)
+        resultado["propagados"] = await propagar_a_revisiones(db, empresa_id, libro, entrada)
+    elif memoria is not None and clave_glosa:
+        memoria.fallo(clave_glosa, resultado)
     return resultado
 
 
@@ -528,7 +594,7 @@ async def clasificar_periodo(
     )
 
     conteo = {
-        "clasificados": 0, "reutilizados": 0, "requieren_revision": 0,
+        "clasificados": 0, "reutilizados": 0, "propagados": 0, "requieren_revision": 0,
         "sin_descripcion": 0, "errores": 0,
     }
     errores: list[dict[str, str]] = []
@@ -549,6 +615,7 @@ async def clasificar_periodo(
             continue
         conteo["clasificados"] += 1
         conteo["reutilizados"] += int(resultado.get("origen") == "memoria")
+        conteo["propagados"] += resultado.get("propagados", 0)
         conteo["requieren_revision"] += int(resultado["requiere_revision"])
 
     await reportar(total, total, "Clasificación terminada")
@@ -581,9 +648,10 @@ async def aplicar_correccion(db, empresa_id: str, entrada: dict[str, Any]) -> in
         resumir_motivo(entrada.get("razon")),
         confirmada=True,
     )
-    return await repo_comprobantes.aplicar_clasificacion_frecuente(
+    enlazados = await repo_comprobantes.aplicar_clasificacion_frecuente(
         db, empresa_id, str(entrada["_id"]), campos
     )
+    return enlazados + await propagar_a_revisiones(db, empresa_id, entrada["libro"], entrada)
 
 
 def estado_motor() -> dict[str, Any]:

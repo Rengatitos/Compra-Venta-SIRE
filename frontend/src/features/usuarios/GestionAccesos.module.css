@@ -9,6 +9,11 @@
   border-block-start: 1px solid var(--color-border);
 }
 
+.contenido {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .titulo {
   font-size: var(--text-body-sm);
   font-weight: 600;

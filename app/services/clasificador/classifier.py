@@ -5,6 +5,7 @@ import math
 import re
 from typing import Any
 
+from app.services.clasificador import catalogo
 from app.services.clasificador.config import Settings
 from app.services.clasificador.schemas import (
     AccountCandidate,
@@ -17,6 +18,7 @@ from app.services.clasificador.schemas import (
     OperationInterpretation,
 )
 from app.services.clasificador.text import normalize_for_search, tokenize
+from app.services.plan_contable import plan_contasis
 
 SYSTEM_PROMPT = """Eres un clasificador contable basado en evidencia recuperada por RAG.
 Tu tarea es clasificar UN comprobante de compra o venta.
@@ -196,12 +198,73 @@ class ClassifierService:
             role = "CUENTAS POR PAGAR COMERCIALES TERCEROS factura recibida emitida 42 421 4212"
         return "\n".join([direction, voucher.tipo_cp.codigo, voucher.tipo_cp.descripcion or "", role])
 
+    # Elementos del PCGE en los que puede ir la base imponible de un comprobante.
+    PREFIJOS_COMPRA = ("60", "62", "63", "64", "65", "66", "67", "68")
+    PREFIJOS_ACTIVO = ("33", "34")
+    PREFIJOS_VENTA = ("70", "71", "72", "73", "74", "75", "76", "77")
+
     @staticmethod
-    def _base_compatible(candidate: AccountCandidate, interpretation: OperationInterpretation, purpose: EconomicPurpose) -> bool:
+    def _imputable(code: str) -> bool:
+        """Una cuenta en la que se puede registrar: divisionaria del plan, sin subcuentas.
+
+        Descarta los códigos que la búsqueda saca de textos del PCGE («62.»,
+        «38») y las cuentas padre (603, 6032) que Contasis no deja usar. Un
+        código que el plan CONTASIS no conoce se admite si es una divisionaria
+        (seis o más dígitos): puede ser propia del maestro de la empresa.
+        """
+        if not code.isdigit():
+            return False
+        if catalogo.es_hoja(code):
+            return True
+        return code not in plan_contasis() and len(code) >= 6
+
+    @classmethod
+    def _catalog_candidates(cls, payload: ClassifyRequest, interpretation: OperationInterpretation, purpose: EconomicPurpose) -> list[AccountCandidate]:
+        direction = interpretation.direccion.upper()
+        if direction == "VENTA":
+            prefijos = cls.PREFIJOS_VENTA
+        else:
+            prefijos = cls.PREFIJOS_COMPRA + (cls.PREFIJOS_ACTIVO if purpose.area_funcional == "ACTIVO" else ())
+        texto = " ".join([interpretation.concepto, cls._items_text(payload), purpose.tratamiento_contable or ""])
+        candidatos = []
+        for codigo, descripcion, parecido in catalogo.buscar(texto, prefijos, limite=10):
+            score = 0.45 + 0.45 * parecido
+            area = cls._area_in_description(descripcion)
+            if area and purpose.area_funcional != "INDETERMINADO":
+                score += 0.10 if area == purpose.area_funcional else -0.15
+            candidatos.append(AccountCandidate(
+                codigo=codigo, descripcion=descripcion, score=score,
+                source="plan_cuentas/PLAN_DE_CUENTAS_CONTASIS.xlsx",
+                metadata={"cuenta": codigo, "es_cuenta_hoja": True, "retrieval": "catalogo"},
+                score_components={"catalogo": parecido},
+            ))
+        return candidatos
+
+    @staticmethod
+    def _merge_candidates(*listas: list[AccountCandidate]) -> list[AccountCandidate]:
+        """Une listas de candidatos; si una cuenta sale en varias, gana su mejor puntaje."""
+        mejores: dict[str, AccountCandidate] = {}
+        for lista in listas:
+            for candidato in lista:
+                previo = mejores.get(candidato.codigo)
+                if previo is None or candidato.score > previo.score:
+                    mejores[candidato.codigo] = candidato
+        return list(mejores.values())
+
+    @classmethod
+    def _base_compatible(cls, candidate: AccountCandidate, interpretation: OperationInterpretation, purpose: EconomicPurpose) -> bool:
         code = candidate.codigo
         text = normalize_for_search(candidate.descripcion or "")
         direction = interpretation.direccion.upper()
         nature = interpretation.naturaleza.upper()
+        # Por elemento del PCGE: una compra no va a un activo (33311 para un
+        # combustible) salvo que su finalidad sea justamente un activo fijo.
+        if direction == "COMPRA":
+            permitidos = cls.PREFIJOS_COMPRA + (cls.PREFIJOS_ACTIVO if purpose.area_funcional == "ACTIVO" else ())
+            if not code.startswith(permitidos):
+                return False
+        if direction == "VENTA" and not code.startswith(cls.PREFIJOS_VENTA):
+            return False
         if direction == "VENTA":
             treatment = (purpose.tratamiento_contable or "").upper()
             if "BIEN" in nature and purpose.area_funcional == "INDETERMINADO":
@@ -297,7 +360,24 @@ class ClassifierService:
         }
         if len(centers) > 1 and not selected_candidate.metadata.get("centro_costos"):
             return True
-        return ClassifierService._candidate_margin(candidates) < 0.04 and area == "INDETERMINADO"
+        # Un margen estrecho solo es ambigüedad si la cuenta tiene variantes por
+        # área (6365094 ADM / 6365095 VTAS…). 603202521 SUMINISTROS COMBUSTIBLES
+        # no las tiene: el combustible va ahí sea para lo que sea.
+        return (
+            selected_area is not None
+            and ClassifierService._candidate_margin(candidates) < 0.04
+            and area == "INDETERMINADO"
+        )
+
+    @classmethod
+    def _depende_del_area(cls, account: Any, candidates: list[AccountCandidate]) -> bool:
+        """Si la cuenta elegida es una de las variantes por área de una misma cuenta."""
+        if account is None:
+            return False
+        descripcion = account.descripcion or next(
+            (c.descripcion for c in candidates if c.codigo == account.codigo), ""
+        ) or catalogo.hojas().get(account.codigo, ("",))[0]
+        return cls._area_in_description(descripcion or "") is not None
 
     @staticmethod
     def _justification(candidates: list[AccountCandidate], selected: Any, label: str) -> list[dict[str, Any]]:
@@ -398,12 +478,22 @@ class ClassifierService:
             base_hits += self.rag.account_descendants(base_query, interpretation.direccion, interpretation.naturaleza, purpose.area_funcional, "base_account")
             total_hits += self.rag.account_descendants(total_query, interpretation.direccion, interpretation.naturaleza, purpose.area_funcional, "total_account")
         base_candidates_raw = self._account_candidates(base_hits, account_facts, "base_account")
+        # La búsqueda semántica encuentra la familia pero no siempre la
+        # divisionaria: se completa con una búsqueda directa en el plan.
+        base_candidates_raw = self._merge_candidates(
+            base_candidates_raw, self._catalog_candidates(payload, interpretation, purpose)
+        )
         total_candidates_raw = self._account_candidates(total_hits, account_facts, "total_account")
-        filtered_base = [c for c in base_candidates_raw if self._base_compatible(c, interpretation, purpose)]
+        filtered_base = [
+            c for c in base_candidates_raw
+            if self._imputable(c.codigo) and self._base_compatible(c, interpretation, purpose)
+        ]
         filtered_total = [c for c in total_candidates_raw if self._total_compatible(c, interpretation.direccion)]
         filtered_base = self._apply_document_fit(filtered_base, payload, interpretation, purpose, "base_account")
         filtered_total = self._apply_document_fit(filtered_total, payload, interpretation, purpose, "total_account")
-        base_candidates = self._rank_candidates(filtered_base)
+        # Cinco y no tres: con tres, una cuenta correcta en cuarto lugar no le
+        # llegaba nunca a Gemini.
+        base_candidates = self._rank_candidates(filtered_base, 5)
         total_candidates = self._rank_candidates(filtered_total)
         selected_before_final_gemini = {
             "base": base_candidates[0].model_dump() if base_candidates else None,
@@ -457,8 +547,19 @@ class ClassifierService:
         core.condicion_igv = self._amount_condition(payload)
 
         margin = min(self._candidate_margin(base_candidates), self._candidate_margin(total_candidates))
+        area_importa = self._depende_del_area(core.cuenta_base_imponible, base_candidates_raw)
+        if core.cuenta_base_imponible and not area_importa:
+            # Candidatos parecidos (combustibles / lubricantes) no restan si la
+            # IA ya eligió entre ellos y la cuenta no depende del área.
+            margin = max(margin, 0.3)
         components = ConfidenceComponents(
-            interpretation=min(interpretation.confianza_interpretacion, purpose.nivel_confianza),
+            # Sin variantes por área, no saber para qué área es la compra no
+            # hace dudosa la cuenta: cuenta la interpretación de la operación.
+            interpretation=(
+                min(interpretation.confianza_interpretacion, purpose.nivel_confianza)
+                if area_importa or not core.cuenta_base_imponible
+                else interpretation.confianza_interpretacion
+            ),
             retrieval_quality=(context_conf + base_conf + total_conf) / 3,
             evidence_coherence=min(context_conf, base_conf if base_candidates else 0, total_conf if total_candidates else 0),
             base_account_support=1.0 if core.cuenta_base_imponible else 0.0,
@@ -481,7 +582,7 @@ class ClassifierService:
             core.razon = core.razon.rstrip() + f" Evidencia cuenta base: {core.cuenta_base_imponible.codigo} recuperada desde " + ", ".join(sorted({c.source or 'fuente RAG' for c in base_candidates if c.codigo == core.cuenta_base_imponible.codigo})) + "."
         if core.cuenta_total:
             core.razon = core.razon.rstrip() + f" Evidencia cuenta total: {core.cuenta_total.codigo} recuperada desde " + ", ".join(sorted({c.source or 'fuente RAG' for c in total_candidates if c.codigo == core.cuenta_total.codigo})) + "."
-        requires_review = confidence < self.settings.review_threshold or not core.cuenta_base_imponible or not core.cuenta_total or purpose.area_funcional == "INDETERMINADO" or bool(discarded) or bool(ambiguity)
+        requires_review = confidence < self.settings.review_threshold or not core.cuenta_base_imponible or not core.cuenta_total or (purpose.area_funcional == "INDETERMINADO" and area_importa) or bool(discarded) or bool(ambiguity)
         all_evidence = self._hit_dicts(self.rag, context_hits + base_evidence_hits + total_evidence_hits + tax_hits)
         debug_data = None
         if debug:

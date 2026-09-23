@@ -94,7 +94,10 @@ def test_staged_pipeline_and_deterministic_tax_condition(tmp_path: Path):
     result = service.classify(ClassifyRequest.model_validate(request({"base_imponible": 1750, "igv": 315, "total": 2065})))
     assert rag.calls == ["context", "base_account", "base_account_leaf", "total_account", "total_account"]
     assert gemini.calls == ["interpret", "purpose", "select"]
-    assert result.cuenta_base_imponible.codigo == "6311"
+    # 6311 es una cuenta padre: no se puede imputar y no llega a Gemini. La
+    # búsqueda directa en el plan aporta la divisionaria de «SERVICIO CONTABLE»
+    # para el área administrativa.
+    assert result.cuenta_base_imponible.codigo == "6323094"
     assert result.cuenta_total.codigo == "4212"
     assert result.condicion_igv == "GRAVADO"
 
@@ -125,3 +128,27 @@ def test_prior_records_directory_is_never_indexed(tmp_path: Path):
     excluded.write_text("cuenta usada", encoding="utf-8")
     assert DocumentLoader(tmp_path).list_documents() == [allowed]
     assert HybridRAG._purpose_allowed("historico/asientos.txt", "base_account") is False
+
+
+def test_el_area_solo_hace_ambigua_una_cuenta_con_variantes_por_area():
+    from app.services.clasificador.schemas import AccountCandidate
+
+    def candidato(codigo, descripcion, score):
+        return AccountCandidate(codigo=codigo, descripcion=descripcion, score=score)
+
+    # Combustible: la finalidad no se sabe, pero la cuenta es la misma para
+    # cualquier área. Antes el motor la anulaba igual.
+    suministros = [
+        candidato("603202521", "SUMINISTROS COMBUSTIBLES - Compras", 0.70),
+        candidato("603202522", "SUMINISTROS LUBRICANTES - Compras", 0.69),
+    ]
+    assert ClassifierService._ambiguous_account(suministros, suministros[0], "INDETERMINADO") is False
+    assert ClassifierService._depende_del_area(suministros[0], suministros) is False
+
+    # Internet sí cambia de cuenta según el área: sin área, sigue siendo dudoso.
+    internet = [
+        candidato("6365094", "INTERNET - ADM - Servicios Básicos", 0.70),
+        candidato("6365095", "INTERNET - VTAS - Servicios Básicos", 0.69),
+    ]
+    assert ClassifierService._ambiguous_account(internet, internet[0], "INDETERMINADO") is True
+    assert ClassifierService._depende_del_area(internet[0], internet) is True

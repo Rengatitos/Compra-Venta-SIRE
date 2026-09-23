@@ -31,7 +31,7 @@ function detalle(fallo: unknown): string {
  * Los administradores fijos (`GOOGLE_ALLOWED_EMAILS` del servidor) salen en la
  * lista pero sin acciones: se cambian en el servidor, no desde aquí.
  */
-export function GestionAccesos() {
+export function GestionAccesos({ independiente = false }: { independiente?: boolean }) {
   const esAdmin = useEsAdmin();
   const cliente = useQueryClient();
   const { mostrar } = useToast();
@@ -94,14 +94,23 @@ export function GestionAccesos() {
   const ocupado = cambiar.isPending || quitar.isPending;
 
   return (
-    <section className={estilos.seccion} aria-labelledby={idTitulo}>
-      <h2 className={estilos.titulo} id={idTitulo}>
-        Accesos al panel
-      </h2>
-      <p className={layout.textoSecundario}>
-        Correos de Google que pueden entrar. Los administradores también dan y quitan accesos;
-        los usuarios solo trabajan con las empresas.
-      </p>
+    <section
+      className={independiente ? estilos.contenido : estilos.seccion}
+      aria-labelledby={independiente ? undefined : idTitulo}
+      aria-label={independiente ? 'Cuentas con acceso' : undefined}
+    >
+      {/* En su propia página el título y la explicación ya los pone el marco. */}
+      {independiente ? null : (
+        <>
+          <h2 className={estilos.titulo} id={idTitulo}>
+            Cuentas con acceso
+          </h2>
+          <p className={layout.textoSecundario}>
+            Correos de Google que pueden entrar. Los administradores también dan y quitan
+            accesos; los usuarios solo trabajan con las empresas.
+          </p>
+        </>
+      )}
 
       <form className={estilos.formulario} onSubmit={alEnviar}>
         <TextField

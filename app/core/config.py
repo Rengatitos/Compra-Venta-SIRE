@@ -112,6 +112,10 @@ class Settings(BaseSettings):
     # palabras; con 0.8 «SACOS DE PAPA DE PRIMERA» y «SACOS DE PAPA PRIMERA»
     # coinciden y «SACOS DE PAPA» con «SACOS DE ARROZ» no.
     CLASIFICADOR_SIMILITUD_MINIMA: float = 0.8
+    # Cuántos comprobantes con la misma glosa se mandan a la IA en un trabajo
+    # mientras no dé cuenta. Pasado el tope, el resto queda en revisión sin
+    # gastar más consultas; recibe la cuenta en cuanto otro igual acierte.
+    CLASIFICADOR_INTENTOS_POR_GLOSA: int = 3
 
     # Clave con la que sire-bot (Apaclla Bot) se autentica en la cabecera
     # `X-Api-Key`. Sin ella los endpoints del bot responden 503: la integración

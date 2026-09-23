@@ -4,10 +4,10 @@ import type { ReactNode } from 'react';
 import { Outlet, useNavigate } from 'react-router';
 
 import { listarEmpresas } from '@/api/empresas';
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import { ErrorState, Skeleton } from '@/components/ui/Feedback';
 import { useAuth } from '@/features/auth/useAuth';
-import { GestionAccesos } from '@/features/usuarios/GestionAccesos';
+import { useEsAdmin } from '@/features/usuarios/useEsAdmin';
 import { useToast } from '@/hooks/useToast';
 import { guardarEmpresaActiva, obtenerSesion, suscribirSesion } from '@/lib/session';
 import type { EmpresaResponse } from '@/types/api';
@@ -21,10 +21,19 @@ import estilos from './Marco.module.css';
 /** El marco común, con lo que este paso tiene que decir y ofrecer. */
 function MarcoDelGate({ titulo, children }: { titulo: string; children: ReactNode }) {
   const { correo, salir } = useAuth();
+  const esAdmin = useEsAdmin();
 
   return (
     <Marco
       titulo={titulo}
+      acciones={
+        // Solo administradores: los usuarios no gestionan accesos.
+        esAdmin ? (
+          <ButtonLink a="/accesos" variante="fantasma" pequeno>
+            Editar cuentas con acceso
+          </ButtonLink>
+        ) : null
+      }
       intro={
         <>
           Has entrado como <strong>{correo}</strong>.
@@ -159,8 +168,6 @@ export function EmpresaGate() {
           iniciar sesión.
         </p>
         <ListaEmpresas empresas={empresas} onElegir={(elegido) => guardarEmpresaActiva(elegido)} />
-        {/* Solo se pinta para administradores. */}
-        <GestionAccesos />
       </MarcoDelGate>
     );
   }

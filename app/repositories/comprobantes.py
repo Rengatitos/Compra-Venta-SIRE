@@ -396,6 +396,15 @@ async def listar_para_clasificar(
     return await cursor.to_list(length=None)
 
 
+async def listar_que_requieren_revision(db, empresa_id: str, libro: str) -> list[dict[str, Any]]:
+    """Comprobantes del libro, de cualquier periodo, clasificados sin cuenta confiable."""
+    return await _col(db).find({
+        "empresa_id": empresa_id,
+        "libro": libro,
+        "clasificacion_contable.requiere_revision": True,
+    }).to_list(length=None)
+
+
 async def aplicar_clasificacion_frecuente(
     db, empresa_id: str, memoria_id: str, campos: dict[str, Any]
 ) -> int:

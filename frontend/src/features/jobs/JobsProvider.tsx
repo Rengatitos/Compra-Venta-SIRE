@@ -35,6 +35,49 @@ function leerAlmacen(): string[] {
   }
 }
 
+/**
+ * Jobs cuyo final ya se anunció en esta sesión. Sin esto, cada recarga volvía a
+ * ver como recién terminados todos los jobs seguidos —siguen en `sire.jobs`
+ * para no perder su avance— y repetía un aviso por cada uno.
+ */
+const CLAVE_ANUNCIADOS = 'sire.jobs.anunciados';
+const MAXIMO_ANUNCIADOS = 50;
+/** Un job que terminó hace más de esto ya no se anuncia al recargar. */
+const AVISO_RECIENTE_MS = 2 * 60_000;
+
+function leerAnunciados(): string[] {
+  try {
+    const dato: unknown = JSON.parse(sessionStorage.getItem(CLAVE_ANUNCIADOS) ?? '[]');
+    return Array.isArray(dato) ? dato.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function yaAnunciado(jobId: string): boolean {
+  return leerAnunciados().includes(jobId);
+}
+
+function marcarAnunciado(jobId: string): void {
+  try {
+    const previos = leerAnunciados().filter((id) => id !== jobId);
+    sessionStorage.setItem(
+      CLAVE_ANUNCIADOS,
+      JSON.stringify([jobId, ...previos].slice(0, MAXIMO_ANUNCIADOS)),
+    );
+  } catch {
+    // Sin almacenamiento se vuelve a lo de antes: se recuerda solo en memoria.
+  }
+}
+
+/** Qué cambió al terminar, según el tipo de trabajo. */
+const DETALLE_COMPLETADO: Record<string, string> = {
+  detracciones:
+    'Las detracciones relacionadas ya están disponibles en el listado de comprobantes.',
+  clasificacion_cuentas: 'Las cuentas contables ya se ven en el listado de comprobantes.',
+  descarga_pdfs: 'Los PDFs de SUNAT ya están guardados.',
+};
+
 interface PropsSeguidor {
   jobId: string;
   onDatos: (job: JobResponse) => void;
@@ -61,6 +104,11 @@ function SeguidorDeJob({ jobId, onDatos, onDescartar }: PropsSeguidor) {
     if (!datos || anunciado.current) return;
     if (!ESTADOS_JOB_TERMINALES.includes(datos.estado)) return;
     anunciado.current = true;
+    if (yaAnunciado(jobId)) return;
+    marcarAnunciado(jobId);
+    // Terminó hace rato, antes de esta carga de la página: no es una novedad.
+    const terminadoHace = Date.now() - new Date(datos.actualizado_en).getTime();
+    if (terminadoHace > AVISO_RECIENTE_MS) return;
 
     const donde = `${presentarTipoJob(datos.tipo)} · ${formatearPeriodo(datos.periodo)}`;
 
@@ -78,11 +126,11 @@ function SeguidorDeJob({ jobId, onDatos, onDescartar }: PropsSeguidor) {
     mostrar({
       tono: 'exito',
       titulo: `${donde}: completado`,
-      detalle: datos.tipo === 'detracciones'
-        ? 'Las detracciones relacionadas ya están disponibles en el listado de comprobantes.'
-        : 'La vista previa ya incluye el detalle y la glosa de SUNAT.',
+      detalle:
+        DETALLE_COMPLETADO[datos.tipo] ??
+        'La vista previa ya incluye el detalle y la glosa de SUNAT.',
     });
-  }, [datos, mostrar, cliente]);
+  }, [datos, jobId, mostrar, cliente]);
 
   // Un job de otra empresa (403) o borrado (404) no se vuelve a consultar.
   const fallo = job.error;

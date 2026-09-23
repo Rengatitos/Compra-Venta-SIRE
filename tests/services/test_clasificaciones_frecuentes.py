@@ -105,9 +105,16 @@ def entorno(monkeypatch):
     frecuentes = Frecuentes()
     guardados: dict[str, dict] = {}
     a_la_ia: list[str] = []
+    documentos: dict[str, dict] = {}
 
     async def guardar(db, documento_id, clasificacion):
         guardados[documento_id] = clasificacion
+
+    async def en_revision(db, empresa_id, libro):
+        return [
+            {**documentos[i], "clasificacion_contable": c}
+            for i, c in guardados.items() if c["requiere_revision"]
+        ]
 
     async def nada(*args, **kwargs):
         return None
@@ -134,13 +141,18 @@ def entorno(monkeypatch):
         monkeypatch.setattr(clasificacion_service.repo_frecuentes, nombre,
                             getattr(frecuentes, nombre))
     monkeypatch.setattr(clasificacion_service.repo_comprobantes, "guardar_clasificacion", guardar)
+    monkeypatch.setattr(
+        clasificacion_service.repo_comprobantes, "listar_que_requieren_revision", en_revision
+    )
     monkeypatch.setattr(clasificacion_service.repo_empresas, "obtener_por_ruc", nada)
     monkeypatch.setattr(clasificacion_service.ficha_ruc_service, "obtener_varias", sin_fichas)
     monkeypatch.setattr(clasificacion_service, "motor", Motor())
-    return frecuentes, guardados, a_la_ia
+    return frecuentes, guardados, a_la_ia, documentos
 
 
-def _lote(monkeypatch, documentos):
+def _lote(monkeypatch, entorno, documentos):
+    entorno[3].update({d["_id"]: d for d in documentos})
+
     async def listar(*args, **kwargs):
         return documentos
 
@@ -154,8 +166,8 @@ def _lote(monkeypatch, documentos):
 
 
 def test_la_misma_compra_no_vuelve_a_la_ia(monkeypatch, entorno):
-    frecuentes, guardados, a_la_ia = entorno
-    resultado = _lote(monkeypatch, [
+    frecuentes, guardados, a_la_ia, _ = entorno
+    resultado = _lote(monkeypatch, entorno, [
         _doc("1169", "SACOS DE PAPA DE PRIMERA / SACOS DE ZANAHORIA DE PRIMERA"),
         _doc("1178", "SACOS DE PAPA / SACOS DE ZANAHORIA PRIMERA"),
         _doc("1180", "SACOS DE ZANAHORIA / SACOS DE PAPA DE PRIMERA"),
@@ -183,9 +195,44 @@ def test_la_misma_compra_no_vuelve_a_la_ia(monkeypatch, entorno):
     assert len(frecuentes.usos) == 2
 
 
+def test_al_acertar_con_una_glosa_se_actualizan_las_que_estaban_en_revision(
+    monkeypatch, entorno
+):
+    frecuentes, guardados, a_la_ia, _ = entorno
+    respuestas = iter([None, "603202521"])  # falla la primera vez, acierta la segunda
+    monkeypatch.setattr(
+        clasificacion_service.motor.obtener().__class__, "classify",
+        lambda self, solicitud: (a_la_ia.append(solicitud.comprobante.numero)
+                                 or _respuesta(next(respuestas))),
+    )
+    resultado = _lote(monkeypatch, entorno, [
+        _doc("66929", "DIESEL B5 S50 UV"),
+        _doc("67132", "DIESEL B5 S50 UV"),
+        _doc("67200", "DIESEL B5 S50 UV"),
+    ])
+
+    assert a_la_ia == ["66929", "67132"]  # tras acertar, el tercero ya reutiliza
+    assert {g["cuenta_base"]["codigo"] for g in guardados.values()} == {"603202521"}
+    assert guardados["66929"]["requiere_revision"] is False  # el que había fallado
+    assert "Cuenta base 603202521" in guardados["66929"]["razon"]
+    assert resultado["propagados"] == 1
+    entrada = frecuentes.entradas[clave("DIESEL B5 S50 UV")]
+    assert entrada["confiable"] is True
+    assert entrada["cuenta_base"]["codigo"] == "603202521"
+
+
+def test_con_fallos_seguidos_se_deja_de_consultar_al_tope(monkeypatch, entorno):
+    _, guardados, a_la_ia, _ = entorno
+    _lote(monkeypatch, entorno, [_doc(str(n), "GAS DOMESTICO 10KG") for n in range(1, 6)])
+    # Tope por defecto: tres intentos por glosa; el resto no gasta consultas.
+    assert a_la_ia == ["1", "2", "3"]
+    assert all(g["requiere_revision"] for g in guardados.values())
+    assert "no se volvió a consultar" in guardados["5"]["razon"]
+
+
 def test_una_clasificacion_dudosa_se_guarda_pero_no_se_reutiliza(monkeypatch, entorno):
-    frecuentes, guardados, a_la_ia = entorno
-    _lote(monkeypatch, [
+    frecuentes, guardados, a_la_ia, _ = entorno
+    _lote(monkeypatch, entorno, [
         _doc("1", "DIESEL B5 S50 UV"),
         _doc("2", "DIESEL B5 S50 UV"),
     ])
@@ -198,8 +245,8 @@ def test_una_clasificacion_dudosa_se_guarda_pero_no_se_reutiliza(monkeypatch, en
 
 
 def test_solo_con_glosa_y_un_fallo_no_detiene_el_lote(monkeypatch, entorno):
-    _, guardados, a_la_ia = entorno
-    resultado = _lote(monkeypatch, [
+    _, guardados, a_la_ia, _ = entorno
+    resultado = _lote(monkeypatch, entorno, [
         _doc("1", "SACOS DE PAPA"),
         _doc("9", "GAS DOMESTICO 10KG"),  # la IA falla en este
         _doc("3"),  # pendiente de consultar en SOL: sin glosa

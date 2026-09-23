@@ -24,6 +24,12 @@
   margin-block-end: var(--space-5);
 }
 
+.herramientas {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
 .marca {
   font-family: var(--font-mono);
   font-size: var(--text-label-md);

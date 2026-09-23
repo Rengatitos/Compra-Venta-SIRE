@@ -11,6 +11,8 @@ interface Props {
   children: ReactNode;
   /** Acción de salida al pie: cerrar sesión, volver al panel… */
   pie?: ReactNode;
+  /** Opciones junto al selector de tema, arriba a la derecha. */
+  acciones?: ReactNode;
 }
 
 /**
@@ -23,7 +25,7 @@ interface Props {
  * el armazón deja la barra contradiciendo al contenido y la navegación sin
  * ninguna sección marcada.
  */
-export function Marco({ titulo, intro, children, pie }: Props) {
+export function Marco({ titulo, intro, children, pie, acciones }: Props) {
   useDocumentTitle(titulo);
 
   return (
@@ -31,7 +33,10 @@ export function Marco({ titulo, intro, children, pie }: Props) {
       <div className={estilos.tarjeta}>
         <div className={estilos.encabezado}>
           <p className={estilos.marca}>Sire · SUNAT</p>
-          <ThemeToggle />
+          <div className={estilos.herramientas}>
+            {acciones}
+            <ThemeToggle />
+          </div>
         </div>
         <h1 className={estilos.titulo}>{titulo}</h1>
         {intro ? <p className={estilos.intro}>{intro}</p> : null}
