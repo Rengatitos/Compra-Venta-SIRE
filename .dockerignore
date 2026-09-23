@@ -27,3 +27,13 @@ service-account.json
 
 # PDFs descargados: van en un volumen, no en la imagen
 data/
+
+# La imagen de la API solo copia app/, pero sin excluir esto se sube entero al
+# contexto de build: frontend/node_modules son cientos de MB. El frontend tiene
+# su propio Dockerfile, con su carpeta como contexto.
+frontend/
+logs/
+tests/
+docs/
+scripts/
+source/

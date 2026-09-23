@@ -3,11 +3,13 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /app
 
-# Instalar dependencias del proyecto
-COPY pyproject.toml ./
+# Instalar dependencias del proyecto. Con `uv.lock` y `--frozen` se instalan
+# las versiones exactas del lock (torch solo-CPU incluido) en vez de resolver
+# de nuevo en cada build.
+COPY pyproject.toml uv.lock ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-install-project --no-dev
+    uv sync --frozen --no-install-project --no-dev
 
 # Limpiar venv para reducir peso
 RUN find .venv -type d -name "__pycache__" -exec rm -rf {} + && \

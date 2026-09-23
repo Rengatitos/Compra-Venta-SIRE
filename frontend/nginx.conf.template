@@ -1,0 +1,40 @@
+# Plantilla: la imagen de nginx sustituye ${API_UPSTREAM} al arrancar.
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    # Exportaciones y fotos del bot: más que el 1 MB por defecto.
+    client_max_body_size 50m;
+
+    location /api/ {
+        proxy_pass http://${API_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Clasificar un comprobante con la IA tarda hasta un par de minutos.
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    location = /health {
+        proxy_pass http://${API_UPSTREAM};
+    }
+
+    # Los archivos con hash en el nombre no cambian nunca.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # Aplicación de una sola página: cualquier otra ruta es index.html.
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri /index.html;
+    }
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+}
