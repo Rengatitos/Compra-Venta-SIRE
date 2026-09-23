@@ -18,6 +18,11 @@ import { NoEncontradaPage } from '@/features/shared/NoEncontradaPage';
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 );
+const ClasificacionesPage = lazy(() =>
+  import('@/features/clasificaciones/ClasificacionesPage').then((m) => ({
+    default: m.ClasificacionesPage,
+  })),
+);
 const PeriodosPage = lazy(() =>
   import('@/features/periodos/PeriodosPage').then((m) => ({ default: m.PeriodosPage })),
 );
@@ -72,6 +77,7 @@ export function App() {
               <Route element={<EmpresaGate />}>
                 <Route element={<AppShell />}>
                   <Route index element={<DashboardPage />} />
+                  <Route path="clasificaciones" element={<ClasificacionesPage />} />
                   <Route path="periodos" element={<PeriodosPage />} />
                   <Route path="periodos/:periodo" element={<ComprobantesPage />} />
                   <Route path="periodos/:periodo/auditoria" element={<AuditoriaPage />} />

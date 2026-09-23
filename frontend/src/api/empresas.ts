@@ -1,5 +1,7 @@
 import { pedir, segmento } from '@/lib/http';
 import type {
+  ActividadEconomica,
+  ClaseCiiu,
   CodigoVinculacion,
   EmpresaCreate,
   EmpresaResponse,
@@ -40,6 +42,29 @@ export function actualizarEmpresa(ruc: string, datos: EmpresaUpdate): Promise<Em
     }
   }
   return pedir<EmpresaResponse>(base(ruc), { metodo: 'PUT', cuerpo });
+}
+
+/**
+ * Guarda las actividades económicas y cuál manda al clasificar. Va aparte de
+ * `actualizarEmpresa`, que solo envía textos no vacíos.
+ */
+export function guardarActividades(
+  ruc: string,
+  actividades: ActividadEconomica[],
+  ciiuPrincipal: string | null,
+): Promise<EmpresaResponse> {
+  return pedir<EmpresaResponse>(base(ruc), {
+    metodo: 'PUT',
+    cuerpo: {
+      actividades_economicas: actividades,
+      ciiu_principal_clasificacion: ciiuPrincipal,
+    },
+  });
+}
+
+/** Catálogo CIIU Rev. 4: por código o por palabras del título. */
+export function buscarCiiu(consulta: string): Promise<ClaseCiiu[]> {
+  return pedir<ClaseCiiu[]>('/ciiu', { consulta: { q: consulta } });
 }
 
 /** Borra en cascada comprobantes, periodos y plan de cuentas de la empresa. */

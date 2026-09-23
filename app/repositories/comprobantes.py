@@ -396,6 +396,17 @@ async def listar_para_clasificar(
     return await cursor.to_list(length=None)
 
 
+async def aplicar_clasificacion_frecuente(
+    db, empresa_id: str, memoria_id: str, campos: dict[str, Any]
+) -> int:
+    """Actualiza la clasificación de los comprobantes que salieron de esa frecuente."""
+    resultado = await _col(db).update_many(
+        {"empresa_id": empresa_id, "clasificacion_contable.memoria_id": memoria_id},
+        {"$set": {f"clasificacion_contable.{campo}": valor for campo, valor in campos.items()}},
+    )
+    return resultado.modified_count
+
+
 async def guardar_campos_contraparte(db, documento_id, campos):
     if campos:
         await _col(db).update_one({"_id": documento_id}, {"$set": {

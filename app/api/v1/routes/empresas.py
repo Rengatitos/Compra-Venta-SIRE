@@ -9,6 +9,7 @@ from app.core.auth import usuario_actual
 from app.core.encryption import decrypt_password, encrypt_password
 from app.db.database import get_db
 from app.domain import rubro as dominio_rubro
+from app.repositories import clasificaciones_frecuentes as repo_frecuentes
 from app.repositories import codigos_vinculacion as repo_codigos_vinculacion
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import comprobantes_externos as repo_comprobantes_externos
@@ -88,6 +89,15 @@ async def actualizar_empresa(
         if campo in cambios and not cambios[campo]:
             cambios.pop(campo)
 
+    # La actividad elegida para clasificar tiene que ser una de las suyas.
+    principal = cambios.get("ciiu_principal_clasificacion")
+    actividades = cambios.get("actividades_economicas", empresa.get("actividades_economicas"))
+    if principal and not any(a.get("ciiu") == principal for a in actividades or []):
+        raise HTTPException(
+            status_code=422,
+            detail="La actividad principal para clasificar debe estar entre sus actividades",
+        )
+
     actualizada = await repo_empresas.actualizar(db, empresa["_id"], cambios)
     return _con_rubro(actualizada)
 
@@ -101,6 +111,7 @@ async def eliminar_empresa(empresa: dict = Depends(empresa_actual), db=Depends(g
     await repo_plan_cuentas.eliminar_de_empresa(db, empresa_id)
     await repo_comprobantes_externos.eliminar_de_empresa(db, empresa_id)
     await repo_codigos_vinculacion.eliminar_de_empresa(db, empresa_id)
+    await repo_frecuentes.eliminar_de_empresa(db, empresa_id)
     imagenes_externas.eliminar_de_empresa(empresa_id)
 
     if await repo_empresas.eliminar(db, empresa["_id"]) == 0:

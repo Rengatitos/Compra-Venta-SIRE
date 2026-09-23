@@ -15,6 +15,7 @@ NOMBRE_COL_CODIGOS_VINCULACION = "codigos_vinculacion"
 NOMBRE_COL_COMPROBANTES_EXTERNOS = "comprobantes_externos"
 NOMBRE_COL_FICHAS_RUC = "fichas_ruc"
 NOMBRE_COL_USUARIOS = "usuarios"
+NOMBRE_COL_CLASIFICACIONES_FRECUENTES = "clasificaciones_frecuentes"
 
 
 def monto_a_bson(valor: Decimal | None) -> Decimal128 | None:

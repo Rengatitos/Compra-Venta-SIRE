@@ -3,6 +3,7 @@ import type { ComponentType } from 'react';
 import {
   IconoAjustes,
   IconoAuditoria,
+  IconoClasificaciones,
   IconoComprobantes,
   IconoCuentas,
   IconoExternos,
@@ -52,6 +53,7 @@ export function subEntradasDePeriodo(periodo: string): readonly SubEntrada[] {
 export function construirNavegacion(periodo: string | null): readonly Entrada[] {
   return [
     { a: '/', texto: 'Dashboard', icono: IconoPanel, exacto: true },
+    { a: '/clasificaciones', texto: 'Clasificaciones', icono: IconoClasificaciones },
     {
       a: '/periodos',
       texto: 'Periodos',

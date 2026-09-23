@@ -6,12 +6,20 @@ from slowapi.util import get_remote_address
 
 from app.core.auth import usuario_actual
 from app.db.database import get_db
+from app.domain import ciiu
 from app.services import ficha_ruc_service
 from app.services.sunat.ficha_ruc import FichaNoEncontrada, FichaRuc, es_ruc
 
 router = APIRouter(dependencies=[Depends(usuario_actual)])
+# Catálogo CIIU para elegir las actividades de una empresa en Ajustes.
+router_ciiu = APIRouter(dependencies=[Depends(usuario_actual)])
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
+
+
+@router_ciiu.get("", summary="Buscar actividades en el catálogo CIIU Rev. 4")
+async def buscar_ciiu(q: str = Query(..., min_length=2, description="Código o palabras")):
+    return ciiu.buscar(q)
 
 
 @router.get(

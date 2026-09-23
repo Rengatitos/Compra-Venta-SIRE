@@ -14,6 +14,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.database import close_mongo_connection, connect_to_mongo, get_db
 from app.domain.jobs import TipoJob
+from app.repositories import clasificaciones_frecuentes as repo_frecuentes
 from app.repositories import codigos_vinculacion as repo_codigos_vinculacion
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import comprobantes_externos as repo_comprobantes_externos
@@ -60,6 +61,7 @@ async def lifespan(app: FastAPI):
         await repo_comprobantes_externos.crear_indices(db)
         await repo_fichas_ruc.crear_indices(db)
         await repo_usuarios.crear_indices(db)
+        await repo_frecuentes.crear_indices(db)
     except PyMongoError:
         logger.exception("No se pudieron crear todos los índices; el servicio sigue activo")
 

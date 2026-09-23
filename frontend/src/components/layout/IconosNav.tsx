@@ -41,6 +41,16 @@ export function IconoPanel() {
   );
 }
 
+/** Etiqueta con marca: glosas que ya tienen su cuenta. */
+export function IconoClasificaciones() {
+  return (
+    <Lienzo>
+      <path d="M3.5 12.2V5a1.5 1.5 0 0 1 1.5-1.5h7.2l8.3 8.3a1.5 1.5 0 0 1 0 2.1l-7.1 7.1a1.5 1.5 0 0 1-2.1 0Z" />
+      <path d="m9 11.5 2 2 3.5-3.5" />
+    </Lienzo>
+  );
+}
+
 /** Calendario: un periodo es un mes. */
 export function IconoPeriodos() {
   return (

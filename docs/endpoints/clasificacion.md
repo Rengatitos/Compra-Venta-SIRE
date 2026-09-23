@@ -13,7 +13,21 @@ Las actividades salen de la **ficha RUC** de la Consulta RUC pública de SUNAT (
 - **Empresa**: se guardan en ella con `POST /empresas/{ruc}/ficha-ruc` (abajo). Si una empresa aún no tiene, la primera clasificación las consulta sola; si SUNAT falla, se usa el CIIU principal de su token. También se pueden editar a mano con `PUT /api/v1/empresas/{ruc}` (ver [empresas](empresas.md)).
 - **Contraparte**: si está registrada como empresa se usan las suyas; si no, su ficha, que queda en caché en la colección `fichas_ruc` durante `FICHA_RUC_VIGENCIA_DIAS` (90). El job consulta de una vez las que faltan (`CLASIFICADOR_CONSULTAR_CONTRAPARTES`), con un solo navegador: unos 2–3 s por RUC nuevo.
 
-Un comprobante sin ítems, glosa ni leyenda no se clasifica: no hay operación que interpretar.
+Un comprobante sin ítems, glosa ni leyenda no se clasifica: no hay operación que interpretar. El job solo toma los que están **«Con glosa»** (misma regla que la columna «Estado glosa»).
+
+**Actividad principal para clasificar.** La ficha de SUNAT no siempre describe el negocio real (un restaurante registrado como venta de electrodomésticos). En Ajustes se agregan actividades del catálogo CIIU Rev. 4 (`GET /api/v1/ciiu?q=`, 418 clases sacadas del PDF del INEI), se quitan las que sobran y se elige cuál manda (`ciiu_principal_clasificacion`, vía `PUT /empresas/{ruc}`). Esa llega al clasificador como PRINCIPAL y las demás como contexto. Volver a consultar SUNAT conserva las agregadas a mano (`origen: "manual"`).
+
+## Clasificaciones frecuentes
+
+Cada glosa que pasa por la IA queda en la colección `clasificaciones_frecuentes` (por empresa y libro) con la cuenta que se le dio. Si llega otro comprobante con una glosa **equivalente** se reutiliza esa clasificación sin consultar a la IA: se comparan las palabras significativas sin orden, tildes, palabras vacías, meses ni años (Jaccard ≥ `CLASIFICADOR_SIMILITUD_MINIMA`, 0,8), así que «SACOS DE PAPA DE PRIMERA / SACOS DE ZANAHORIA DE PRIMERA» y «SACOS DE PAPA / SACOS DE ZANAHORIA PRIMERA» son la misma ([glosa_similar.py](../../app/domain/glosa_similar.py)).
+
+Solo se reutilizan las **confiables**: las que la IA clasificó sin pedir revisión y las que un usuario corrigió o confirmó. Las dudosas quedan listadas para corregirlas.
+
+- `GET /api/v1/empresas/{ruc}/clasificaciones-frecuentes?libro=` — la lista, de más a menos reutilizada.
+- `PATCH …/clasificaciones-frecuentes/{id}` — corrige o confirma la cuenta base (y la total). Pasa a confiable y **se aplica a todos los comprobantes que la usaban** (`clasificacion_contable.memoria_id`).
+- `DELETE …/clasificaciones-frecuentes/{id}` — deja de reutilizarse; los comprobantes conservan su cuenta.
+
+En el panel: sección **Clasificaciones** del menú. En la ficha de un comprobante, «Clasificar» reutiliza una frecuente si la hay y «Volver a clasificar con IA» consulta siempre a la IA. Para registrar las clasificaciones hechas antes de existir esta memoria: `scripts/poblar_clasificaciones_frecuentes.py --aplicar`.
 
 ## Qué guarda
 

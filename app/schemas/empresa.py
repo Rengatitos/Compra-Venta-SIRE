@@ -7,9 +7,12 @@ from app.services.sunat.ficha_ruc import FichaRuc
 class ActividadEconomica(BaseModel):
     """Actividad de la ficha RUC. La usa el clasificador contable como contexto."""
 
-    tipo: str | None = None  # PRINCIPAL / SECUNDARIA
+    tipo: str | None = None  # PRINCIPAL / SECUNDARIA según SUNAT
     ciiu: str
     descripcion: str | None = None
+    # `sunat` (de la ficha RUC) o `manual` (agregada en Ajustes). Al volver a
+    # consultar SUNAT solo se reemplazan las de `sunat`.
+    origen: str | None = None
 
     @field_validator("ciiu")
     @classmethod
@@ -48,6 +51,9 @@ class EmpresaUpdate(BaseModel):
     sunat_client_id: str | None = None
     sunat_client_secret: str | None = None
     actividades_economicas: list[ActividadEconomica] | None = None
+    # CIIU que manda al clasificar (p. ej. el restaurante aunque SUNAT diga
+    # otra cosa). Debe estar entre `actividades_economicas`.
+    ciiu_principal_clasificacion: str | None = None
 
 
 class EmpresaResponse(EmpresaBase):
@@ -57,6 +63,7 @@ class EmpresaResponse(EmpresaBase):
     fecha_creacion: str | None = None
     rubro: str | None = None
     actividades_economicas: list[ActividadEconomica] = []
+    ciiu_principal_clasificacion: str | None = None
     # Última ficha RUC consultada en SUNAT (`POST /empresas/{ruc}/ficha-ruc`).
     ficha_ruc: FichaRuc | None = None
 

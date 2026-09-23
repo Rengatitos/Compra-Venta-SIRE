@@ -18,15 +18,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import settings
 from app.domain import rubro
 from app.domain.comprobante import Libro, normalizar_monto
+from app.domain.glosa_similar import clave, palabras, similitud
+from app.repositories import clasificaciones_frecuentes as repo_frecuentes
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import empresas as repo_empresas
-from app.services import ficha_ruc_service
+from app.services import ficha_ruc_service, plan_contable
 from app.services.clasificador.motor import MotorNoDisponible, motor
 from app.services.clasificador.schemas import (
     ClassificationResponse,
@@ -40,7 +43,7 @@ from app.services.clasificador.schemas import (
     VoucherType,
 )
 from app.services.comprobante_service import serializar
-from app.services.glosa import ESTADO_CON_GLOSA, estado_glosa
+from app.services.glosa import ESTADO_CON_GLOSA, estado_glosa, obtener_glosa
 from app.services.jobs_service import Reportador
 from app.services.sunat.ficha_ruc import es_ruc
 
@@ -67,13 +70,35 @@ def _actividades(empresa: dict[str, Any] | None) -> list[EconomicActivity]:
     """
     if not empresa:
         return []
-    actividades = [
-        EconomicActivity(
-            tipo=a.get("tipo"), ciiu_v4=a.get("ciiu"), descripcion=a.get("descripcion")
-        )
-        for a in empresa.get("actividades_economicas") or []
+    registradas = [
+        a for a in empresa.get("actividades_economicas") or []
         if isinstance(a, dict) and a.get("ciiu")
     ]
+    # La empresa puede elegir qué actividad manda al clasificar (un restaurante
+    # cuya ficha SUNAT dice «venta de electrodomésticos»). Esa va primero y como
+    # PRINCIPAL; las demás quedan de contexto, como SECUNDARIA.
+    elegida = empresa.get("ciiu_principal_clasificacion")
+    if elegida and any(a["ciiu"] == elegida for a in registradas):
+        registradas.sort(key=lambda a: a["ciiu"] != elegida)
+        actividades = [
+            EconomicActivity(
+                tipo="PRINCIPAL" if a["ciiu"] == elegida else "SECUNDARIA",
+                ciiu_v4=a["ciiu"],
+                descripcion=(
+                    f"{a.get('descripcion') or ''} (actividad principal del negocio, "
+                    "elegida por la empresa para clasificar)"
+                    if a["ciiu"] == elegida else a.get("descripcion")
+                ),
+            )
+            for a in registradas
+        ]
+    else:
+        actividades = [
+            EconomicActivity(
+                tipo=a.get("tipo"), ciiu_v4=a["ciiu"], descripcion=a.get("descripcion")
+            )
+            for a in registradas
+        ]
     if actividades:
         return actividades
     ciiu = rubro.ciiu_desde_token_sunat(empresa.get("sunat_token") or "")
@@ -234,7 +259,192 @@ async def contextos_contrapartes(
     return contextos
 
 
-async def _clasificar(db, empresa, documento, contextos: dict[str, dict]) -> dict[str, Any]:
+class Memoria:
+    """Clasificaciones frecuentes confiables de una empresa y libro, en memoria.
+
+    Se carga una vez por trabajo y crece con lo que la IA va clasificando bien:
+    así el tercer «SACOS DE PAPA» de un mismo lote ya no llama a Gemini.
+    """
+
+    def __init__(self, entradas: list[dict[str, Any]]):
+        self._entradas = [(palabras(e.get("glosa") or e.get("clave")), e) for e in entradas]
+
+    @classmethod
+    async def cargar(cls, db, empresa_id: str, libro: str) -> Memoria:
+        return cls(await repo_frecuentes.listar(db, empresa_id, libro, solo_confiables=True))
+
+    def buscar(self, glosa: str) -> tuple[dict[str, Any], float] | None:
+        buscadas = palabras(glosa)
+        mejor = max(
+            ((entrada, similitud(buscadas, suyas)) for suyas, entrada in self._entradas),
+            key=lambda par: par[1],
+            default=None,
+        )
+        if mejor and mejor[1] >= settings.CLASIFICADOR_SIMILITUD_MINIMA:
+            return mejor
+        return None
+
+    def agregar(self, entrada: dict[str, Any]) -> None:
+        self._entradas.append((palabras(entrada.get("glosa")), entrada))
+
+
+def _condicion_igv(visible: dict[str, Any]) -> str:
+    """La misma regla determinista que usa el motor (`ClassifierService._amount_condition`)."""
+    if visible.get("exonerado", 0) > 0:
+        return "EXONERADO"
+    if visible.get("inafecto", 0) > 0:
+        return "INAFECTO"
+    if visible.get("no_gravado", 0) > 0:
+        return "NO_GRAVADO"
+    if visible.get("igv", 0) > 0 or visible.get("base_imponible", 0) > 0:
+        return "GRAVADO"
+    return "NO_DETERMINADA"
+
+
+# El motivo de la IA mezcla el porqué (qué es la operación, cómo encaja en el
+# negocio y por qué esa cuenta) con el rastro técnico del RAG: frases
+# «Evidencia …: archivo.xlsx.». Esas se quitan; el porqué se queda entero.
+_EVIDENCIA = re.compile(
+    r"\s*Evidencia (?:contextual RAG|cuenta base|cuenta total):.*?\.(?=\s|$)"
+)
+MAX_POR_QUE = 900
+SIN_POR_QUE = (
+    "El razonamiento original de la IA no quedó registrado (se clasificó antes de que se "
+    "guardara). «Volver a clasificar con IA» en un comprobante con esta glosa lo registra."
+)
+
+
+def resumir_motivo(razon: str | None) -> str:
+    """El porqué de una clasificación de la IA, sin el rastro técnico del RAG."""
+    texto = re.sub(r"\s+", " ", _EVIDENCIA.sub("", razon or "")).strip()
+    if len(texto) > MAX_POR_QUE:
+        corte = texto.rfind(". ", 0, MAX_POR_QUE)
+        texto = texto[: corte + 1] if corte > 0 else texto[:MAX_POR_QUE].rstrip() + "…"
+    return texto
+
+
+def componer_motivo(
+    jerarquia_base: list[dict[str, Any]],
+    jerarquia_total: list[dict[str, Any]],
+    por_que: str,
+    *,
+    confirmada: bool = False,
+    reutilizado: str | None = None,
+) -> str:
+    """El motivo que se guarda y se muestra: qué es la cuenta según el plan y por qué.
+
+    Siempre con la misma forma, venga la clasificación de la IA, de una
+    clasificación frecuente o de una corrección, para que se lea igual en el
+    panel, en el Excel y en el PDF.
+    """
+    partes = []
+    if jerarquia_base:
+        partes.append(
+            f"Cuenta base {jerarquia_base[-1]['codigo']} según el plan de cuentas: "
+            f"{plan_contable.texto_jerarquia(jerarquia_base)}."
+        )
+    else:
+        partes.append(
+            "Sin cuenta base: ninguna cuenta del plan recuperada sustenta la operación, "
+            "requiere revisión."
+        )
+    if jerarquia_total:
+        partes.append(
+            f"Cuenta total {jerarquia_total[-1]['codigo']}: "
+            f"{plan_contable.texto_jerarquia(jerarquia_total)}."
+        )
+    partes.append(f"Por qué: {por_que or SIN_POR_QUE}")
+    if confirmada:
+        partes.append("Cuenta confirmada por un usuario en Clasificaciones frecuentes.")
+    if reutilizado:
+        partes.append(reutilizado)
+    return " ".join(partes)
+
+
+async def completar_motivo(
+    db,
+    empresa_id: str,
+    resultado: dict[str, Any],
+    por_que: str,
+    *,
+    confirmada: bool = False,
+    reutilizado: str | None = None,
+) -> dict[str, Any]:
+    """Añade al resultado el motivo compuesto y sus partes, para guardarlos.
+
+    Las partes van también por separado (`jerarquia_base`, `jerarquia_total`,
+    `motivo_ia`, `reutilizado`) para que el panel las presente ordenadas.
+    """
+    for campo in ("cuenta_base", "cuenta_total"):
+        cuenta = resultado.get(campo) or {}
+        camino = await plan_contable.jerarquia(db, empresa_id, cuenta.get("codigo"))
+        resultado[f"jerarquia_{campo.split('_')[1]}"] = camino
+        # La descripción de la cuenta, la del plan si la IA no la trajo.
+        if cuenta and not cuenta.get("descripcion") and camino and camino[-1].get("descripcion"):
+            resultado[campo] = {**cuenta, "descripcion": camino[-1]["descripcion"]}
+    resultado["motivo_ia"] = por_que
+    resultado["reutilizado"] = reutilizado
+    resultado["razon"] = componer_motivo(
+        resultado["jerarquia_base"],
+        resultado["jerarquia_total"],
+        por_que,
+        confirmada=confirmada,
+        reutilizado=reutilizado,
+    )
+    return resultado
+
+
+async def desde_memoria(
+    db, empresa_id: str, entrada: dict[str, Any], coincidencia: float, documento: dict
+) -> dict[str, Any]:
+    """Clasificación de un comprobante a partir de una clasificación frecuente."""
+    de_usuario = entrada.get("origen") == "usuario"
+    resultado = {
+        "cuenta_base": entrada.get("cuenta_base"),
+        "cuenta_total": entrada.get("cuenta_total"),
+        "clasificacion": entrada.get("clasificacion", ""),
+        "subtipo": entrada.get("subtipo", ""),
+        # La condición de IGV es de cada comprobante, no de la glosa.
+        "condicion_igv": _condicion_igv(serializar(documento)),
+        "centro_costos": None,
+        "confianza": 1.0 if de_usuario else round(float(entrada.get("confianza") or 0.0), 4),
+        "confianza_rag": 0.0,
+        "requiere_revision": False,
+        "razon_ia": entrada.get("razon") or "",
+        "modelo": "memoria",
+        "origen": "memoria",
+        "memoria_id": str(entrada["_id"]),
+        "clasificado_en": datetime.now(UTC),
+    }
+    return await completar_motivo(
+        db,
+        empresa_id,
+        resultado,
+        resumir_motivo(entrada.get("razon")),
+        confirmada=de_usuario,
+        reutilizado=(
+            f"También reutilizado: misma glosa que «{entrada.get('glosa', '')}» "
+            f"({coincidencia:.0%} de coincidencia), sin volver a consultar a la IA."
+        ),
+    )
+
+
+async def _clasificar(
+    db, empresa, documento, contextos: dict[str, dict], memoria: Memoria | None = None
+) -> dict[str, Any]:
+    glosa = obtener_glosa(documento)
+    empresa_id = str(empresa["_id"])
+    libro = documento.get("libro", "")
+
+    if memoria is not None and glosa:
+        encontrada = memoria.buscar(glosa)
+        if encontrada:
+            entrada, coincidencia = encontrada
+            resultado = await desde_memoria(db, empresa_id, entrada, coincidencia, documento)
+            await repo_comprobantes.guardar_clasificacion(db, documento["_id"], resultado)
+            await repo_frecuentes.contar_uso(db, entrada["_id"])
+            return resultado
+
     ruc_contraparte = str(documento.get("documento_contraparte") or "").strip()
     solicitud = construir_solicitud(documento, empresa, contextos.get(ruc_contraparte))
     # El motor es síncrono (embeddings en CPU y llamadas bloqueantes a
@@ -242,15 +452,47 @@ async def _clasificar(db, empresa, documento, contextos: dict[str, dict]) -> dic
     clasificador = await asyncio.to_thread(motor.obtener)
     respuesta = await asyncio.to_thread(clasificador.classify, solicitud)
     resultado = a_documento(respuesta, motor.settings.gemini_model)
+    resultado["origen"] = "ia"
+    # El texto íntegro de la IA se conserva (`razon_ia`); `razon` pasa a ser el
+    # motivo compuesto con el plan de cuentas.
+    resultado["razon_ia"] = resultado["razon"]
+    await completar_motivo(db, empresa_id, resultado, resumir_motivo(resultado["razon_ia"]))
+
+    # Toda clasificación de la IA queda en las frecuentes, también las dudosas:
+    # así el usuario las ve ahí y, si corrige una, la corrección vale para los
+    # comprobantes que la comparten. Solo las confiables se reutilizan.
+    if glosa and clave(glosa):
+        entrada_id = await repo_frecuentes.registrar_de_ia(
+            db, empresa_id, libro, clave(glosa), glosa, resultado
+        )
+        resultado["memoria_id"] = str(entrada_id)
+        if memoria is not None and not resultado["requiere_revision"]:
+            memoria.agregar({
+                **resultado, "_id": entrada_id, "glosa": glosa, "razon": resultado["razon_ia"],
+            })
     await repo_comprobantes.guardar_clasificacion(db, documento["_id"], resultado)
     return resultado
 
 
-async def clasificar_comprobante(db, empresa: dict, documento: dict) -> dict[str, Any]:
-    """Clasifica un comprobante y guarda el resultado. Propaga `SinDescripcion`."""
+async def clasificar_comprobante(
+    db, empresa: dict, documento: dict, usar_memoria: bool = True
+) -> dict[str, Any]:
+    """Clasifica un comprobante y guarda el resultado. Propaga `SinDescripcion`.
+
+    Con `usar_memoria=False` (el «Volver a clasificar» de la ficha) va siempre
+    a la IA, aunque haya una clasificación frecuente que coincida.
+    """
     empresa = await _asegurar_actividades_empresa(db, empresa)
-    contextos = await contextos_contrapartes(db, empresa, [documento], consultar_faltantes=True)
-    return await _clasificar(db, empresa, documento, contextos)
+    memoria = (
+        await Memoria.cargar(db, str(empresa["_id"]), documento.get("libro", ""))
+        if usar_memoria else None
+    )
+    contextos: dict[str, dict] = {}
+    if memoria is None or not memoria.buscar(obtener_glosa(documento)):
+        contextos = await contextos_contrapartes(
+            db, empresa, [documento], consultar_faltantes=True
+        )
+    return await _clasificar(db, empresa, documento, contextos, memoria)
 
 
 async def clasificar_periodo(
@@ -276,19 +518,25 @@ async def clasificar_periodo(
     await reportar(0, total, "Cargando el clasificador contable")
     await asyncio.to_thread(motor.obtener)
 
+    memoria = await Memoria.cargar(db, empresa_id, libro.value)
     await reportar(0, total, "Consultando actividades económicas (CIIU) en SUNAT")
     empresa = await _asegurar_actividades_empresa(db, empresa)
+    # Solo hace falta el CIIU de las contrapartes que irán a la IA.
+    para_ia = [d for d in documentos if not memoria.buscar(obtener_glosa(d))]
     contextos = await contextos_contrapartes(
-        db, empresa, documentos, settings.CLASIFICADOR_CONSULTAR_CONTRAPARTES
+        db, empresa, para_ia, settings.CLASIFICADOR_CONSULTAR_CONTRAPARTES
     )
 
-    conteo = {"clasificados": 0, "requieren_revision": 0, "sin_descripcion": 0, "errores": 0}
+    conteo = {
+        "clasificados": 0, "reutilizados": 0, "requieren_revision": 0,
+        "sin_descripcion": 0, "errores": 0,
+    }
     errores: list[dict[str, str]] = []
     for i, documento in enumerate(documentos, start=1):
         serie_numero = documento.get("serie_numero", "")
         await reportar(i - 1, total, f"Clasificando {serie_numero}")
         try:
-            resultado = await _clasificar(db, empresa, documento, contextos)
+            resultado = await _clasificar(db, empresa, documento, contextos, memoria)
         except SinDescripcion:
             conteo["sin_descripcion"] += 1
             continue
@@ -300,6 +548,7 @@ async def clasificar_periodo(
             errores.append({"serie_numero": serie_numero, "error": str(exc)[:300]})
             continue
         conteo["clasificados"] += 1
+        conteo["reutilizados"] += int(resultado.get("origen") == "memoria")
         conteo["requieren_revision"] += int(resultado["requiere_revision"])
 
     await reportar(total, total, "Clasificación terminada")
@@ -313,6 +562,28 @@ async def clasificar_periodo(
         "pendientes_restantes": restantes,
         "detalle_errores": errores[:20],
     }
+
+
+async def aplicar_correccion(db, empresa_id: str, entrada: dict[str, Any]) -> int:
+    """Lleva una clasificación frecuente corregida a los comprobantes que la usaban."""
+    campos = await completar_motivo(
+        db,
+        empresa_id,
+        {
+            "cuenta_base": entrada.get("cuenta_base"),
+            "cuenta_total": entrada.get("cuenta_total"),
+            "requiere_revision": False,
+            "origen": "memoria",
+            "modelo": "memoria",
+            "razon_ia": entrada.get("razon") or "",
+            "clasificado_en": datetime.now(UTC),
+        },
+        resumir_motivo(entrada.get("razon")),
+        confirmada=True,
+    )
+    return await repo_comprobantes.aplicar_clasificacion_frecuente(
+        db, empresa_id, str(entrada["_id"]), campos
+    )
 
 
 def estado_motor() -> dict[str, Any]:

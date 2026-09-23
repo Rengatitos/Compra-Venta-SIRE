@@ -90,6 +90,19 @@ async def obtener(
     return await _col(db).find_one({"empresa_id": empresa_id, "cuenta": cuenta})
 
 
+async def descripciones(
+    db: AsyncIOMotorDatabase, empresa_id: str, cuentas: list[str]
+) -> dict[str, str]:
+    """Descripción de cada una de esas cuentas en el maestro de la empresa."""
+    salida: dict[str, str] = {}
+    async for cuenta in _col(db).find(
+        {"empresa_id": empresa_id, "cuenta": {"$in": cuentas}}, {"cuenta": 1, "descripcion": 1}
+    ):
+        if cuenta.get("descripcion"):
+            salida[cuenta["cuenta"]] = cuenta["descripcion"]
+    return salida
+
+
 async def eliminar_de_empresa(db: AsyncIOMotorDatabase, empresa_id: str) -> int:
     resultado = await _col(db).delete_many({"empresa_id": empresa_id})
     return resultado.deleted_count

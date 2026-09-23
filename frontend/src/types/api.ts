@@ -114,6 +114,8 @@ export interface EmpresaResponse {
   rubro: string | null;
   /** Actividades de la ficha RUC; contexto del clasificador contable. */
   actividades_economicas?: ActividadEconomica[];
+  /** CIIU que manda al clasificar, elegido en Ajustes. `null` = el principal de SUNAT. */
+  ciiu_principal_clasificacion?: string | null;
   /** Última ficha RUC consultada en SUNAT (`POST /empresas/{ruc}/ficha-ruc`). */
   ficha_ruc?: FichaRuc | null;
 }
@@ -124,6 +126,32 @@ export interface ActividadEconomica {
   tipo: string | null;
   ciiu: string;
   descripcion: string | null;
+  /** `sunat` (ficha RUC) o `manual` (agregada en Ajustes). */
+  origen?: 'sunat' | 'manual' | null;
+}
+
+/** Una clase del catálogo CIIU Rev. 4 (`GET /ciiu`). */
+export interface ClaseCiiu {
+  ciiu: string;
+  descripcion: string;
+}
+
+/** `app/api/v1/routes/clasificaciones_frecuentes.py::ClasificacionFrecuente`. */
+export interface ClasificacionFrecuente {
+  id: string;
+  libro: string;
+  glosa: string;
+  cuenta_base: CuentaClasificada | null;
+  cuenta_total: CuentaClasificada | null;
+  clasificacion: string;
+  subtipo: string;
+  confianza: number;
+  /** Solo las confiables se reutilizan sin consultar a la IA. */
+  confiable: boolean;
+  /** `ia` o `usuario` (corregida o confirmada desde el panel). */
+  origen: 'ia' | 'usuario';
+  usos: number;
+  actualizado_en: string | null;
 }
 
 /** Ficha de la Consulta RUC de SUNAT (`app/services/sunat/ficha_ruc.py::FichaRuc`). */
@@ -282,11 +310,23 @@ export interface ClasificacionContable {
   razon: string;
   modelo: string;
   clasificado_en: string | null;
+  /** `ia` o `memoria` (reutilizada de una clasificación frecuente). */
+  origen?: 'ia' | 'memoria';
+  memoria_id?: string | null;
+  /** Partes del motivo (`razon` es su texto completo, el que va al Excel y al PDF). */
+  jerarquia_base?: CuentaClasificada[];
+  jerarquia_total?: CuentaClasificada[];
+  /** El porqué que dio la IA, sin el rastro técnico del RAG. */
+  motivo_ia?: string;
+  /** Cómo se reutilizó, si vino de una clasificación frecuente. */
+  reutilizado?: string | null;
 }
 
 /** `resultado` del job `clasificacion_cuentas`. */
 export interface ResultadoClasificacion {
   clasificados: number;
+  /** Clasificados con una clasificación frecuente, sin consultar a la IA. */
+  reutilizados: number;
   requieren_revision: number;
   sin_descripcion: number;
   /** Pendientes del libro que no se clasificaron por no estar «Con glosa». */

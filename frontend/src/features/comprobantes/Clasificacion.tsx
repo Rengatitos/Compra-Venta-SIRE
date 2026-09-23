@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router';
 
 import {
   clasificarComprobante,
@@ -42,6 +43,19 @@ function mensajeDeFallo(fallo: unknown): string {
   return fallo instanceof Error ? fallo.message : 'Error inesperado.';
 }
 
+/** Camino de una cuenta en el plan: 60 COMPRAS › 602 MATERIAS PRIMAS › 6021024 … */
+function Jerarquia({ camino }: { camino?: CuentaClasificada[] }) {
+  if (!camino || camino.length === 0) return null;
+  return (
+    <span className={layout.textoSecundario} style={{ display: 'block' }}>
+      Según el plan de cuentas:{' '}
+      {camino
+        .map((c) => (c.descripcion ? `${c.codigo} ${c.descripcion}` : c.codigo))
+        .join(' › ')}
+    </span>
+  );
+}
+
 /** Celda «Cuenta» del listado: código de la cuenta base y si hay que revisarla. */
 export function CuentaCelda({ fila }: { fila: ComprobanteResponse }) {
   const clasificacion = fila.clasificacion_contable;
@@ -71,7 +85,8 @@ export function SeccionClasificacion({
   const libro: Libro = datos.libro === 'ventas' ? 'ventas' : 'compras';
 
   const clasificar = useMutation({
-    mutationFn: () => clasificarComprobante(ruc, periodo, datos.serie_numero, libro),
+    mutationFn: (usarMemoria: boolean) =>
+      clasificarComprobante(ruc, periodo, datos.serie_numero, libro, usarMemoria),
     onSuccess: async (resultado) => {
       mostrar({
         tono: resultado.requiere_revision ? 'neutro' : 'exito',
@@ -105,16 +120,37 @@ export function SeccionClasificacion({
               {clasificacion.requiere_revision ? 'Requiere revisión' : 'Lista para Contasis'}
             </Badge>
           ) : null}
-          <Button pequeno onClick={() => clasificar.mutate()} cargando={clasificar.isPending}>
-            {clasificacion ? 'Volver a clasificar' : 'Clasificar'}
+          {clasificacion?.origen === 'memoria' ? (
+            <Badge tono="info">Clasificación frecuente</Badge>
+          ) : null}
+          {/* La primera vez reutiliza una frecuente si la hay; «Volver a
+              clasificar» pide siempre una opinión nueva a la IA. */}
+          <Button
+            pequeno
+            onClick={() => clasificar.mutate(!clasificacion)}
+            cargando={clasificar.isPending}
+          >
+            {clasificacion ? 'Volver a clasificar con IA' : 'Clasificar'}
           </Button>
         </div>
       }
     >
       {clasificacion ? (
         <dl className={layout.definiciones}>
-          <Dato termino="Cuenta base">{textoCuenta(clasificacion.cuenta_base)}</Dato>
-          <Dato termino="Cuenta total">{textoCuenta(clasificacion.cuenta_total)}</Dato>
+          <Dato termino="Cuenta base">
+            {textoCuenta(clasificacion.cuenta_base)}
+            <Jerarquia camino={clasificacion.jerarquia_base} />
+          </Dato>
+          <Dato termino="Cuenta total">
+            {textoCuenta(clasificacion.cuenta_total)}
+            <Jerarquia camino={clasificacion.jerarquia_total} />
+          </Dato>
+          {/* Clasificaciones anteriores a guardar el motivo por partes solo
+              tienen el texto completo. */}
+          <Dato termino="Por qué">{clasificacion.motivo_ia || clasificacion.razon || '—'}</Dato>
+          {clasificacion.reutilizado ? (
+            <Dato termino="Reutilizada">{clasificacion.reutilizado}</Dato>
+          ) : null}
           <Dato termino="Clasificación">
             {[clasificacion.clasificacion, clasificacion.subtipo].filter(Boolean).join(' · ') ||
               '—'}
@@ -124,7 +160,12 @@ export function SeccionClasificacion({
           <Dato termino="Clasificado">
             {formatearFechaHora(clasificacion.clasificado_en)} · {clasificacion.modelo || '—'}
           </Dato>
-          <Dato termino="Motivo">{clasificacion.razon || '—'}</Dato>
+          {clasificacion.memoria_id ? (
+            <Dato termino="¿No es correcta?">
+              <Link to="/clasificaciones">Corrígela en Clasificaciones frecuentes</Link>: el
+              cambio se aplica a todos los comprobantes con esta glosa.
+            </Dato>
+          ) : null}
         </dl>
       ) : (
         <p className={layout.textoSecundario}>
@@ -248,11 +289,11 @@ export function ClasificacionPanel({
           <MetricTile
             etiqueta="Clasificados"
             valor={formatearEntero(resultado.clasificados)}
-            nota={
+            nota={`${formatearEntero(resultado.reutilizados)} sin consultar a la IA (clasificaciones frecuentes)${
               resultado.pendientes_restantes > 0
-                ? `${formatearEntero(resultado.pendientes_restantes)} quedaron para otra vuelta`
-                : 'Sin pendientes en el libro'
-            }
+                ? ` · ${formatearEntero(resultado.pendientes_restantes)} quedaron para otra vuelta`
+                : ''
+            }`}
           />
           <MetricTile
             etiqueta="Requieren revisión"

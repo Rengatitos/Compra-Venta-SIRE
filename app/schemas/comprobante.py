@@ -36,6 +36,16 @@ class ClasificacionContable(BaseModel):
     razon: str = ""
     modelo: str = ""
     clasificado_en: datetime | None = None
+    # `ia` (la clasificó Gemini) o `memoria` (reutilizada de una clasificación
+    # frecuente). `memoria_id` apunta a esa clasificación frecuente.
+    origen: str = "ia"
+    memoria_id: str | None = None
+    # Partes del motivo (`razon` es su texto compuesto): el camino de cada cuenta
+    # en el plan de cuentas, el porqué que dio la IA y, si se reutilizó, cómo.
+    jerarquia_base: list[CuentaClasificada] = []
+    jerarquia_total: list[CuentaClasificada] = []
+    motivo_ia: str = ""
+    reutilizado: str | None = None
 
 
 class ComprobanteResponse(BaseModel):

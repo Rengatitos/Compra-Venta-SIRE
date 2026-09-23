@@ -24,7 +24,7 @@ _candado = asyncio.Lock()
 def actividades_de(ficha: FichaRuc) -> list[dict[str, Any]]:
     """Actividades en la forma de `empresa.actividades_economicas`."""
     return [
-        {"tipo": a.tipo, "ciiu": a.ciiu, "descripcion": a.descripcion}
+        {"tipo": a.tipo, "ciiu": a.ciiu, "descripcion": a.descripcion, "origen": "sunat"}
         for a in ficha.actividades_economicas
     ]
 
@@ -83,11 +83,23 @@ async def obtener_varias(
 async def actualizar_empresa(db, empresa: dict[str, Any]) -> dict[str, Any]:
     """Consulta de nuevo la ficha de la empresa y guarda sus actividades en ella.
 
-    Devuelve la empresa actualizada. Reemplaza `actividades_economicas`: la
-    ficha de SUNAT es la fuente de verdad.
+    Devuelve la empresa actualizada. Reemplaza solo las actividades que vinieron
+    de SUNAT: las agregadas a mano en Ajustes se conservan, y también la
+    actividad elegida para clasificar si sigue en la lista.
     """
     ficha = await obtener(db, empresa["ruc"], refrescar=True)
-    return await repo_empresas.actualizar(db, empresa["_id"], {
-        "actividades_economicas": actividades_de(ficha),
+    de_sunat = actividades_de(ficha)
+    codigos = {a["ciiu"] for a in de_sunat}
+    manuales = [
+        a for a in empresa.get("actividades_economicas") or []
+        if a.get("origen") == "manual" and a.get("ciiu") not in codigos
+    ]
+    actividades = de_sunat + manuales
+    cambios: dict[str, Any] = {
+        "actividades_economicas": actividades,
         "ficha_ruc": ficha.model_dump(),
-    })
+    }
+    principal = empresa.get("ciiu_principal_clasificacion")
+    if principal and principal not in {a["ciiu"] for a in actividades}:
+        cambios["ciiu_principal_clasificacion"] = None
+    return await repo_empresas.actualizar(db, empresa["_id"], cambios)

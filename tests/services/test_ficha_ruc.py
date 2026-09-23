@@ -184,6 +184,7 @@ def test_la_ficha_de_la_contraparte_llega_al_clasificador():
         "tipo": "PRINCIPAL",
         "ciiu": "4759",
         "descripcion": ficha.actividades_economicas[0].descripcion,
+        "origen": "sunat",
     }
     documento = {
         "_id": "x", "libro": "compras", "origen": "sire", "tipo_cp": "01",

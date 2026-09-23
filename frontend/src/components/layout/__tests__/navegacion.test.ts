@@ -3,11 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { construirNavegacion, subEntradasDePeriodo } from '../navegacion';
 
 describe('construirNavegacion', () => {
-  it('siempre ofrece las seis secciones y cada una con su icono', () => {
+  it('siempre ofrece las siete secciones y cada una con su icono', () => {
     const entradas = construirNavegacion(null);
 
     expect(entradas.map((entrada) => entrada.a)).toEqual([
       '/',
+      '/clasificaciones',
       '/periodos',
       '/externos',
       '/procesos',

@@ -1,0 +1,22 @@
+.resumen {
+  --azul-enlace: #2563eb; /* el mismo azul del botón «azul» */
+
+  font-size: var(--text-body-sm);
+}
+
+:root[data-theme='dark'] .resumen {
+  --azul-enlace: #60a5fa;
+}
+
+.etiqueta,
+.otras {
+  color: var(--color-text-label);
+}
+
+/* Pedido así: letra pequeña, azul y subrayada, para que se vea editable sin
+   competir con el título de la página. */
+.editar {
+  font-size: var(--text-label-md);
+  color: var(--azul-enlace);
+  text-decoration: underline;
+}

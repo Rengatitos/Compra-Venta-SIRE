@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     # Días que una ficha RUC guardada se da por vigente. Las actividades de un
     # contribuyente cambian rara vez; pasado este plazo se vuelve a consultar.
     FICHA_RUC_VIGENCIA_DIAS: int = 90
+    # Parecido mínimo (Jaccard sobre las palabras de la glosa) para reutilizar
+    # una clasificación frecuente en vez de consultar a la IA. 1.0 = mismas
+    # palabras; con 0.8 «SACOS DE PAPA DE PRIMERA» y «SACOS DE PAPA PRIMERA»
+    # coinciden y «SACOS DE PAPA» con «SACOS DE ARROZ» no.
+    CLASIFICADOR_SIMILITUD_MINIMA: float = 0.8
 
     # Clave con la que sire-bot (Apaclla Bot) se autentica en la cabecera
     # `X-Api-Key`. Sin ella los endpoints del bot responden 503: la integración

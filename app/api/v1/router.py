@@ -5,6 +5,7 @@ from app.api.v1.routes import (
     auditoria,
     auth,
     clasificacion,
+    clasificaciones_frecuentes,
     comprobantes,
     comprobantes_externos,
     consulta_ruc,
@@ -70,6 +71,16 @@ api_router.include_router(
 api_router.include_router(
     clasificacion.router,
     prefix="/empresas/{ruc}/periodos/{periodo}/libros/{libro}/clasificacion",
+    tags=["Clasificación contable"],
+)
+api_router.include_router(
+    clasificaciones_frecuentes.router,
+    prefix="/empresas/{ruc}/clasificaciones-frecuentes",
+    tags=["Clasificación contable"],
+)
+api_router.include_router(
+    consulta_ruc.router_ciiu,
+    prefix="/ciiu",
     tags=["Clasificación contable"],
 )
 api_router.include_router(

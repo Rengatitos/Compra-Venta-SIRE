@@ -304,17 +304,25 @@ async def clasificar_comprobante(
     periodo: str = Depends(periodo_valido),
     empresa_doc: dict = Depends(empresa_actual),
     libro: Libro | None = Query(None, description="Desambigua si existe en ambos libros"),
+    usar_memoria: bool = Query(
+        True,
+        description="Reutilizar una clasificación frecuente con la misma glosa; "
+        "false fuerza la consulta a la IA",
+    ),
     db=Depends(get_db),
 ):
-    """Clasifica en el acto (tarda unos segundos: tres llamadas a Gemini) y
-    guarda el resultado en el comprobante, reemplazando el anterior."""
+    """Clasifica en el acto y guarda el resultado en el comprobante,
+    reemplazando el anterior. Con la IA tarda unos segundos (tres llamadas a
+    Gemini); con una clasificación frecuente que coincida, es inmediato."""
     fila = await repo_comprobantes.obtener(
         db, str(empresa_doc["_id"]), periodo, serie_numero, libro
     )
     if not fila:
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
     try:
-        return await clasificacion_service.clasificar_comprobante(db, empresa_doc, fila)
+        return await clasificacion_service.clasificar_comprobante(
+            db, empresa_doc, fila, usar_memoria=usar_memoria
+        )
     except clasificacion_service.SinDescripcion as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except clasificacion_service.MotorNoDisponible as exc:

@@ -146,7 +146,11 @@ class GeminiGenerator:
         system = (
             "Interpreta economicamente un comprobante peruano usando solo los hechos y evidencia entregados. "
             "No selecciones cuentas contables. Prioriza descripcion/items, luego actividad compatible de contraparte, "
-            "empresa y contexto CIIU. Una actividad secundaria puede ser mas relevante que la principal."
+            "empresa y contexto CIIU. Una actividad secundaria puede ser mas relevante que la principal. "
+            "Identifica primero QUE es cada item: si es un codigo, nombre comercial o sigla (p. ej. 'DIESEL B5 S50'), "
+            "averigua que producto o servicio es. Luego decide si guarda relacion con la actividad principal de la "
+            "empresa (la marcada como elegida por la empresa manda sobre la de SUNAT): si no la guarda, marca "
+            "operacion_fuera_giro_probable=true y explicalo en razon."
         )
         data, _ = self.generate_json(
             system,
