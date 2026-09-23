@@ -7,8 +7,14 @@ server {
     # Exportaciones y fotos del bot: más que el 1 MB por defecto.
     client_max_body_size 50m;
 
+    # El destino va en una variable para que nginx lo resuelva en cada petición
+    # con el DNS de Docker. Con el nombre fijo lo resuelve al arrancar y, si la
+    # API aún no existe (primer despliegue, reinicio), nginx no arranca.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    set $api http://${API_UPSTREAM};
+
     location /api/ {
-        proxy_pass http://${API_UPSTREAM};
+        proxy_pass $api;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -19,7 +25,7 @@ server {
     }
 
     location = /health {
-        proxy_pass http://${API_UPSTREAM};
+        proxy_pass $api;
     }
 
     # Los archivos con hash en el nombre no cambian nunca.
