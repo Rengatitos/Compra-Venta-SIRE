@@ -5,15 +5,20 @@
  */
 import type {
   EstadoCarga,
+  EstadoEnvio,
   EstadoFilaCarga,
   EstadoGlosa,
+  EstadoItemSolicitud,
   EstadoJob,
+  EstadoPasoSolicitud,
   EstadoPeriodo,
   EstadoProcesamiento,
+  EstadoSolicitud,
   FuenteDato,
   FuenteExterna,
   Libro,
   ModalidadCarga,
+  PasoSolicitud,
   TipoJob,
 } from './domain';
 
@@ -697,4 +702,74 @@ export interface ResumenEmpresas {
   dias: number;
   procesos_por_estado: ProcesosPorEstado;
   empresas: ResumenEmpresa[];
+}
+
+/* — solicitudes de procesamiento masivo (app/schemas/solicitudes.py) — */
+
+export interface SolicitudCreate {
+  /** RUC de las empresas, o `'todas'`. */
+  empresas: string[] | 'todas';
+  /** Periodos `YYYYMM`, o `'todos'` (los registrados de cada empresa). */
+  periodos: string[] | 'todos';
+  clasificar: boolean;
+}
+
+export interface PasoSolicitudResponse {
+  paso: PasoSolicitud;
+  estado: EstadoPasoSolicitud;
+  job_id: string | null;
+  nota: string | null;
+  /** Estado vivo del trabajo que ejecuta el paso. */
+  job_estado?: EstadoJob | null;
+  intentos?: number | null;
+  max_intentos?: number | null;
+  siguiente_intento_en?: string | null;
+  mensaje?: string | null;
+  error?: string | null;
+}
+
+export interface ItemSolicitud {
+  ruc: string;
+  nombre: string | null;
+  periodo: string;
+  estado: EstadoItemSolicitud;
+  observaciones: string[];
+  pasos: PasoSolicitudResponse[];
+}
+
+export interface EmpresaEnvio {
+  ruc: string;
+  nombre: string | null;
+}
+
+export interface EnvioCorreo {
+  correo: string;
+  empresas: EmpresaEnvio[];
+  periodos: string[];
+  estado: EstadoEnvio;
+  modo: 'adjunto' | 'enlace' | null;
+  intentos: number | null;
+  error: string | null;
+  creado_en: string | null;
+  enviado_en: string | null;
+}
+
+export interface EnvioListado extends EnvioCorreo {
+  solicitud_id: string;
+  solicitud_creada_en: string | null;
+}
+
+export interface SolicitudResponse {
+  id: string;
+  creado_por: string;
+  creado_en: string;
+  terminado_en: string | null;
+  estado: EstadoSolicitud;
+  clasificar: boolean;
+  error: string | null;
+  /** Items (empresa × periodo) terminados de los totales. */
+  progreso: { actual: number; total: number };
+  items: ItemSolicitud[];
+  zip: { archivo: string; bytes: number; generado_en: string | null } | null;
+  envios: EnvioCorreo[];
 }

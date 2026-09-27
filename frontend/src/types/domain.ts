@@ -90,3 +90,41 @@ export function esRucValido(ruc: string): boolean {
 /** `app/domain/comprobante_externo.py::Fuente`: de qué foto salió el comprobante. */
 export type FuenteExterna =
   'yape' | 'plin' | 'mercado_pago' | 'niubiz' | 'boleta' | 'factura' | 'otro' | (string & {});
+
+/** `app/domain/solicitudes.py::EstadoSolicitud`. */
+export type EstadoSolicitud =
+  | 'en_progreso'
+  | 'empaquetando'
+  | 'enviando'
+  | 'completada'
+  | 'completada_con_errores'
+  | 'fallida';
+
+export const ESTADOS_SOLICITUD_TERMINALES: readonly EstadoSolicitud[] = [
+  'completada',
+  'completada_con_errores',
+  'fallida',
+];
+
+/** `app/domain/solicitudes.py::EstadoItem`. */
+export type EstadoItemSolicitud =
+  'pendiente' | 'en_progreso' | 'completado' | 'con_errores' | 'fallido';
+
+/** `app/domain/solicitudes.py::EstadoPaso`. */
+export type EstadoPasoSolicitud =
+  'pendiente' | 'encolado' | 'completado' | 'fallido' | 'omitido';
+
+/** `app/domain/solicitudes.py::Paso`, en el orden en que se ejecutan. */
+export const PASOS_SOLICITUD = [
+  'credenciales',
+  'sire_compras',
+  'sire_ventas',
+  'detalle_compras',
+  'detalle_ventas',
+  'clasificacion_compras',
+  'clasificacion_ventas',
+] as const;
+export type PasoSolicitud = (typeof PASOS_SOLICITUD)[number];
+
+/** `app/domain/solicitudes.py::EstadoEnvio`. */
+export type EstadoEnvio = 'pendiente' | 'enviado' | 'fallido' | 'bloqueado';

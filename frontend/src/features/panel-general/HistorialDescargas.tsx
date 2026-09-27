@@ -80,9 +80,10 @@ export function HistorialDescargas({ nombres }: Props) {
       anchoMinimo: '12rem',
       render: (fila) => (
         <>
-          <span>{nombres.get(fila.ruc) ?? fila.ruc}</span>
+          {/* El ZIP y el correo son de una solicitud entera, no de una empresa. */}
+          <span>{fila.ruc ? (nombres.get(fila.ruc) ?? fila.ruc) : 'Solicitud masiva'}</span>
           <br />
-          <span className={layout.textoSecundario}>{fila.ruc}</span>
+          <span className={layout.textoSecundario}>{fila.ruc || 'Varias empresas'}</span>
         </>
       ),
     },

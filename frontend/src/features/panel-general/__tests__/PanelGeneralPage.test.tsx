@@ -193,6 +193,52 @@ describe('panel general de empresas', () => {
     expect(mocks.listarJobs).toHaveBeenCalledWith(null, expect.objectContaining({ limit: 25 }));
   });
 
+  it('procesa las empresas marcadas en el rango de meses elegido', async () => {
+    mocks.crearSolicitud.mockResolvedValue({ progreso: { actual: 0, total: 2 } });
+    montar();
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Procesar Alfa SAC' }));
+    const desde = screen.getByLabelText('Desde');
+    await userEvent.clear(desde);
+    await userEvent.type(desde, '2026-07');
+    const hasta = screen.getByLabelText('Hasta');
+    await userEvent.clear(hasta);
+    await userEvent.type(hasta, '2026-08');
+    await userEvent.click(screen.getByRole('button', { name: 'Procesar' }));
+
+    expect(mocks.crearSolicitud).toHaveBeenCalledWith({
+      empresas: ['20610202251'],
+      periodos: ['202607', '202608'],
+      clasificar: true,
+    });
+    expect(await screen.findByText('Procesamiento en cola')).toBeInTheDocument();
+    // La selección se limpia tras lanzar.
+    expect(screen.getByRole('checkbox', { name: 'Procesar Alfa SAC' })).not.toBeChecked();
+  });
+
+  it('con todas marcadas pide «todas» y todos sus periodos registrados', async () => {
+    mocks.crearSolicitud.mockResolvedValue({ progreso: { actual: 0, total: 3 } });
+    montar();
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Seleccionar todas' }));
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Todos los periodos registrados de cada empresa' }),
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: /Clasificar con IA/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Procesar' }));
+
+    expect(mocks.crearSolicitud).toHaveBeenCalledWith({
+      empresas: 'todas',
+      periodos: 'todos',
+      clasificar: false,
+    });
+  });
+
+  it('sin empresas marcadas no deja procesar', async () => {
+    montar();
+    expect(await screen.findByRole('button', { name: 'Procesar' })).toBeDisabled();
+  });
+
   it('no tiene violaciones de axe', async () => {
     const { container } = montar();
     await screen.findByRole('group', { name: 'Listado de empresas' });

@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router';
 import { obtenerResumenEmpresas } from '@/api/empresas';
 import { Badge } from '@/components/ui/Badge';
 import { Button, ButtonLink } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { type Columna, DataTable } from '@/components/ui/DataTable';
 import { EmptyState, ErrorState, MetricTile, Skeleton } from '@/components/ui/Feedback';
 import { TextField } from '@/components/ui/Field';
@@ -21,9 +22,12 @@ import { guardarEmpresaActiva, obtenerSesion } from '@/lib/session';
 import layout from '@/styles/layouts.module.css';
 import type { ResumenEmpresa } from '@/types/api';
 
+import { EnviosCorreo } from './EnviosCorreo';
 import { ETIQUETA_LIBRO, PERIODOS_VISIBLES } from './etiquetas';
 import { HistorialDescargas } from './HistorialDescargas';
 import estilos from './PanelGeneralPage.module.css';
+import { ProcesamientoMasivo } from './ProcesamientoMasivo';
+import { SolicitudesPanel } from './SolicitudesPanel';
 
 const INTERVALO_MS = 5000;
 
@@ -38,6 +42,7 @@ export function PanelGeneralPage() {
   const { correo, salir } = useAuth();
   const esAdmin = useEsAdmin();
   const [filtro, setFiltro] = useState('');
+  const [seleccion, setSeleccion] = useState<ReadonlySet<string>>(new Set());
 
   const resumen = useQuery({
     queryKey: ['resumen-empresas'],
@@ -62,7 +67,42 @@ export function PanelGeneralPage() {
     void navegar(destino);
   }
 
+  // La selección sobrevive al filtro: filtrar sirve para encontrar y marcar,
+  // no para desmarcar lo que ya se eligió.
+  const marcadas = empresas.filter((e) => seleccion.has(e.ruc)).map((e) => e.ruc);
+  const todasMarcadas = empresas.length > 0 && marcadas.length === empresas.length;
+  const visiblesMarcadas = visibles.filter((e) => seleccion.has(e.ruc)).length;
+
+  function alternar(ruc: string) {
+    const nueva = new Set(seleccion);
+    if (nueva.has(ruc)) nueva.delete(ruc);
+    else nueva.add(ruc);
+    setSeleccion(nueva);
+  }
+
+  function alternarVisibles() {
+    const nueva = new Set(seleccion);
+    const todasVisibles = visibles.length > 0 && visiblesMarcadas === visibles.length;
+    for (const e of visibles) {
+      if (todasVisibles) nueva.delete(e.ruc);
+      else nueva.add(e.ruc);
+    }
+    setSeleccion(nueva);
+  }
+
   const columnas: readonly Columna<ResumenEmpresa>[] = [
+    {
+      clave: 'seleccion',
+      cabecera: 'Procesar',
+      render: (fila) => (
+        <Checkbox
+          etiqueta={`Procesar ${fila.nombre ?? fila.ruc}`}
+          etiquetaOculta
+          checked={seleccion.has(fila.ruc)}
+          onChange={() => alternar(fila.ruc)}
+        />
+      ),
+    },
     {
       clave: 'empresa',
       cabecera: 'Empresa',
@@ -265,12 +305,21 @@ export function PanelGeneralPage() {
             <Panel
               titulo="Empresas"
               acciones={
-                <TextField
-                  etiqueta="Filtrar por RUC o nombre"
-                  name="filtro"
-                  value={filtro}
-                  onChange={(evento) => setFiltro(evento.target.value)}
-                />
+                <>
+                  <TextField
+                    etiqueta="Filtrar por RUC o nombre"
+                    name="filtro"
+                    value={filtro}
+                    onChange={(evento) => setFiltro(evento.target.value)}
+                  />
+                  <Checkbox
+                    etiqueta={filtro ? 'Seleccionar las filtradas' : 'Seleccionar todas'}
+                    checked={visibles.length > 0 && visiblesMarcadas === visibles.length}
+                    indeterminado={visiblesMarcadas > 0 && visiblesMarcadas < visibles.length}
+                    onChange={alternarVisibles}
+                    disabled={!visibles.length}
+                  />
+                </>
               }
             >
               <DataTable
@@ -292,7 +341,17 @@ export function PanelGeneralPage() {
               />
             </Panel>
 
+            <ProcesamientoMasivo
+              seleccionados={marcadas}
+              todas={todasMarcadas}
+              onEnviada={() => setSeleccion(new Set())}
+            />
+
+            <SolicitudesPanel />
+
             <HistorialDescargas nombres={nombres} />
+
+            <EnviosCorreo />
           </div>
         ) : null}
       </div>
