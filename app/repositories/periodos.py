@@ -65,3 +65,22 @@ async def guardar_npds(db, empresa_id, periodo, npds, consultado_en):
 async def eliminar_de_empresa(db: AsyncIOMotorDatabase, empresa_id: str) -> int:
     resultado = await _col(db).delete_many({"empresa_id": empresa_id})
     return resultado.deleted_count
+
+
+async def listar_por_empresas(
+    db: AsyncIOMotorDatabase, empresa_ids: list[str]
+) -> dict[str, list[dict[str, Any]]]:
+    """Los periodos de varias empresas en una sola consulta, del más reciente al
+    más antiguo, agrupados por `empresa_id`."""
+    if not empresa_ids:
+        return {}
+    cursor = _col(db).find(
+        {"empresa_id": {"$in": empresa_ids}},
+        {"empresa_id": 1, "periodo": 1, "estado": 1},
+    ).sort("periodo", -1)
+    agrupados: dict[str, list[dict[str, Any]]] = {}
+    async for documento in cursor:
+        agrupados.setdefault(documento["empresa_id"], []).append(
+            {"periodo": documento["periodo"], "estado": documento.get("estado")}
+        )
+    return agrupados

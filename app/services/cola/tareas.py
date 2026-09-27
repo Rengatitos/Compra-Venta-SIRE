@@ -120,6 +120,26 @@ async def credenciales_sunat(db, job: Job, reportar: Reportador) -> dict[str, An
     return resultado
 
 
+async def sincronizacion_sire(db, job: Job, reportar: Reportador) -> dict[str, Any]:
+    from app.services import detracciones_service, propuesta_service
+    from app.services.sunat.auth import credenciales_cliente
+
+    empresa = await empresa_de(db, job)
+    libro = libro_de(job)
+    # Sin las propias vale el respaldo global; sin ninguno no habrá token.
+    if not all(credenciales_cliente(empresa)):
+        raise ErrorPermanente("La empresa no tiene credenciales del API SUNAT (client_id y clave)")
+    await reportar(0, 1, f"Descargando la propuesta SIRE de {libro.value}")
+    resultado = await propuesta_service.descargar_propuesta(db, empresa, job.periodo, libro)
+    if libro is Libro.COMPRAS and resultado.get("nuevos", 0) + resultado.get("actualizados", 0):
+        # Como la descarga manual: una propuesta de compras con cambios encadena
+        # la consulta de detracciones.
+        detracciones = await detracciones_service.encolar(db, empresa, job.periodo)
+        resultado["detracciones_job_id"] = detracciones.job_id
+    await reportar(1, 1, resultado.get("mensaje", ""))
+    return {"origen": "propuesta", **resultado}
+
+
 async def alta_empresa(db, job: Job, reportar: Reportador) -> dict[str, Any]:
     from app.services import carga_empresas_service
 
@@ -133,6 +153,7 @@ _MANEJADORES: dict[TipoJob, Manejador] = {
     TipoJob.CLASIFICACION_CUENTAS: clasificacion_cuentas,
     TipoJob.CREDENCIALES_SUNAT: credenciales_sunat,
     TipoJob.ALTA_EMPRESA: alta_empresa,
+    TipoJob.SINCRONIZACION_SIRE: sincronizacion_sire,
 }
 
 

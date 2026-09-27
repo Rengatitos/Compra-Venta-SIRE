@@ -50,6 +50,7 @@ function montar() {
             }}
           >
             <Routes>
+              <Route path="/empresas" element={<p>Panel general</p>} />
               <Route element={<EmpresaGate />}>
                 <Route path="*" element={<p>Panel abierto</p>} />
               </Route>
@@ -79,16 +80,14 @@ describe('elección de empresa', () => {
     expect(await screen.findByText('Panel abierto')).toBeInTheDocument();
   });
 
-  it('con varias y ninguna elegida, pide elegir', async () => {
+  it('con varias y ninguna elegida, lleva al panel general', async () => {
     // No se autoselecciona «la primera»: con dos cuentas abiertas se podría
     // sincronizar o borrar datos creyendo estar en la otra.
     mocks.listarEmpresas.mockResolvedValue([UNA, OTRA]);
 
     montar();
 
-    expect(
-      await screen.findByRole('heading', { name: 'Elige una empresa' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Panel general')).toBeInTheDocument();
     expect(screen.queryByText('Panel abierto')).not.toBeInTheDocument();
   });
 
@@ -109,9 +108,7 @@ describe('elección de empresa', () => {
 
     montar();
 
-    expect(
-      await screen.findByRole('heading', { name: 'Elige una empresa' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Panel general')).toBeInTheDocument();
   });
 
   it('sin ninguna empresa ofrece dar de alta la primera ahí mismo', async () => {
@@ -135,15 +132,6 @@ describe('elección de empresa', () => {
     expect(await screen.findByText('Error al consultar el servidor')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
-  });
-
-  it('la pantalla de elección no tiene violaciones de axe', async () => {
-    mocks.listarEmpresas.mockResolvedValue([UNA, OTRA]);
-
-    const { container } = montar();
-    await screen.findByRole('heading', { name: 'Elige una empresa' });
-
-    expect(await axe(container, OPCIONES)).toHaveNoViolations();
   });
 
   it('el estado vacío no tiene violaciones de axe', async () => {

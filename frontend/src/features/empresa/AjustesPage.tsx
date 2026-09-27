@@ -26,6 +26,7 @@ import { guardarEmpresaActiva } from '@/lib/session';
 import layout from '@/styles/layouts.module.css';
 
 import { ActividadesEmpresaPanel } from './ActividadesEmpresaPanel';
+import { CorreosEmpresaPanel } from './CorreosEmpresaPanel';
 import { VinculacionBotPanel } from './VinculacionBotPanel';
 
 export function AjustesPage() {
@@ -202,6 +203,8 @@ export function AjustesPage() {
         </Panel>
 
         <ActividadesEmpresaPanel ruc={ruc} empresa={datos} />
+
+        <CorreosEmpresaPanel ruc={ruc} empresa={datos} />
 
         <Panel
           titulo="Actualizar credenciales"

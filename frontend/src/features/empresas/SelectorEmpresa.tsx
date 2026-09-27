@@ -73,6 +73,14 @@ export function SelectorEmpresa({ bloque = false }: Props) {
         onCerrar={() => setAbierto(false)}
         acciones={
           <>
+            <ButtonLink
+              a="/empresas"
+              variante="fantasma"
+              pequeno
+              onClick={() => setAbierto(false)}
+            >
+              Ver todas las empresas
+            </ButtonLink>
             <ButtonLink a="/empresas/nueva" pequeno onClick={() => setAbierto(false)}>
               Registrar empresa
             </ButtonLink>

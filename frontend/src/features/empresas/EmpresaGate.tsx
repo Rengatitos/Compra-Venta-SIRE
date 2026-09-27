@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
-import { Outlet, useNavigate } from 'react-router';
+import { Navigate, Outlet, useNavigate } from 'react-router';
 
 import { listarEmpresas } from '@/api/empresas';
 import { Button, ButtonLink } from '@/components/ui/Button';
@@ -14,7 +14,6 @@ import type { EmpresaResponse } from '@/types/api';
 
 import { ContextoEmpresasReact } from './empresasContext';
 import { FormularioNuevaEmpresa } from './FormularioNuevaEmpresa';
-import { ListaEmpresas } from './ListaEmpresas';
 import { Marco } from './Marco';
 import estilos from './Marco.module.css';
 
@@ -161,18 +160,11 @@ export function EmpresaGate() {
   }
 
   if (!activo) {
-    return (
-      <MarcoDelGate titulo="Elige una empresa">
-        <p className={estilos.intro}>
-          Podrás cambiar de empresa en cualquier momento desde la barra lateral, sin volver a
-          iniciar sesión.
-        </p>
-        <ListaEmpresas
-          empresas={empresas}
-          onElegir={(elegido) => guardarEmpresaActiva(elegido)}
-        />
-      </MarcoDelGate>
-    );
+    // Varias empresas y ninguna elegida (o la recordada ya no existe): el punto
+    // de partida es el panel general, donde se ven todas y se entra en la que
+    // toque. No se autoselecciona «la primera»: con dos cuentas abiertas se
+    // podría sincronizar o borrar datos creyendo estar en la otra.
+    return <Navigate to="/empresas" replace />;
   }
 
   return (

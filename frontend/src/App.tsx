@@ -54,6 +54,11 @@ const ReportePage = lazy(() =>
 const ExternosPage = lazy(() =>
   import('@/features/externos/ExternosPage').then((m) => ({ default: m.ExternosPage })),
 );
+const PanelGeneralPage = lazy(() =>
+  import('@/features/panel-general/PanelGeneralPage').then((m) => ({
+    default: m.PanelGeneralPage,
+  })),
+);
 const NuevaEmpresaPage = lazy(() =>
   import('@/features/empresas/NuevaEmpresaPage').then((m) => ({ default: m.NuevaEmpresaPage })),
 );
@@ -76,6 +81,8 @@ export function App() {
               <Route path="empresas/nueva" element={<NuevaEmpresaPage />} />
               {/* También fuera: los accesos no dependen de ninguna empresa. */}
               <Route path="accesos" element={<AccesosPage />} />
+              {/* Y el panel general, que es de todas a la vez. */}
+              <Route path="empresas" element={<PanelGeneralPage />} />
 
               {/* ProtectedRoute exige sesión; EmpresaGate, empresa activa.
                   AppShell da por hecha la segunda, así que va dentro. */}

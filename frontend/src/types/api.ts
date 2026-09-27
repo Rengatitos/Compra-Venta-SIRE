@@ -663,3 +663,38 @@ export interface CargaEmpresas extends CargaResumen {
 export interface CargaAceptada {
   carga_id: string;
 }
+
+/* — panel general (app/schemas/resumen_empresas.py) — */
+
+export interface ProcesosPorEstado {
+  pendiente: number;
+  en_progreso: number;
+  completado: number;
+  fallido: number;
+}
+
+export interface PeriodoResumen {
+  periodo: string;
+  estado: EstadoPeriodo | null;
+}
+
+export interface ResumenEmpresa {
+  ruc: string;
+  nombre: string | null;
+  correos_notificacion: string[];
+  total_periodos: number;
+  /** Del más reciente al más antiguo. */
+  periodos: PeriodoResumen[];
+  /** Última descarga SIRE completada; `null` si nunca se hizo. */
+  ultima_actualizacion_sire: string | null;
+  ultimo_proceso: JobResponse | null;
+  procesos_por_estado: ProcesosPorEstado;
+}
+
+export interface ResumenEmpresas {
+  total_empresas: number;
+  /** Ventana, en días, de los procesos terminados que se cuentan. */
+  dias: number;
+  procesos_por_estado: ProcesosPorEstado;
+  empresas: ResumenEmpresa[];
+}

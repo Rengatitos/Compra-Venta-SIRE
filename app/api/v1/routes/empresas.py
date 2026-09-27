@@ -25,11 +25,13 @@ from app.repositories import plan_cuentas as repo_plan_cuentas
 from app.schemas.carga_empresas import CargaAceptada, CargaResponse, CargaResumen
 from app.schemas.empresa import EmpresaCreada, EmpresaCreate, EmpresaResponse, EmpresaUpdate
 from app.schemas.generic import MessageResponse, StatusResponse
+from app.schemas.resumen_empresas import ResumenEmpresas
 from app.services import (
     carga_empresas_service,
     credenciales_sunat_service,
     ficha_ruc_service,
     imagenes_externas,
+    resumen_empresas_service,
 )
 from app.services.carga_empresas_service import CredencialesApi, ExcelInvalido
 from app.services.scraping_sunat import CredencialesSolError, SesionSolError
@@ -98,6 +100,18 @@ async def crear_empresa(
 
     creada = await repo_empresas.obtener_por_ruc(db, datos.ruc)
     return {**_con_rubro(creada), "carga_id": str(carga["_id"])}
+
+
+@router.get(
+    "/resumen",
+    response_model=ResumenEmpresas,
+    dependencies=[Depends(usuario_actual)],
+    summary="Resumen de todas las empresas para el panel general",
+)
+async def resumen_empresas(db=Depends(get_db)):
+    """Por empresa: periodos, última descarga SIRE, último proceso y procesos
+    por estado. Declarada antes de `/{ruc}`, que si no la capturaría."""
+    return await resumen_empresas_service.resumir(db)
 
 
 @router.post(

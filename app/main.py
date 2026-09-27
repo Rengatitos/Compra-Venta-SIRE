@@ -73,9 +73,11 @@ async def lifespan(app: FastAPI):
     # (la rama de WhatsApp), y marcar todos los tipos mataría sus extracciones
     # en curso cada vez que ésta se reinicia.
     try:
-        huerfanos = await repo_jobs.marcar_interrumpidos(db, [TipoJob.CLASIFICACION_CUENTAS])
+        huerfanos = await repo_jobs.marcar_interrumpidos(
+            db, [TipoJob.CLASIFICACION_CUENTAS, TipoJob.SINCRONIZACION_SIRE]
+        )
         if huerfanos:
-            logger.warning("%s clasificaciones interrumpidas por el reinicio", huerfanos)
+            logger.warning("%s trabajos interrumpidos por el reinicio", huerfanos)
     except PyMongoError:
         logger.exception("No se pudieron cerrar los trabajos interrumpidos")
 

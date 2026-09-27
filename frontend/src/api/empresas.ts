@@ -12,6 +12,7 @@ import type {
   EmpresaResponse,
   EmpresaUpdate,
   MessageResponse,
+  ResumenEmpresas,
   StatusResponse,
 } from '@/types/api';
 
@@ -24,6 +25,25 @@ const base = (ruc: string) => `/empresas/${segmento(ruc)}`;
  */
 export function listarEmpresas(): Promise<EmpresaResponse[]> {
   return pedir<EmpresaResponse[]>('/empresas');
+}
+
+/**
+ * `GET /api/v1/empresas/resumen`. Todas las empresas con sus periodos, su
+ * última descarga SIRE, su último proceso y cuántos hay por estado.
+ */
+export function obtenerResumenEmpresas(): Promise<ResumenEmpresas> {
+  return pedir<ResumenEmpresas>('/empresas/resumen');
+}
+
+/**
+ * Guarda la lista completa de correos de la empresa. Va aparte de
+ * `actualizarEmpresa`, que solo envía textos: aquí `[]` vacía la lista.
+ */
+export function guardarCorreos(ruc: string, correos: string[]): Promise<EmpresaResponse> {
+  return pedir<EmpresaResponse>(base(ruc), {
+    metodo: 'PUT',
+    cuerpo: { correos_notificacion: correos },
+  });
 }
 
 /**

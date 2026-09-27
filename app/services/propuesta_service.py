@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.domain.comprobante import Libro
+from app.domain.jobs import EstadoJob, Job, Progreso, TipoJob
 from app.repositories import comprobantes as repo_comprobantes
+from app.repositories import jobs as repo_jobs
 from app.repositories import periodos as repo_periodos
 from app.services.sunat import propuesta as api_propuesta
 from app.services.sunat.archivo_propuesta_rce import leer_zip
@@ -15,12 +18,64 @@ from app.services.sunat.ticket_rce import obtener_zip
 logger = logging.getLogger(__name__)
 
 
+async def _registrar(
+    db: AsyncIOMotorDatabase,
+    empresa: dict[str, Any],
+    periodo: str,
+    libro: Libro,
+    origen: str,
+    trabajo: Callable[[], Awaitable[dict[str, Any]]],
+) -> dict[str, Any]:
+    """Deja la descarga como un job `sincronizacion_sire` de historial.
+
+    La descarga pedida desde un periodo sigue siendo síncrona —la pantalla
+    espera su resultado—, así que no pasa por la cola: el job solo registra que
+    ocurrió, cuándo y cómo acabó. De ahí sale la «última actualización SIRE»
+    del panel general y la fecha de las carpetas del ZIP.
+    """
+    job = await repo_jobs.crear(db, Job(
+        tipo=TipoJob.SINCRONIZACION_SIRE,
+        estado=EstadoJob.EN_PROGRESO,
+        ruc=empresa["ruc"],
+        periodo=periodo,
+        libro=libro,
+        progreso=Progreso(mensaje="Descargando la propuesta de SUNAT"),
+    ))
+    try:
+        resultado = await trabajo()
+    except Exception as exc:
+        await repo_jobs.actualizar(db, job.job_id, estado=EstadoJob.FALLIDO, error=str(exc))
+        raise
+    await repo_jobs.actualizar(
+        db,
+        job.job_id,
+        estado=EstadoJob.COMPLETADO,
+        progreso=Progreso(actual=1, total=1, mensaje=resultado.get("mensaje", "")),
+        resultado={"origen": origen, **resultado},
+    )
+    return resultado
+
+
 async def sincronizar(
     db: AsyncIOMotorDatabase,
     empresa: dict[str, Any],
     periodo: str,
     libro: Libro,
 ) -> dict[str, Any]:
+    """Descarga la propuesta y la deja registrada en el historial."""
+    return await _registrar(
+        db, empresa, periodo, libro, "propuesta",
+        lambda: descargar_propuesta(db, empresa, periodo, libro),
+    )
+
+
+async def descargar_propuesta(
+    db: AsyncIOMotorDatabase,
+    empresa: dict[str, Any],
+    periodo: str,
+    libro: Libro,
+) -> dict[str, Any]:
+    """La descarga en sí, sin historial: la usa la cola, cuyo job ya lo es."""
     empresa_id = str(empresa["_id"])
     registros = await api_propuesta.descargar(db, empresa, periodo, libro)
 
@@ -30,6 +85,7 @@ async def sincronizar(
             "nuevos": 0,
             "actualizados": 0,
             "descartados": 0,
+            "sin_propuesta": True,
             "mensaje": "SUNAT no tiene propuesta para el periodo indicado",
         }
 
@@ -83,6 +139,19 @@ async def sincronizar_archivo_rce(
     periodo: str,
     contenido: bytes,
 ) -> dict[str, Any]:
+    """Importa el ZIP oficial que el usuario bajó de un ticket RCE."""
+    return await _registrar(
+        db, empresa, periodo, Libro.COMPRAS, "archivo_rce",
+        lambda: _importar_archivo_rce(db, empresa, periodo, contenido),
+    )
+
+
+async def _importar_archivo_rce(
+    db: AsyncIOMotorDatabase,
+    empresa: dict[str, Any],
+    periodo: str,
+    contenido: bytes,
+) -> dict[str, Any]:
     """Importa el CSV oficial del ticket sin borrar detalle ni análisis existentes."""
     comprobantes = leer_zip(contenido, empresa["ruc"], periodo)
     empresa_id = str(empresa["_id"])
@@ -121,7 +190,9 @@ async def sincronizar_ticket_rce(
     empresa: dict[str, Any],
     periodo: str,
 ) -> dict[str, Any]:
-    ticket, contenido = await obtener_zip(db, empresa, periodo)
-    resultado = await sincronizar_archivo_rce(db, empresa, periodo, contenido)
-    resultado["ticket"] = ticket
-    return resultado
+    async def trabajo() -> dict[str, Any]:
+        ticket, contenido = await obtener_zip(db, empresa, periodo)
+        resultado = await _importar_archivo_rce(db, empresa, periodo, contenido)
+        return {**resultado, "ticket": ticket}
+
+    return await _registrar(db, empresa, periodo, Libro.COMPRAS, "ticket_rce", trabajo)

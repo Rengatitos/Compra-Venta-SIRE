@@ -1,0 +1,92 @@
+/* Pantalla propia fuera del armazón: la barra superior no anuncia ninguna
+   empresa activa, porque aquí se ven todas. */
+
+.pagina {
+  min-block-size: 100dvh;
+  background-color: var(--color-bg);
+}
+
+.barra {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.marca {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  color: var(--color-text-label);
+}
+
+.herramientas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.contenido {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  inline-size: min(var(--content-max-width), 100%);
+  padding: var(--space-6);
+  margin-inline: auto;
+}
+
+.cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.titulo {
+  margin-block-end: var(--space-2);
+  font-size: var(--text-title);
+}
+
+.ruc {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-md);
+  color: var(--color-text-secondary);
+}
+
+.periodos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.correos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.listaCorreos {
+  padding: 0;
+  margin: 0;
+  font-size: var(--text-body-sm);
+  list-style: none;
+}
+
+.error {
+  max-inline-size: 28rem;
+  margin-block-start: var(--space-1);
+  font-size: var(--text-body-sm);
+  color: var(--color-danger);
+}
+
+@media (width <= 40rem) {
+  .barra,
+  .contenido {
+    padding-inline: var(--space-4);
+  }
+}
