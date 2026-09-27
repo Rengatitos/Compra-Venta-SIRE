@@ -86,7 +86,9 @@ describe('elección de empresa', () => {
 
     montar();
 
-    expect(await screen.findByRole('heading', { name: 'Elige una empresa' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Elige una empresa' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Panel abierto')).not.toBeInTheDocument();
   });
 
@@ -107,7 +109,9 @@ describe('elección de empresa', () => {
 
     montar();
 
-    expect(await screen.findByRole('heading', { name: 'Elige una empresa' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Elige una empresa' }),
+    ).toBeInTheDocument();
   });
 
   it('sin ninguna empresa ofrece dar de alta la primera ahí mismo', async () => {

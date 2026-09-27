@@ -23,6 +23,13 @@ describe('esRucValido', () => {
     expect(esRucValido('2060899710')).toBe(false);
     expect(esRucValido('2060899710a')).toBe(false);
   });
+
+  it('comprueba el prefijo y el dígito verificador como el backend', () => {
+    expect(esRucValido('20610202251')).toBe(true);
+    expect(esRucValido('10467793549')).toBe(true);
+    expect(esRucValido('20123456789')).toBe(false);
+    expect(esRucValido('30610202251')).toBe(false);
+  });
 });
 
 describe('catálogos del dominio', () => {

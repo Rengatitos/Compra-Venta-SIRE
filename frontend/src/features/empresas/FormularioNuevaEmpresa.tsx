@@ -6,14 +6,14 @@ import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
 import { useToast } from '@/hooks/useToast';
 import { ApiError } from '@/lib/http';
-import type { EmpresaResponse } from '@/types/api';
+import type { EmpresaCreada } from '@/types/api';
 import { esRucValido } from '@/types/domain';
 
 import estilos from './FormularioNuevaEmpresa.module.css';
 
 interface Props {
   /** Qué hacer con la empresa recién creada. El formulario no navega por su cuenta. */
-  onCreada: (empresa: EmpresaResponse) => void;
+  onCreada: (empresa: EmpresaCreada) => void;
 }
 
 /**
@@ -67,7 +67,7 @@ export function FormularioNuevaEmpresa({ onCreada }: Props) {
     setError(null);
 
     if (!esRucValido(ruc)) {
-      setErrorRuc('El RUC debe tener 11 dígitos.');
+      setErrorRuc('RUC inválido: revisa los 11 dígitos y el dígito verificador.');
       return;
     }
     setErrorRuc(null);
@@ -102,7 +102,11 @@ export function FormularioNuevaEmpresa({ onCreada }: Props) {
   }
 
   return (
-    <form className={estilos.formulario} onSubmit={(evento) => void alEnviar(evento)} noValidate>
+    <form
+      className={estilos.formulario}
+      onSubmit={(evento) => void alEnviar(evento)}
+      noValidate
+    >
       {error ? (
         <p className={estilos.aviso} role="alert">
           {error}

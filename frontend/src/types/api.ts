@@ -4,6 +4,8 @@
  * repo lleve directamente a su origen.
  */
 import type {
+  EstadoCarga,
+  EstadoFilaCarga,
   EstadoGlosa,
   EstadoJob,
   EstadoPeriodo,
@@ -11,6 +13,7 @@ import type {
   FuenteDato,
   FuenteExterna,
   Libro,
+  ModalidadCarga,
   TipoJob,
 } from './domain';
 
@@ -114,14 +117,27 @@ export interface EmpresaUpdate {
   sunat_client_secret?: string;
 }
 
+/** `app/schemas/empresa.py::RegistroEmpresa`: quién la dio de alta y cómo. */
+export interface RegistroEmpresa {
+  modalidad: ModalidadCarga;
+  /** Correo de la persona que la registró. */
+  por: string;
+  fecha: string | null;
+  carga_id: string | null;
+}
+
 export interface EmpresaResponse {
   id: string;
   ruc: string;
   nombre: string | null;
   usuario: string;
   fecha_creacion: string | null;
-  /** Deducido del CIIU dentro del token de SUNAT (`app/domain/rubro.py`). */
+  /** Del CIIU guardado al completar el alta o, en las antiguas, del token de SUNAT. */
   rubro: string | null;
+  ciiu?: string | null;
+  registro?: RegistroEmpresa | null;
+  /** A quién se envían los resultados de esta empresa. */
+  correos_notificacion?: string[];
   /** Actividades de la ficha RUC; contexto del clasificador contable. */
   actividades_economicas?: ActividadEconomica[];
   /** CIIU que manda al clasificar, elegido en Ajustes. `null` = el principal de SUNAT. */
@@ -370,6 +386,12 @@ export interface ProgresoResponse {
   porcentaje: number;
 }
 
+export interface ErrorIntento {
+  intento: number | null;
+  en: string | null;
+  error: string;
+}
+
 export interface JobResponse {
   job_id: string;
   tipo: TipoJob | (string & {});
@@ -382,6 +404,15 @@ export interface JobResponse {
   error: string | null;
   creado_en: string;
   actualizado_en: string;
+  /** Lo ejecuta la cola durable: sobrevive a reinicios y se reintenta solo. */
+  gestionado?: boolean;
+  solicitud_id?: string | null;
+  intentos?: number;
+  max_intentos?: number;
+  ultimo_intento_en?: string | null;
+  /** Solo en un `pendiente` que ya falló alguna vez: cuándo toca el reintento. */
+  siguiente_intento_en?: string | null;
+  historial_errores?: ErrorIntento[];
 }
 
 export interface JobAceptado {
@@ -588,4 +619,47 @@ export interface ListaComprobantesExternos {
 export interface CodigoVinculacion {
   codigo: string;
   expira_en: string;
+}
+
+/* — alta de empresas (app/schemas/carga_empresas.py) — */
+
+/** Respuesta de `POST /empresas`: la empresa y la carga que completa sus datos. */
+export interface EmpresaCreada extends EmpresaResponse {
+  carga_id: string;
+}
+
+export interface FilaCarga {
+  fila: number;
+  ruc: string;
+  razon_social: string;
+  usuario: string;
+  estado: EstadoFilaCarga;
+  motivos: string[];
+  empresa_id: string | null;
+  fecha_registro: string | null;
+}
+
+export interface ProgresoCarga {
+  actual: number;
+  total: number;
+  mensaje: string;
+}
+
+export interface CargaResumen {
+  id: string;
+  modalidad: ModalidadCarga;
+  archivo: string | null;
+  registrado_por: string;
+  estado: EstadoCarga;
+  progreso: ProgresoCarga;
+  creado_en: string;
+  terminado_en: string | null;
+}
+
+export interface CargaEmpresas extends CargaResumen {
+  filas: FilaCarga[];
+}
+
+export interface CargaAceptada {
+  carga_id: string;
 }

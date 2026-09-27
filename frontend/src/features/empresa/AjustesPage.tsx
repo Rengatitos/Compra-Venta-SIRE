@@ -184,8 +184,19 @@ export function AjustesPage() {
               </div>
               <div>
                 <dt className={layout.termino}>Cuenta</dt>
-                <dd className={layout.descripcion}>{formatearFechaHora(datos.fecha_creacion)}</dd>
+                <dd className={layout.descripcion}>
+                  {formatearFechaHora(datos.fecha_creacion)}
+                </dd>
               </div>
+              {datos.registro ? (
+                <div>
+                  <dt className={layout.termino}>Registrada por</dt>
+                  <dd className={layout.descripcion}>
+                    {datos.registro.por} ·{' '}
+                    {datos.registro.modalidad === 'masiva' ? 'carga masiva' : 'alta individual'}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           ) : null}
         </Panel>

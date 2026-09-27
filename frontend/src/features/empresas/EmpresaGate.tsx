@@ -152,8 +152,8 @@ export function EmpresaGate() {
     return (
       <MarcoDelGate titulo="Todavía no hay ninguna empresa">
         <p className={estilos.intro}>
-          La base de datos no tiene ninguna empresa registrada. Da de alta la primera con su RUC y
-          sus credenciales SOL para empezar a sincronizar el SIRE.
+          La base de datos no tiene ninguna empresa registrada. Da de alta la primera con su RUC
+          y sus credenciales SOL para empezar a sincronizar el SIRE.
         </p>
         <FormularioNuevaEmpresa onCreada={alCrear} />
       </MarcoDelGate>
@@ -167,7 +167,10 @@ export function EmpresaGate() {
           Podrás cambiar de empresa en cualquier momento desde la barra lateral, sin volver a
           iniciar sesión.
         </p>
-        <ListaEmpresas empresas={empresas} onElegir={(elegido) => guardarEmpresaActiva(elegido)} />
+        <ListaEmpresas
+          empresas={empresas}
+          onElegir={(elegido) => guardarEmpresaActiva(elegido)}
+        />
       </MarcoDelGate>
     );
   }

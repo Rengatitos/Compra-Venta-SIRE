@@ -120,12 +120,19 @@ async def credenciales_sunat(db, job: Job, reportar: Reportador) -> dict[str, An
     return resultado
 
 
+async def alta_empresa(db, job: Job, reportar: Reportador) -> dict[str, Any]:
+    from app.services import carga_empresas_service
+
+    return await carga_empresas_service.alta_empresa(db, job, reportar)
+
+
 _MANEJADORES: dict[TipoJob, Manejador] = {
     TipoJob.EXTRACCION_DETALLES: extraccion_detalles,
     TipoJob.DESCARGA_PDFS: descarga_pdfs,
     TipoJob.DETRACCIONES: detracciones,
     TipoJob.CLASIFICACION_CUENTAS: clasificacion_cuentas,
     TipoJob.CREDENCIALES_SUNAT: credenciales_sunat,
+    TipoJob.ALTA_EMPRESA: alta_empresa,
 }
 
 

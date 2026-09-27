@@ -1,7 +1,9 @@
+import io
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -11,6 +13,8 @@ from app.core.auth import usuario_actual
 from app.core.encryption import decrypt_password, encrypt_password
 from app.db.database import get_db
 from app.domain import rubro as dominio_rubro
+from app.domain.carga_empresas import EstadoFila, FilaCarga, Modalidad, Motivo
+from app.repositories import cargas_empresas as repo_cargas
 from app.repositories import clasificaciones_frecuentes as repo_frecuentes
 from app.repositories import codigos_vinculacion as repo_codigos_vinculacion
 from app.repositories import comprobantes as repo_comprobantes
@@ -18,9 +22,16 @@ from app.repositories import comprobantes_externos as repo_comprobantes_externos
 from app.repositories import empresas as repo_empresas
 from app.repositories import periodos as repo_periodos
 from app.repositories import plan_cuentas as repo_plan_cuentas
-from app.schemas.empresa import EmpresaCreate, EmpresaResponse, EmpresaUpdate
+from app.schemas.carga_empresas import CargaAceptada, CargaResponse, CargaResumen
+from app.schemas.empresa import EmpresaCreada, EmpresaCreate, EmpresaResponse, EmpresaUpdate
 from app.schemas.generic import MessageResponse, StatusResponse
-from app.services import credenciales_sunat_service, ficha_ruc_service, imagenes_externas
+from app.services import (
+    carga_empresas_service,
+    credenciales_sunat_service,
+    ficha_ruc_service,
+    imagenes_externas,
+)
+from app.services.carga_empresas_service import CredencialesApi, ExcelInvalido
 from app.services.scraping_sunat import CredencialesSolError, SesionSolError
 from app.services.sunat.auth import credenciales_cliente, obtener_token
 from app.services.sunat.credenciales_api import CredencialesApiError, SinRecursoSire
@@ -31,35 +42,142 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
 
+MAX_BYTES_EXCEL = 2 * 1024 * 1024
+EXTENSIONES_EXCEL = (".xlsx", ".xlsm")
+TIPO_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
 def _con_rubro(empresa: dict) -> dict:
-    empresa["rubro"] = dominio_rubro.desde_token_sunat(empresa.get("sunat_token", ""))
+    # El rubro se guarda al completar el alta; las empresas de antes no lo
+    # tienen y se sigue sacando del token.
+    if not empresa.get("rubro"):
+        empresa["rubro"] = dominio_rubro.desde_token_sunat(empresa.get("sunat_token", ""))
     return empresa
+
+
+def _excel(contenido: bytes, nombre: str) -> StreamingResponse:
+    return StreamingResponse(
+        io.BytesIO(contenido),
+        media_type=TIPO_XLSX,
+        headers={"Content-Disposition": f"attachment; filename={nombre}"},
+    )
 
 
 @router.post(
     "",
-    response_model=EmpresaResponse,
-    dependencies=[Depends(usuario_actual)],
+    response_model=EmpresaCreada,
+    status_code=status.HTTP_201_CREATED,
     summary="Registrar empresa",
 )
 @limiter.limit("5/minute")
-async def crear_empresa(request: Request, datos: EmpresaCreate, db=Depends(get_db)):
+async def crear_empresa(
+    request: Request,
+    datos: EmpresaCreate,
+    usuario: dict = Depends(usuario_actual),
+    db=Depends(get_db),
+):
+    """Alta individual. Responde en cuanto la empresa existe; el token y el
+    CIIU se completan en segundo plano y su avance se sigue en
+    `GET /empresas/cargas/{carga_id}`."""
     if await repo_empresas.obtener_por_ruc(db, datos.ruc):
         raise HTTPException(status_code=409, detail="Ya existe una empresa con ese RUC")
 
-    creada = await repo_empresas.crear(
+    fila = FilaCarga(1, datos.nombre or "", datos.ruc, datos.usuario, datos.password)
+    carga = await carga_empresas_service.registrar(
         db,
-        {
-            "ruc": datos.ruc,
-            "nombre": datos.nombre,
-            "usuario": datos.usuario,
-            "password": encrypt_password(datos.password),
-            "sunat_token": None,
-            "sunat_client_id": datos.sunat_client_id,
-            "sunat_client_secret": datos.sunat_client_secret,
-        },
+        [fila],
+        modalidad=Modalidad.INDIVIDUAL,
+        registrado_por=usuario["email"],
+        credenciales=CredencialesApi(datos.sunat_client_id, datos.sunat_client_secret),
     )
-    return _con_rubro(creada)
+    [resultado] = carga["filas"]
+    if resultado["estado"] == EstadoFila.NO_AGREGADA.value:
+        if Motivo.RUC_EXISTENTE.value in resultado["motivos"]:
+            raise HTTPException(status_code=409, detail="Ya existe una empresa con ese RUC")
+        raise HTTPException(status_code=422, detail="; ".join(resultado["motivos"]))
+
+    creada = await repo_empresas.obtener_por_ruc(db, datos.ruc)
+    return {**_con_rubro(creada), "carga_id": str(carga["_id"])}
+
+
+@router.post(
+    "/cargas",
+    response_model=CargaAceptada,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Registrar empresas desde un Excel",
+)
+@limiter.limit("3/minute")
+async def cargar_empresas(
+    request: Request,
+    archivo: UploadFile = File(...),
+    usuario: dict = Depends(usuario_actual),
+    db=Depends(get_db),
+):
+    """Columnas A a D de la primera hoja: razón social, RUC, usuario y
+    contraseña SOL. Las filas se validan al momento; las válidas se registran y
+    sus datos de SUNAT se completan en la cola."""
+    nombre = archivo.filename or "empresas.xlsx"
+    if not nombre.lower().endswith(EXTENSIONES_EXCEL):
+        raise HTTPException(status_code=400, detail="El archivo debe ser un Excel (.xlsx)")
+    contenido = await archivo.read(MAX_BYTES_EXCEL + 1)
+    if len(contenido) > MAX_BYTES_EXCEL:
+        raise HTTPException(status_code=413, detail="El archivo pasa de 2 MB")
+    try:
+        filas = carga_empresas_service.leer_excel(contenido)
+    except ExcelInvalido as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    carga = await carga_empresas_service.registrar(
+        db, filas, modalidad=Modalidad.MASIVA, registrado_por=usuario["email"], archivo=nombre
+    )
+    return {"carga_id": str(carga["_id"])}
+
+
+@router.get(
+    "/cargas",
+    response_model=list[CargaResumen],
+    dependencies=[Depends(usuario_actual)],
+    summary="Historial de cargas de empresas",
+)
+async def listar_cargas(db=Depends(get_db)):
+    return await repo_cargas.listar(db)
+
+
+@router.get(
+    "/cargas/plantilla",
+    dependencies=[Depends(usuario_actual)],
+    summary="Plantilla vacía para la carga masiva",
+    response_class=StreamingResponse,
+)
+async def plantilla_carga():
+    return _excel(carga_empresas_service.plantilla(), "plantilla_empresas.xlsx")
+
+
+@router.get(
+    "/cargas/{carga_id}",
+    response_model=CargaResponse,
+    dependencies=[Depends(usuario_actual)],
+    summary="Estado de una carga de empresas",
+)
+async def obtener_carga(carga_id: str, db=Depends(get_db)):
+    carga = await repo_cargas.obtener(db, carga_id)
+    if not carga:
+        raise HTTPException(status_code=404, detail="Carga no encontrada")
+    return carga
+
+
+@router.get(
+    "/cargas/{carga_id}/reporte",
+    dependencies=[Depends(usuario_actual)],
+    summary="Reporte en Excel de una carga de empresas",
+    response_class=StreamingResponse,
+)
+async def reporte_carga(carga_id: str, db=Depends(get_db)):
+    carga = await repo_cargas.obtener(db, carga_id)
+    if not carga:
+        raise HTTPException(status_code=404, detail="Carga no encontrada")
+    fecha = carga["creado_en"].strftime("%Y%m%d_%H%M")
+    return _excel(carga_empresas_service.reporte(carga), f"reporte_carga_{fecha}.xlsx")
 
 
 @router.get(
@@ -87,6 +205,10 @@ async def actualizar_empresa(
 
     if "password" in cambios:
         cambios["password"] = encrypt_password(cambios["password"])
+
+    # `correos_notificacion: null` es "no la toques"; `[]` la vacía.
+    if cambios.get("correos_notificacion", []) is None:
+        cambios.pop("correos_notificacion")
 
     # Un client_id/secret vacío significa "no lo toques", no "bórralo".
     for campo in ("sunat_client_id", "sunat_client_secret"):

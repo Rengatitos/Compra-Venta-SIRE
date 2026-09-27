@@ -58,7 +58,9 @@ describe('selector de empresa', () => {
   it('el RUC no basta: dice con palabras cuál es la empresa activa', () => {
     montar([ALFA, BETA]);
 
-    expect(screen.getByRole('button', { name: /Empresa activa: 20603391692/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Empresa activa: 20603391692/ }),
+    ).toBeInTheDocument();
   });
 
   it('con una sola empresa no pinta un botón que no lleva a ningún sitio', () => {
