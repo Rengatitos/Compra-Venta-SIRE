@@ -9,7 +9,6 @@ from app.db.database import get_db
 from app.domain.comprobante import Libro
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import periodos as repo_periodos
-from app.repositories._mongo import monto_a_float
 from app.schemas.comprobante import (
     ClasificacionContable,
     CoberturaSunat,
@@ -19,6 +18,7 @@ from app.schemas.comprobante import (
 from app.schemas.generic import MessageResponse
 from app.services import (
     clasificacion_service,
+    destino_compras,
     export_service,
     plantilla_excel,
     propuesta_service,
@@ -151,22 +151,7 @@ async def exportar_lote(
     if formato == "excel":
         destino_resuelto = destino
         if libro == Libro.COMPRAS and (destino is None or destino == "auto"):
-            # Auto-detección: si la empresa en este periodo (o en su histórico reciente)
-            # solo tiene ventas exoneradas/inafectas, todas sus compras corresponden
-            # a 'dng' (adquisiciones gravadas destinadas a operaciones no gravadas).
-            ventas_periodo = await repo_comprobantes.listar(
-                db, empresa, periodo, libro=Libro.VENTAS, limit=50
-            )
-            if not ventas_periodo:
-                ventas_periodo = await repo_comprobantes.listar(
-                    db, empresa, None, libro=Libro.VENTAS, limit=50
-                )
-            if ventas_periodo and all(
-                (monto_a_float(v.get("base_imponible")) == 0)
-                and (monto_a_float(v.get("total")) > 0)
-                for v in ventas_periodo
-            ):
-                destino_resuelto = "dng"
+            destino_resuelto = await destino_compras.detectar(db, empresa, periodo) or destino
 
         if libro == Libro.COMPRAS:
             try:

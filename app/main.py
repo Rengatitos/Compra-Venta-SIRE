@@ -24,6 +24,7 @@ from app.repositories import fichas_ruc as repo_fichas_ruc
 from app.repositories import jobs as repo_jobs
 from app.repositories import periodos as repo_periodos
 from app.repositories import plan_cuentas as repo_plan_cuentas
+from app.repositories import solicitudes as repo_solicitudes
 from app.repositories import usuarios as repo_usuarios
 from app.services.clasificador.motor import motor as motor_clasificador
 from app.services.cola import worker as cola_worker
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI):
         await repo_usuarios.crear_indices(db)
         await repo_frecuentes.crear_indices(db)
         await repo_cargas_empresas.crear_indices(db)
+        await repo_solicitudes.crear_indices(db)
     except PyMongoError:
         logger.exception("No se pudieron crear todos los índices; el servicio sigue activo")
 

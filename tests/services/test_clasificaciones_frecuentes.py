@@ -106,6 +106,7 @@ def entorno(monkeypatch):
     guardados: dict[str, dict] = {}
     a_la_ia: list[str] = []
     documentos: dict[str, dict] = {}
+    intentos_por_doc: dict[str, tuple[str, int]] = {}
 
     async def guardar(db, documento_id, clasificacion):
         guardados[documento_id] = clasificacion
@@ -143,6 +144,13 @@ def entorno(monkeypatch):
     monkeypatch.setattr(clasificacion_service.repo_comprobantes, "guardar_clasificacion", guardar)
     monkeypatch.setattr(
         clasificacion_service.repo_comprobantes, "listar_que_requieren_revision", en_revision
+    )
+
+    async def intento(db, documento_id, estado, *, intentos, error=None):
+        intentos_por_doc[documento_id] = (estado, intentos)
+
+    monkeypatch.setattr(
+        clasificacion_service.repo_comprobantes, "registrar_intento_clasificacion", intento
     )
     monkeypatch.setattr(clasificacion_service.repo_empresas, "obtener_por_ruc", nada)
     monkeypatch.setattr(clasificacion_service.ficha_ruc_service, "obtener_varias", sin_fichas)

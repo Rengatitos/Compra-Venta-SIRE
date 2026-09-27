@@ -95,9 +95,17 @@ async def detracciones(db, job: Job, reportar: Reportador) -> dict[str, Any]:
 
 
 async def clasificacion_cuentas(db, job: Job, reportar: Reportador) -> dict[str, Any]:
+    from app.core.config import settings
     from app.services import clasificacion_service
 
+    if not settings.CLASIFICADOR_HABILITADO:
+        raise ErrorPermanente("El clasificador contable está deshabilitado en este servidor")
     empresa = await empresa_de(db, job)
+    if job.parametros.get("automatica"):
+        return await clasificacion_service.clasificar_hasta_terminar(
+            db, empresa, job.periodo, libro_de(job), reportar,
+            ultimo_intento=job.intentos >= job.max_intentos,
+        )
     return await clasificacion_service.clasificar_periodo(
         db,
         empresa,
@@ -140,6 +148,18 @@ async def sincronizacion_sire(db, job: Job, reportar: Reportador) -> dict[str, A
     return {"origen": "propuesta", **resultado}
 
 
+async def empaquetado(db, job: Job, reportar: Reportador) -> dict[str, Any]:
+    from app.services import solicitudes_service
+
+    return await solicitudes_service.empaquetar(db, job, reportar)
+
+
+async def envio_correo(db, job: Job, reportar: Reportador) -> dict[str, Any]:
+    from app.services import correo_service
+
+    return await correo_service.enviar_solicitud(db, job, reportar)
+
+
 async def alta_empresa(db, job: Job, reportar: Reportador) -> dict[str, Any]:
     from app.services import carga_empresas_service
 
@@ -154,6 +174,8 @@ _MANEJADORES: dict[TipoJob, Manejador] = {
     TipoJob.CREDENCIALES_SUNAT: credenciales_sunat,
     TipoJob.ALTA_EMPRESA: alta_empresa,
     TipoJob.SINCRONIZACION_SIRE: sincronizacion_sire,
+    TipoJob.EMPAQUETADO: empaquetado,
+    TipoJob.ENVIO_CORREO: envio_correo,
 }
 
 
