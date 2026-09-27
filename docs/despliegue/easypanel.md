@@ -84,7 +84,21 @@ CLASIFICADOR_HABILITADO=true
 CPU_THREADS=2
 OMP_NUM_THREADS=2
 EMBEDDING_BATCH_SIZE=8
+# Cola durable: dos trabajos a la vez caben junto al clasificador.
+COLA_TRABAJADORES=2
+# Correo de fin de solicitud (Gmail: contraseña de aplicación).
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USUARIO=cuenta@gmail.com
+SMTP_PASSWORD=contraseña-de-aplicación
+SMTP_REMITENTE=cuenta@gmail.com
+# Vacía en producción: se escribe a cualquier destinatario.
+CORREO_DESTINATARIOS_PERMITIDOS=
+# Para los enlaces de descarga cuando el ZIP no cabe como adjunto.
+APP_URL_PUBLICA=https://tu-dominio
 ```
+
+Los ZIP de las solicitudes se guardan en `/app/data/solicitudes`, dentro del mismo volumen `datos`.
 
 `JWT_SECRET_KEY` y `SOL_USER_CRYPTO_KEY` deben ser **los mismos del entorno de donde vienen los datos**: con otra `SOL_USER_CRYPTO_KEY` las contraseñas SOL guardadas no se pueden descifrar.
 

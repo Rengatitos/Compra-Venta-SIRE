@@ -4,7 +4,7 @@ La API SIRE no expone el detalle línea por línea de cada comprobante (producto
 
 ## Por qué es un job asíncrono
 
-Cada comprobante pendiente requiere navegar un formulario del portal SOL con Playwright, lo cual toma un par de segundos por comprobante. [POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/detalle](../endpoints/detalle.md) no espera a que termine: crea un [Job](../../app/domain/jobs.py) en estado `pendiente`, lo encola con `BackgroundTasks` y responde `202` de inmediato con el `job_id`. El cliente consulta el avance con [GET /api/v1/jobs/{job_id}](../endpoints/jobs.md).
+Cada comprobante pendiente requiere navegar un formulario del portal SOL con Playwright, lo cual toma un par de segundos por comprobante. [POST /api/v1/empresas/{ruc}/periodos/{periodo}/libros/{libro}/detalle](../endpoints/detalle.md) no espera a que termine: deja un [Job](../../app/domain/jobs.py) `pendiente` en la [cola durable](../arquitectura/cola.md) y responde `202` de inmediato con el `job_id`. El cliente consulta el avance con [GET /api/v1/jobs/{job_id}](../endpoints/jobs.md).
 
 ## Pasos
 
@@ -56,7 +56,7 @@ Cada comprobante pendiente requiere navegar un formulario del portal SOL con Pla
 
 6. Cada comprobante con detalle encontrado se guarda vía `guardar_detalle_sunat`, que solo agrega el campo `detalle_sunat` sin tocar el resto del documento. El filtro incluye el libro, por lo mismo del paso 1.
 
-7. El progreso se reporta a través del callback `reportar` que `jobs_service.ejecutar` ([jobs_service.py](../../app/services/jobs_service.py)) inyecta, actualizando `progreso.actual`/`progreso.total` en la colección `jobs` conforme avanza. Al terminar, el job pasa a `completado` con el resultado `{"procesados", "con_detalle", "sin_detalle", "descargados_pdf", "sin_pdf", "pendientes", "omitidos_sin_detalle"}`, o a `fallido` con el mensaje de la excepción si algo se rompe. `pendientes` es lo que quedó fuera por el tope de `SUNAT_MAX_COMPROBANTES`; `omitidos_sin_detalle`, lo que no se consulta porque SUNAT no lo publica. Cada comprobante que el scraper buscó —encontrado o no— queda marcado con `glosa_consultada`, que es lo que separa «sin glosa» de «pendiente».
+7. El progreso se reporta a través del callback `reportar` que inyecta el worker de la cola ([worker.py](../../app/services/cola/worker.py)), actualizando `progreso.actual`/`progreso.total` en la colección `jobs` conforme avanza. Al terminar, el job pasa a `completado` con el resultado `{"procesados", "con_detalle", "sin_detalle", "descargados_pdf", "sin_pdf", "pendientes", "omitidos_sin_detalle"}`, o a `fallido` con el mensaje de la excepción si algo se rompe. `pendientes` es lo que quedó fuera por el tope de `SUNAT_MAX_COMPROBANTES`; `omitidos_sin_detalle`, lo que no se consulta porque SUNAT no lo publica. Cada comprobante que el scraper buscó —encontrado o no— queda marcado con `glosa_consultada`, que es lo que separa «sin glosa» de «pendiente».
 
 
 ## Rendimiento
@@ -91,9 +91,7 @@ El scraping abre un Chromium por trabajo y la API corre con un solo worker, así
 - **Mismo periodo y mismo libro ya en marcha** → `409`. Es un duplicado: dos trabajos raspando exactamente lo mismo.
 - **Otro libro u otro periodo** → `202` con su `job_id`. El trabajo queda en `pendiente`, con el mensaje «En cola: hay otra extracción en curso», y arranca solo cuando el anterior termina.
 
-Así se puede lanzar compras y ventas seguidas sin estar pendiente de cuándo acaba la primera. La cola es un `asyncio.Lock` por RUC en `jobs_service`: vive en el proceso, lo que basta porque la API corre con un único worker. Con varias réplicas haría falta un candado en Mongo.
-
-Un fallo libera la cola (`async with`), así que un job que revienta no deja a la empresa sin poder extraer. Lo que sí se pierde son los `pendiente` si el proceso se reinicia: es la misma limitación que ya tenía `BackgroundTasks`.
+Así se puede lanzar compras y ventas seguidas sin estar pendiente de cuándo acaba la primera. El turno lo da el carril del RUC en la [cola durable](../arquitectura/cola.md): los trabajos viven en Mongo, un fallo pasajero se reintenta solo con espera creciente y lo que cortó un reinicio vuelve a la cola al arrancar.
 
 En el frontend, la barra de progreso sigue **al libro seleccionado**. Sin ese filtro, una extracción de compras pintaba su avance bajo la vista de ventas —«Extrayendo E001-789 (6 de 87)» en un libro que sólo tiene 4 comprobantes—; el job de otro libro se anuncia aparte, en una línea de texto.
 

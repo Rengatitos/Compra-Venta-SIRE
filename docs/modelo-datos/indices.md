@@ -7,7 +7,9 @@ Todos estos índices se crean durante el [ciclo de vida](../arquitectura/ciclo-d
 | `empresas` | único sobre `ruc` | [empresas.crear_indices](../../app/repositories/empresas.py) |
 | `periodos` | único sobre `(empresa_id, periodo)` | [periodos.crear_indices](../../app/repositories/periodos.py) |
 | `comprobantes` | `(empresa_id, periodo)`; único (`uniq_comprobante`) sobre `(empresa_id, periodo, libro, origen, tipo_cp, serie, numero)` | [comprobantes.crear_indices](../../app/repositories/comprobantes.py) |
-| `jobs` | único sobre `job_id`; `(ruc, periodo)` | [jobs.crear_indices](../../app/repositories/jobs.py) |
+| `jobs` | único sobre `job_id`; `(ruc, periodo)`; `(ruc, creado_en desc)`; `(gestionado, estado, creado_en)`; `solicitud_id` (sparse) | [jobs.crear_indices](../../app/repositories/jobs.py) |
+| `cargas_empresas` | `creado_en` desc | [cargas_empresas.crear_indices](../../app/repositories/cargas_empresas.py) |
+| `solicitudes` | `creado_en` desc | [solicitudes.crear_indices](../../app/repositories/solicitudes.py) |
 | `comprobantes_externos` | único `(empresa_id, id_externo)`; únicos parciales `(empresa_id, fuente, nro_operacion)` y `(empresa_id, libro, tipo_cp, serie, numero)`; `(empresa_id, libro, periodo, creado_en)` | [comprobantes_externos.crear_indices](../../app/repositories/comprobantes_externos.py) |
 | `codigos_vinculacion` | TTL sobre `expira_en`; único `(ruc, codigo_hash)` | [codigos_vinculacion.crear_indices](../../app/repositories/codigos_vinculacion.py) |
 
