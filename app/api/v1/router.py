@@ -12,6 +12,7 @@ from app.api.v1.routes import (
     detalle,
     detracciones,
     empresas,
+    identidad_bot,
     jobs,
     pdfs,
     periodos,
@@ -114,5 +115,11 @@ api_router.include_router(
 api_router.include_router(
     comprobantes_externos.router,
     prefix="/empresas/{ruc}/comprobantes-externos",
+    tags=["Apaclla Bot"],
+)
+# Canal de WhatsApp: el chat se vincula con el RUC y el usuario SOL.
+api_router.include_router(
+    identidad_bot.router,
+    prefix="/empresas/{ruc}/bot",
     tags=["Apaclla Bot"],
 )

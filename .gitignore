@@ -23,3 +23,7 @@ venv/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Otros proyectos dentro de la carpeta (repos propios; "bot descartado" trae un .env con credenciales)
+bot-comprobantes/
+bot descartado/
