@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from app.domain.comprobante import Libro
 from app.domain.jobs import TipoJob
 from app.repositories import periodos as repo_periodos
-from app.services import almacen_pdf, jobs_service
+from app.services import almacen_pdf, cola, jobs_service
 from app.services.sunat import detracciones
 
 
@@ -32,24 +32,21 @@ async def consultar(db, empresa, periodo, reportar):
     }
 
 
-async def encolar(db, empresa, periodo, background_tasks):
-    async with jobs_service._cola(f"encolar-detracciones:{empresa['ruc']}:{periodo}"):
-        return await _encolar(db, empresa, periodo, background_tasks)
+async def encolar(db, empresa, periodo):
+    async with jobs_service.candado(f"encolar-detracciones:{empresa['ruc']}:{periodo}"):
+        return await _encolar(db, empresa, periodo)
 
 
-async def _encolar(db, empresa, periodo, background_tasks):
+async def _encolar(db, empresa, periodo):
     existente = await jobs_service.activo(
         db, empresa["ruc"], TipoJob.DETRACCIONES, periodo=periodo, libro=Libro.COMPRAS
     )
     if existente:
         return existente
-    job = await jobs_service.crear(db, TipoJob.DETRACCIONES, empresa["ruc"], periodo, Libro.COMPRAS)
-
-    async def tarea(reportar):
-        return await consultar(db, empresa, periodo, reportar)
-
-    background_tasks.add_task(jobs_service.ejecutar, db, job.job_id, tarea, empresa["ruc"])
-    return job
+    return await cola.encolar(
+        db, TipoJob.DETRACCIONES, empresa["ruc"], periodo, Libro.COMPRAS,
+        cola=cola.carril_sol(empresa["ruc"]),
+    )
 
 
 def armar_zip(npds):

@@ -25,6 +25,7 @@ from app.repositories import periodos as repo_periodos
 from app.repositories import plan_cuentas as repo_plan_cuentas
 from app.repositories import usuarios as repo_usuarios
 from app.services.clasificador.motor import motor as motor_clasificador
+from app.services.cola import worker as cola_worker
 
 log_dir = Path(__file__).resolve().parents[1] / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
@@ -65,7 +66,8 @@ async def lifespan(app: FastAPI):
     except PyMongoError:
         logger.exception("No se pudieron crear todos los índices; el servicio sigue activo")
 
-    # Solo los de clasificación: el Mongo local lo comparte otra copia de la API
+    # Solo los de clasificación, y solo los que no son de la cola durable (esos
+    # los recupera el worker): el Mongo local lo comparte otra copia de la API
     # (la rama de WhatsApp), y marcar todos los tipos mataría sus extracciones
     # en curso cada vez que ésta se reinicia.
     try:
@@ -96,7 +98,22 @@ async def lifespan(app: FastAPI):
     if settings.CLASIFICADOR_HABILITADO:
         carga_clasificador = asyncio.create_task(asyncio.to_thread(motor_clasificador.iniciar))
 
+    # La cola durable: retoma lo que quedó pendiente o a medias antes del
+    # reinicio.  sirve para una segunda copia de la API
+    # contra el mismo Mongo, que no debe competir por los mismos trabajos.
+    worker = None
+    if settings.COLA_HABILITADA:
+        worker = cola_worker.Worker(db, al_terminar=cola_worker.al_terminar_solicitud)
+        cola_worker.instalar(worker)
+        worker.arrancar()
+    else:
+        logger.warning("COLA_HABILITADA=false: los trabajos encolados no se ejecutarán aquí")
+
     yield
+
+    if worker is not None:
+        await worker.detener()
+        cola_worker.instalar(None)
 
     if carga_clasificador is not None and not carga_clasificador.done():
         logger.info("Apagando con el clasificador aún cargando")

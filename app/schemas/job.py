@@ -11,6 +11,12 @@ class ProgresoResponse(BaseModel):
     porcentaje: float = 0.0
 
 
+class ErrorIntentoResponse(BaseModel):
+    intento: int | None = None
+    en: datetime | None = None
+    error: str = ""
+
+
 class JobResponse(BaseModel):
     job_id: str
     tipo: str
@@ -23,6 +29,14 @@ class JobResponse(BaseModel):
     error: str | None = None
     creado_en: datetime
     actualizado_en: datetime
+    # Cola durable: si lo ejecuta el worker, intentos y cuándo toca el próximo.
+    gestionado: bool = False
+    solicitud_id: str | None = None
+    intentos: int = 0
+    max_intentos: int = 1
+    ultimo_intento_en: datetime | None = None
+    siguiente_intento_en: datetime | None = None
+    historial_errores: list[ErrorIntentoResponse] = []
 
 
 class JobAceptado(BaseModel):

@@ -4,8 +4,10 @@ from app.core.auth import usuario_actual
 from app.db.database import get_db
 from app.domain.jobs import EstadoJob, TipoJob
 from app.repositories import empresas as repo_empresas
+from app.repositories import jobs as repo_jobs
 from app.schemas.job import JobResponse
 from app.services import jobs_service
+from app.services.cola import worker
 
 router = APIRouter()
 
@@ -56,3 +58,30 @@ async def obtener_job(
         raise HTTPException(status_code=404, detail="Trabajo no encontrado")
 
     return jobs_service.serializar(job)
+
+
+@router.post(
+    "/{job_id}/reintentar",
+    response_model=JobResponse,
+    summary="Volver a encolar un trabajo fallido",
+)
+async def reintentar_job(
+    job_id: str,
+    _usuario: dict = Depends(usuario_actual),
+    db=Depends(get_db),
+):
+    """Un trabajo de la cola que agotó sus intentos (o falló sin reintento)
+    vuelve a `pendiente` con el contador a cero."""
+    job = await jobs_service.obtener(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Trabajo no encontrado")
+    if not job.gestionado:
+        raise HTTPException(
+            status_code=409,
+            detail="Este trabajo no lo ejecuta la cola; vuelve a lanzarlo desde su pantalla",
+        )
+    reencolado = await repo_jobs.reintentar(db, job_id)
+    if reencolado is None:
+        raise HTTPException(status_code=409, detail="Solo se reintentan los trabajos fallidos")
+    worker.despertar()
+    return jobs_service.serializar(reencolado)

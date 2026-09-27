@@ -6,7 +6,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -19,7 +19,7 @@ from app.domain.jobs import EstadoJob, TipoJob
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import periodos as repo_periodos
 from app.schemas.job import JobAceptado
-from app.services import almacen_pdf, jobs_service, pdf_service, zip_sunat_service
+from app.services import almacen_pdf, cola, jobs_service, zip_sunat_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -45,7 +45,6 @@ CABECERA_MANIFIESTO = (
 @limiter.limit("5/minute")
 async def iniciar_zip_completo(
     request: Request,
-    background_tasks: BackgroundTasks,
     periodo: str = Depends(periodo_valido),
     empresa: dict = Depends(empresa_actual),
     db=Depends(get_db),
@@ -54,12 +53,11 @@ async def iniciar_zip_completo(
         raise HTTPException(status_code=404, detail="Periodo no encontrado")
     if await jobs_service.activo(db, empresa["ruc"], TipoJob.DESCARGA_PDFS, periodo=periodo):
         raise HTTPException(status_code=409, detail="Ya hay una descarga de PDFs en curso")
-    job = await jobs_service.crear(db, TipoJob.DESCARGA_PDFS, empresa["ruc"], periodo)
-
-    async def tarea(reportar):
-        return await zip_sunat_service.preparar(db, empresa, periodo, job.job_id, reportar)
-
-    background_tasks.add_task(jobs_service.ejecutar, db, job.job_id, tarea, empresa["ruc"])
+    # Sin libro: el manejador lo lee como el ZIP completo de los dos libros.
+    job = await cola.encolar(
+        db, TipoJob.DESCARGA_PDFS, empresa["ruc"], periodo,
+        cola=cola.carril_sol(empresa["ruc"]),
+    )
     return {"job_id": job.job_id, "estado": job.estado.value,
             "mensaje": "Descargando desde SUNAT los PDFs de compras y ventas"}
 
@@ -91,7 +89,6 @@ async def descargar_zip_completo(
 @limiter.limit("5/minute")
 async def iniciar_descarga(
     request: Request,
-    background_tasks: BackgroundTasks,
     periodo: str = Depends(periodo_valido),
     libro: Libro = Depends(libro_valido),
     empresa: dict = Depends(empresa_actual),
@@ -109,15 +106,13 @@ async def iniciar_descarga(
             ),
         )
 
-    job = await jobs_service.crear(db, TipoJob.DESCARGA_PDFS, empresa["ruc"], periodo, libro)
-
-    async def tarea(reportar):
-        return await pdf_service.descargar(db, empresa, periodo, libro, reportar)
-
-    # El cuarto argumento es la cola. Va el RUC porque este trabajo comparte la
-    # sesión SOL con la extracción de detalle, que es única por usuario: sin el
-    # candado los dos abren Chromium a la vez y SUNAT invalida una de las dos.
-    background_tasks.add_task(jobs_service.ejecutar, db, job.job_id, tarea, empresa["ruc"])
+    # El carril es el RUC porque este trabajo comparte la sesión SOL con la
+    # extracción de detalle, que es única por usuario: si corrieran a la vez
+    # los dos abrirían Chromium y SUNAT invalidaría una de las dos sesiones.
+    job = await cola.encolar(
+        db, TipoJob.DESCARGA_PDFS, empresa["ruc"], periodo, libro,
+        cola=cola.carril_sol(empresa["ruc"]),
+    )
 
     logger.info(
         "Descarga de PDFs encolada ruc=%s periodo=%s libro=%s job_id=%s",

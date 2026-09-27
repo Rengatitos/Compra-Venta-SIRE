@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -9,7 +9,7 @@ from app.db.database import get_db
 from app.domain.comprobante import Libro
 from app.domain.jobs import TipoJob
 from app.schemas.job import JobAceptado
-from app.services import detalle_service, jobs_service
+from app.services import cola, jobs_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,7 +25,6 @@ limiter = Limiter(key_func=get_remote_address)
 @limiter.limit("5/minute")
 async def iniciar_extraccion(
     request: Request,
-    background_tasks: BackgroundTasks,
     periodo: str = Depends(periodo_valido),
     libro: Libro = Depends(libro_valido),
     empresa: dict = Depends(empresa_actual),
@@ -53,15 +52,13 @@ async def iniciar_extraccion(
         db, empresa["ruc"], TipoJob.EXTRACCION_DETALLES
     )
 
-    job = await jobs_service.crear(
-        db, TipoJob.EXTRACCION_DETALLES, empresa["ruc"], periodo, libro
-    )
-
-    async def tarea(reportar):
-        return await detalle_service.extraer(db, empresa, periodo, libro, reportar)
-
-    background_tasks.add_task(
-        jobs_service.ejecutar, db, job.job_id, tarea, empresa["ruc"]
+    job = await cola.encolar(
+        db,
+        TipoJob.EXTRACCION_DETALLES,
+        empresa["ruc"],
+        periodo,
+        libro,
+        cola=cola.carril_sol(empresa["ruc"]),
     )
 
     logger.info(
