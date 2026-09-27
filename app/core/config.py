@@ -30,6 +30,10 @@ class Settings(BaseSettings):
 
     SUNAT_CLIENT_ID: str | None = None
     SUNAT_CLIENT_SECRET: str | None = None
+    # Aplicación que Sire registra en «Credenciales de API SUNAT» cuando la
+    # empresa no tiene ninguna que sirva para SIRE.
+    SUNAT_APP_NOMBRE: str = "SIRE APACLLA"
+    SUNAT_APP_URL: str = "https://www.apaclla.com"
     # Un endpoint por libro. `URL_SIRE_PROPUESTA` conserva su nombre —sin
     # sufijo— para no romper los despliegues que ya la tienen puesta.
     URL_SIRE_PROPUESTA: str | None = None

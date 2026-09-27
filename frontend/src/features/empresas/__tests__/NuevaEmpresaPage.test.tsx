@@ -9,10 +9,11 @@ import { NuevaEmpresaPage } from '@/features/empresas/NuevaEmpresaPage';
 import { guardarSesion, limpiarSesion, obtenerSesion } from '@/lib/session';
 import type { EmpresaResponse } from '@/types/api';
 
-const mocks = vi.hoisted(() => ({ crearEmpresa: vi.fn() }));
+const mocks = vi.hoisted(() => ({ crearEmpresa: vi.fn(), obtenerCredencialesSunat: vi.fn() }));
 
 vi.mock('@/api/empresas', () => ({
   crearEmpresa: mocks.crearEmpresa,
+  obtenerCredencialesSunat: mocks.obtenerCredencialesSunat,
   listarEmpresas: vi.fn(),
 }));
 
@@ -44,6 +45,14 @@ function montar() {
 describe('alta de empresa', () => {
   beforeEach(() => {
     mocks.crearEmpresa.mockReset();
+    mocks.obtenerCredencialesSunat.mockReset();
+    mocks.obtenerCredencialesSunat.mockResolvedValue({
+      origen: 'existente',
+      aplicacion: 'SMARTSIRE',
+      client_id: '90a5fdc6…',
+      token_valido: true,
+      mensaje: 'Se usó la aplicación que la empresa ya tenía en SUNAT.',
+    });
     guardarSesion({ token: 'jwt', correo: 'prueba@example.com', ruc: '20603391692' });
   });
 
@@ -84,5 +93,49 @@ describe('alta de empresa', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Registrar empresa' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('búscalo en el selector de empresas');
+  });
+
+  it('sin client_id ni clave, los trae de SUNAT tras crear la empresa', async () => {
+    mocks.crearEmpresa.mockResolvedValue(CREADA);
+    montar();
+
+    await userEvent.type(screen.getByLabelText(/RUC/), CREADA.ruc);
+    await userEvent.type(screen.getByLabelText(/Usuario SOL/), 'USUARIO');
+    await userEvent.type(screen.getByLabelText(/Contraseña SOL/), 'clave');
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar empresa' }));
+
+    expect(await screen.findByText('Panel')).toBeInTheDocument();
+    expect(mocks.obtenerCredencialesSunat).toHaveBeenCalledWith(CREADA.ruc);
+    expect(await screen.findByText('Credenciales de API SUNAT: SMARTSIRE')).toBeInTheDocument();
+  });
+
+  it('si SUNAT falla, la empresa queda creada y se avisa', async () => {
+    const { ApiError } = await import('@/lib/http');
+    mocks.crearEmpresa.mockResolvedValue(CREADA);
+    mocks.obtenerCredencialesSunat.mockRejectedValue(new ApiError(502, 'SOL no respondió'));
+    montar();
+
+    await userEvent.type(screen.getByLabelText(/RUC/), CREADA.ruc);
+    await userEvent.type(screen.getByLabelText(/Usuario SOL/), 'USUARIO');
+    await userEvent.type(screen.getByLabelText(/Contraseña SOL/), 'clave');
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar empresa' }));
+
+    expect(await screen.findByText('Panel')).toBeInTheDocument();
+    expect(await screen.findByText('No se pudieron traer las credenciales de SUNAT')).toBeInTheDocument();
+  });
+
+  it('con client_id y clave tecleados no entra a SOL', async () => {
+    mocks.crearEmpresa.mockResolvedValue(CREADA);
+    montar();
+
+    await userEvent.type(screen.getByLabelText(/RUC/), CREADA.ruc);
+    await userEvent.type(screen.getByLabelText(/Usuario SOL/), 'USUARIO');
+    await userEvent.type(screen.getByLabelText(/Contraseña SOL/), 'clave');
+    await userEvent.type(screen.getByLabelText(/Client ID de SUNAT/), 'id-propio');
+    await userEvent.type(screen.getByLabelText(/Client Secret de SUNAT/), 'clave-propia');
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar empresa' }));
+
+    expect(await screen.findByText('Panel')).toBeInTheDocument();
+    expect(mocks.obtenerCredencialesSunat).not.toHaveBeenCalled();
   });
 });

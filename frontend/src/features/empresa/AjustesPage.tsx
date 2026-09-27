@@ -5,6 +5,7 @@ import type { FormEvent } from 'react';
 import {
   actualizarEmpresa,
   eliminarEmpresa,
+  obtenerCredencialesSunat,
   obtenerEmpresa,
   renovarTokenSunat,
 } from '@/api/empresas';
@@ -90,6 +91,25 @@ export function AjustesPage() {
           fallo instanceof ApiError
             ? fallo.message
             : 'Revisa el Client ID y el Client Secret configurados.',
+      });
+    },
+  });
+
+  const traerCredenciales = useMutation({
+    mutationFn: () => obtenerCredencialesSunat(ruc),
+    onSuccess: async (resultado) => {
+      mostrar({
+        tono: resultado.token_valido ? 'exito' : 'neutro',
+        titulo: `Credenciales de API SUNAT: ${resultado.aplicacion}`,
+        detalle: resultado.mensaje,
+      });
+      await cliente.invalidateQueries({ queryKey: ['empresa', ruc] });
+    },
+    onError: (fallo) => {
+      mostrar({
+        tono: 'error',
+        titulo: 'No se pudieron traer las credenciales de SUNAT',
+        detalle: fallo instanceof ApiError ? fallo.message : 'Error inesperado.',
       });
     },
   });
@@ -227,6 +247,20 @@ export function AjustesPage() {
           <div className={layout.filaFin}>
             <Button onClick={() => renovar.mutate()} cargando={renovar.isPending}>
               Renovar token de SUNAT
+            </Button>
+          </div>
+        </Panel>
+
+        <Panel
+          titulo="Credenciales de API SUNAT"
+          descripcion="Sire entra a SOL con el usuario y la clave guardados, toma el client_id y la clave de «Credenciales de API SUNAT» y los guarda. Si la empresa no tiene una aplicación registrada, la crea con acceso a SIRE. Tarda cerca de un minuto."
+        >
+          <div className={layout.filaFin}>
+            <Button
+              onClick={() => traerCredenciales.mutate()}
+              cargando={traerCredenciales.isPending}
+            >
+              {traerCredenciales.isPending ? 'Entrando a SOL…' : 'Obtener de SUNAT'}
             </Button>
           </div>
         </Panel>

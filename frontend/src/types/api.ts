@@ -21,6 +21,16 @@ export interface MessageResponse {
 }
 
 /** `datos` es libre en el backend; cada llamada lo estrecha con su propio tipo. */
+/** Resultado de `POST /empresas/{ruc}/credenciales-sunat` (sin la clave). */
+export interface CredencialesSunatResultado {
+  origen: 'existente' | 'creada';
+  aplicacion: string;
+  /** Solo los primeros caracteres. */
+  client_id: string;
+  token_valido: boolean;
+  mensaje: string;
+}
+
 export interface StatusResponse<T = unknown> {
   estado: 'exito' | 'advertencia' | (string & {});
   mensaje: string | null;

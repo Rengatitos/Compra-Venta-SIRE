@@ -1,6 +1,8 @@
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -18,8 +20,10 @@ from app.repositories import periodos as repo_periodos
 from app.repositories import plan_cuentas as repo_plan_cuentas
 from app.schemas.empresa import EmpresaCreate, EmpresaResponse, EmpresaUpdate
 from app.schemas.generic import MessageResponse, StatusResponse
-from app.services import ficha_ruc_service, imagenes_externas
+from app.services import credenciales_sunat_service, ficha_ruc_service, imagenes_externas
+from app.services.scraping_sunat import CredencialesSolError, SesionSolError
 from app.services.sunat.auth import credenciales_cliente, obtener_token
+from app.services.sunat.credenciales_api import CredencialesApiError, SinRecursoSire
 from app.services.sunat.ficha_ruc import FichaNoEncontrada
 
 router = APIRouter()
@@ -172,3 +176,44 @@ async def renovar_token_sunat(empresa: dict = Depends(empresa_actual), db=Depend
 
     await repo_empresas.guardar_token_sunat(db, empresa["_id"], token)
     return {"estado": "exito", "mensaje": "Token de SUNAT actualizado correctamente"}
+
+
+class CredencialesSunatResultado(BaseModel):
+    origen: Literal["existente", "creada"]
+    aplicacion: str
+    client_id: str
+    token_valido: bool
+    mensaje: str
+
+
+@router.post(
+    "/{ruc}/credenciales-sunat",
+    response_model=CredencialesSunatResultado,
+    summary="Obtener de SUNAT el client_id y la clave del API (o registrarlos)",
+)
+@limiter.limit("3/minute")
+async def obtener_credenciales_sunat(
+    request: Request,
+    crear: bool = True,
+    empresa: dict = Depends(empresa_actual),
+    db=Depends(get_db),
+):
+    """Con el usuario y la clave SOL guardados entra a «Credenciales de API SUNAT».
+
+    Usa la aplicación que la empresa ya tenga; si no tiene y `crear` es verdadero
+    registra una con acceso a SIRE. Guarda el client_id y la clave en la empresa
+    y nunca devuelve la clave. Tarda lo que un inicio de sesión SOL (≈30-60 s).
+    """
+    try:
+        return await credenciales_sunat_service.obtener(db, empresa, crear=crear)
+    except CredencialesSolError:
+        raise HTTPException(
+            status_code=400, detail="SUNAT rechazó el usuario o la clave SOL de la empresa"
+        ) from None
+    except SinRecursoSire as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except (SesionSolError, CredencialesApiError) as exc:
+        logger.warning("Credenciales SUNAT fallidas ruc=%s: %s", empresa["ruc"], exc)
+        raise HTTPException(
+            status_code=502, detail=f"No se pudieron obtener las credenciales de SUNAT: {exc}"
+        ) from None

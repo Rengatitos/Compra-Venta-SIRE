@@ -3,6 +3,7 @@ import type {
   ActividadEconomica,
   ClaseCiiu,
   CodigoVinculacion,
+  CredencialesSunatResultado,
   EmpresaCreate,
   EmpresaResponse,
   EmpresaUpdate,
@@ -84,6 +85,18 @@ export function obtenerCiiuEmpresa(ruc: string): Promise<EmpresaResponse> {
 /** `POST …/token-sunat`. Fuerza un OAuth nuevo contra la API SIRE. */
 export function renovarTokenSunat(ruc: string): Promise<StatusResponse> {
   return pedir<StatusResponse>(`${base(ruc)}/token-sunat`, { metodo: 'POST' });
+}
+
+/**
+ * `POST /api/v1/empresas/{ruc}/credenciales-sunat`. Entra a SOL con el usuario y
+ * la clave guardados y trae el client_id y la clave del API SUNAT; si la empresa
+ * no tiene aplicación, la registra. Tarda lo que un login SOL (≈1 min). La
+ * clave nunca vuelve: se guarda en la empresa.
+ */
+export function obtenerCredencialesSunat(ruc: string): Promise<CredencialesSunatResultado> {
+  return pedir<CredencialesSunatResultado>(`${base(ruc)}/credenciales-sunat`, {
+    metodo: 'POST',
+  });
 }
 
 /**

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
-import { crearEmpresa } from '@/api/empresas';
+import { crearEmpresa, obtenerCredencialesSunat } from '@/api/empresas';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
+import { useToast } from '@/hooks/useToast';
 import { ApiError } from '@/lib/http';
 import type { EmpresaResponse } from '@/types/api';
 import { esRucValido } from '@/types/domain';
@@ -33,6 +34,33 @@ export function FormularioNuevaEmpresa({ onCreada }: Props) {
   const [errorRuc, setErrorRuc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  // Tras crearla, mientras Sire entra a SOL por el client_id y la clave.
+  const [trayendoCredenciales, setTrayendoCredenciales] = useState(false);
+  const { mostrar } = useToast();
+
+  /**
+   * Sin client_id ni clave tecleados, Sire los trae de SUNAT con el usuario y la
+   * clave SOL. Si falla, la empresa ya quedó creada: se avisa y se sigue.
+   */
+  async function traerCredenciales(rucCreado: string) {
+    setTrayendoCredenciales(true);
+    try {
+      const resultado = await obtenerCredencialesSunat(rucCreado);
+      mostrar({
+        tono: resultado.token_valido ? 'exito' : 'neutro',
+        titulo: `Credenciales de API SUNAT: ${resultado.aplicacion}`,
+        detalle: resultado.mensaje,
+      });
+    } catch (fallo) {
+      mostrar({
+        tono: 'error',
+        titulo: 'No se pudieron traer las credenciales de SUNAT',
+        detalle: `${fallo instanceof ApiError ? fallo.message : 'Error inesperado.'} Puedes intentarlo de nuevo en Ajustes.`,
+      });
+    } finally {
+      setTrayendoCredenciales(false);
+    }
+  }
 
   async function alEnviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -56,6 +84,9 @@ export function FormularioNuevaEmpresa({ onCreada }: Props) {
         ...(clientId.trim() ? { sunat_client_id: clientId.trim() } : {}),
         ...(clientSecret.trim() ? { sunat_client_secret: clientSecret.trim() } : {}),
       });
+      if (!clientId.trim() || !clientSecret.trim()) {
+        await traerCredenciales(creada.ruc);
+      }
       onCreada(creada);
     } catch (fallo) {
       if (fallo instanceof ApiError && fallo.esConflicto) {
@@ -122,7 +153,7 @@ export function FormularioNuevaEmpresa({ onCreada }: Props) {
 
       <details className={estilos.opcionales}>
         <summary className={estilos.resumen}>
-          Credenciales propias de la API SIRE (opcional)
+          Client ID y clave del API SUNAT (opcional)
         </summary>
         <div className={estilos.detalleCuerpo}>
           <TextField
@@ -132,7 +163,7 @@ export function FormularioNuevaEmpresa({ onCreada }: Props) {
             onChange={(evento) => setClientId(evento.target.value)}
             autoComplete="off"
             mono
-            ayuda="Si lo dejas vacío se usan las credenciales globales del servidor."
+            ayuda="Si los dejas vacíos, Sire entra a SOL con el usuario y la clave de arriba y los trae (o los crea) en «Credenciales de API SUNAT»."
           />
           <TextField
             etiqueta="Client Secret de SUNAT"
@@ -146,7 +177,11 @@ export function FormularioNuevaEmpresa({ onCreada }: Props) {
       </details>
 
       <Button type="submit" variante="primario" bloque cargando={enviando}>
-        {enviando ? 'Registrando…' : 'Registrar empresa'}
+        {trayendoCredenciales
+          ? 'Trayendo credenciales de SUNAT… (≈1 min)'
+          : enviando
+            ? 'Registrando…'
+            : 'Registrar empresa'}
       </Button>
     </form>
   );
