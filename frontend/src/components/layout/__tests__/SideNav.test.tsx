@@ -10,12 +10,6 @@ import { ContextoAuthReact } from '@/features/auth/authContext';
 import { ContextoEmpresasReact } from '@/features/empresas/empresasContext';
 import { ContextoJobsReact } from '@/features/jobs/jobsContext';
 
-// La barra lateral monta la campana de procesos, que consulta el historial.
-vi.mock('@/api/jobs', () => ({
-  listarJobs: () => Promise.resolve([]),
-  obtenerJob: () => Promise.reject(new Error('no debería consultarse en este test')),
-}));
-
 import { SideNav } from '../SideNav';
 
 // `jsdom` no tiene canvas, así que el contraste se verifica en el navegador.
@@ -74,7 +68,7 @@ function pintar(ruta: string, onNavegar?: () => void) {
 
 describe('barra lateral', () => {
   it('ofrece las cinco secciones', () => {
-    pintar('/');
+    pintar('/dashboard');
 
     for (const texto of [
       'Dashboard',
@@ -88,7 +82,7 @@ describe('barra lateral', () => {
   });
 
   it('marca solo la página en curso', () => {
-    pintar('/');
+    pintar('/dashboard');
 
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute(
       'aria-current',
@@ -141,12 +135,31 @@ describe('barra lateral', () => {
     expect(screen.queryByRole('link', { name: 'Auditoría' })).not.toBeInTheDocument();
   });
 
-  it('el icono no basta: el desplegable y la salida se nombran con palabras', () => {
+  it('el icono no basta: el desplegable se nombra con palabras', () => {
     pintar('/periodos/202606');
 
     expect(screen.getByRole('button', { name: 'Contraer Periodos' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Modo oscuro' })).toBeInTheDocument();
+  });
+
+  it('no trae marca ni cuenta: solo la vuelta a las empresas', () => {
+    pintar('/dashboard');
+
+    expect(screen.getByRole('link', { name: 'Volver a las empresas' })).toHaveAttribute(
+      'href',
+      '/',
+    );
+    expect(screen.queryByRole('link', { name: /SIRE/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cerrar sesión' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Modo oscuro' })).not.toBeInTheDocument();
+  });
+
+  it('la vuelta a las empresas también cierra el cajón de móvil', async () => {
+    const onNavegar = vi.fn();
+    pintar('/dashboard', onNavegar);
+
+    await userEvent.click(screen.getByRole('link', { name: 'Volver a las empresas' }));
+
+    expect(onNavegar).toHaveBeenCalled();
   });
 
   it('avisa al navegar, que es como se cierra el cajón de móvil', async () => {

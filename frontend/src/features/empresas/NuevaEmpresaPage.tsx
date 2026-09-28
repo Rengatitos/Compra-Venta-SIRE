@@ -40,7 +40,7 @@ export function NuevaEmpresaPage() {
     // Se entra directo a la cuenta recién creada: es lo que se venía a hacer,
     // y evita tener que buscarla en el selector.
     guardarEmpresaActiva(ruc);
-    void navegar('/', { replace: true });
+    void navegar('/dashboard', { replace: true });
   }
 
   return (

@@ -93,7 +93,7 @@ export function EmpresaGate() {
       // solo y no hace falta vaciarlo. Lo que sí hace falta es salir de la ruta
       // actual: `/periodos/202607` puede no existir en la empresa nueva, y el
       // `?comprobante=` de la anterior tampoco.
-      void navegar('/', { replace: true });
+      void navegar('/dashboard', { replace: true });
     },
     [activo, navegar],
   );
@@ -103,7 +103,7 @@ export function EmpresaGate() {
       guardarEmpresaActiva(empresa.ruc);
       void consulta.refetch();
       mostrar({ tono: 'exito', titulo: 'Empresa registrada' });
-      void navegar('/', { replace: true });
+      void navegar('/dashboard', { replace: true });
     },
     [consulta, mostrar, navegar],
   );
@@ -146,7 +146,7 @@ export function EmpresaGate() {
   if (empresas.length === 0) {
     // Antes este estado era inalcanzable: se entraba con las credenciales de una
     // empresa que por definición existía. Ahora es el primer arranque en limpio,
-    // y el formulario va incrustado porque `/empresas/nueva` vive dentro del
+    // y el formulario va incrustado porque `/nueva-empresa` vive dentro del
     // panel, que a su vez exige una empresa activa.
     return (
       <MarcoDelGate titulo="Todavía no hay ninguna empresa">
@@ -164,7 +164,7 @@ export function EmpresaGate() {
     // de partida es el panel general, donde se ven todas y se entra en la que
     // toque. No se autoselecciona «la primera»: con dos cuentas abiertas se
     // podría sincronizar o borrar datos creyendo estar en la otra.
-    return <Navigate to="/empresas" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return (

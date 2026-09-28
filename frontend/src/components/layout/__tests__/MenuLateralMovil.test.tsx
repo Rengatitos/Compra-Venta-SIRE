@@ -3,18 +3,12 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { ContextoAuthReact } from '@/features/auth/authContext';
 import { ContextoEmpresasReact } from '@/features/empresas/empresasContext';
 import { ContextoJobsReact } from '@/features/jobs/jobsContext';
-
-// La barra lateral monta la campana de procesos, que consulta el historial.
-vi.mock('@/api/jobs', () => ({
-  listarJobs: () => Promise.resolve([]),
-  obtenerJob: () => Promise.reject(new Error('no debería consultarse en este test')),
-}));
 
 import { MenuLateralMovil } from '../MenuLateralMovil';
 

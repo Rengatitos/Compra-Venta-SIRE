@@ -13,7 +13,7 @@ export function NoEncontradaPage() {
       <EmptyState
         titulo="No encontramos lo que buscabas"
         texto="La dirección no corresponde a ninguna sección de la aplicación."
-        accion={<Link to="/">Volver al dashboard</Link>}
+        accion={<Link to="/dashboard">Volver al dashboard</Link>}
       />
     </>
   );

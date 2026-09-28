@@ -69,7 +69,7 @@ export function ProcesamientoMasivo({ seleccionados, todas, onEnviada }: Props) 
     evento.preventDefault();
     setError(null);
     if (!seleccionados.length) {
-      setError('Marca al menos una empresa en la tabla.');
+      setError('Marca al menos una empresa en «Empresas».');
       return;
     }
     if (alcance === 'rango') {
@@ -104,7 +104,7 @@ export function ProcesamientoMasivo({ seleccionados, todas, onEnviada }: Props) 
         <p aria-live="polite">
           {cuantas
             ? `${cuantas} ${cuantas === 1 ? 'empresa seleccionada' : 'empresas seleccionadas'}${todas ? ' (todas)' : ''}.`
-            : 'Marca en la tabla las empresas que quieres procesar.'}
+            : 'Marca en «Empresas» las que quieres procesar.'}
         </p>
 
         <fieldset className={estilos.periodos}>

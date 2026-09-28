@@ -1,20 +1,25 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useLocation } from 'react-router';
 
 import { IconoCerrar, IconoMenu } from './IconosNav';
 import estilos from './MenuLateralMovil.module.css';
 import { SideNav } from './SideNav';
 
+interface Props {
+  /** Barra que se monta en el cajón. Por defecto, la de la empresa activa. */
+  barra?: (onNavegar: () => void) => ReactNode;
+}
+
 /**
  * En móvil la barra lateral se sirve como cajón.
  *
  * Es un `<dialog>` nativo, así que el atrapado de foco, Escape, la devolución
- * del foco al botón y la capa superior los pone el navegador: el mismo criterio
- * por el que `SelectorEmpresa` no se hizo con un `<select>` a mano. No se
- * reutiliza el componente `Dialog` porque impone encabezado, cuerpo y fila de
- * acciones centrados, que es justo lo contrario de un panel pegado al borde.
+ * del foco al botón y la capa superior los pone el navegador. No se reutiliza
+ * el componente `Dialog` porque impone encabezado, cuerpo y fila de acciones
+ * centrados, que es justo lo contrario de un panel pegado al borde.
  */
-export function MenuLateralMovil() {
+export function MenuLateralMovil({ barra }: Props) {
   const [abierto, setAbierto] = useState(false);
   const referencia = useRef<HTMLDialogElement>(null);
   const idCajon = useId();
@@ -73,12 +78,7 @@ export function MenuLateralMovil() {
         <IconoMenu />
       </button>
 
-      <dialog
-        ref={referencia}
-        id={idCajon}
-        className={estilos.cajon}
-        aria-label="Navegación"
-      >
+      <dialog ref={referencia} id={idCajon} className={estilos.cajon} aria-label="Navegación">
         <button
           type="button"
           className={estilos.cerrar}
@@ -90,7 +90,13 @@ export function MenuLateralMovil() {
 
         {/* Solo se monta abierto: así no hay dos árboles de navegación vivos a
             la vez. */}
-        {abierto ? <SideNav onNavegar={() => setAbierto(false)} /> : null}
+        {abierto ? (
+          barra ? (
+            barra(() => setAbierto(false))
+          ) : (
+            <SideNav onNavegar={() => setAbierto(false)} />
+          )
+        ) : null}
       </dialog>
     </>
   );

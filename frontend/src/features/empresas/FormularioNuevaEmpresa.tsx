@@ -18,7 +18,7 @@ interface Props {
 
 /**
  * Alta de empresa. Vive como componente y no como pantalla porque se usa en dos
- * sitios: la ruta `/empresas/nueva` del panel y el estado vacío de
+ * sitios: la ruta `/nueva-empresa` del panel y el estado vacío de
  * `EmpresaGate`. Ese segundo caso es el que obliga a separarlo — cuando no hay
  * ninguna empresa todavía no se puede entrar al panel, así que el formulario
  * tiene que poder pintarse fuera de él.

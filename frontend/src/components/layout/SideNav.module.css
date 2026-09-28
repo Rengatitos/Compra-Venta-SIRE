@@ -1,4 +1,5 @@
-/* Tres bandas: encabezado fijo, cuerpo desplazable y zona de cuenta fija. */
+/* Bandas fijas arriba (encabezado) y abajo (cuenta o pie) alrededor de un
+   cuerpo desplazable. La barra de empresa solo usa cuerpo y pie. */
 .panel {
   display: flex;
   flex-direction: column;
@@ -27,6 +28,12 @@
   flex-direction: column;
   flex-shrink: 0;
   gap: var(--space-1);
+  padding: var(--space-3);
+  border-block-start: 1px solid var(--color-border);
+}
+
+.pie {
+  flex-shrink: 0;
   padding: var(--space-3);
   border-block-start: 1px solid var(--color-border);
 }
@@ -167,16 +174,6 @@
   text-decoration: none;
 }
 
-.campana {
-  flex-shrink: 0;
-}
-
-@media (width <= 60rem) {
-  .campana {
-    display: none;
-  }
-}
-
 .monograma {
   display: grid;
   flex-shrink: 0;
@@ -237,9 +234,8 @@
   white-space: nowrap;
 }
 
-/* El subtítulo de la marca se parte en dos líneas en vez de recortarse: con la
-   campana al lado ya no cabe de una, y «Registro de compras e…» se lee peor
-   que dos renglones. */
+/* El subtítulo de la marca se parte en dos líneas en vez de recortarse: si no
+   cabe de una, «Registro de compras e…» se lee peor que dos renglones. */
 .subtitulo {
   line-height: var(--leading-label);
   text-wrap: pretty;

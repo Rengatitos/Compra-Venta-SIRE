@@ -70,12 +70,12 @@ const OPCIONES_AXE = { rules: { 'color-contrast': { enabled: false } } } as cons
 function montar() {
   const cliente = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={['/empresas/nueva']}>
+    <MemoryRouter initialEntries={['/nueva-empresa']}>
       <QueryClientProvider client={cliente}>
         <ToastProvider>
           <Routes>
-            <Route path="/empresas/nueva" element={<NuevaEmpresaPage />} />
-            <Route path="/" element={<p>Panel</p>} />
+            <Route path="/nueva-empresa" element={<NuevaEmpresaPage />} />
+            <Route path="/dashboard" element={<p>Panel</p>} />
           </Routes>
         </ToastProvider>
       </QueryClientProvider>

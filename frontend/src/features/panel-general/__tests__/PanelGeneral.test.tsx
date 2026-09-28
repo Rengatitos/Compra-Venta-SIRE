@@ -7,7 +7,12 @@ import { axe } from 'vitest-axe';
 
 import { ToastProvider } from '@/components/ui/ToastProvider';
 import { ContextoAuthReact } from '@/features/auth/authContext';
-import { PanelGeneralPage } from '@/features/panel-general/PanelGeneralPage';
+import { CorreosPage } from '@/features/panel-general/CorreosPage';
+import { EmpresasPage } from '@/features/panel-general/EmpresasPage';
+import { HistorialPage } from '@/features/panel-general/HistorialPage';
+import { PanelGeneralShell } from '@/features/panel-general/PanelGeneralShell';
+import { ProcesamientoMasivoPage } from '@/features/panel-general/ProcesamientoMasivoPage';
+import { SolicitudesPage } from '@/features/panel-general/SolicitudesPage';
 import { guardarSesion, limpiarSesion, obtenerSesion } from '@/lib/session';
 import type { JobResponse, ResumenEmpresa, ResumenEmpresas } from '@/types/api';
 
@@ -88,10 +93,10 @@ const RESUMEN: ResumenEmpresas = {
   ],
 };
 
-function montar() {
+function montar(ruta = '/') {
   const cliente = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={['/empresas']}>
+    <MemoryRouter initialEntries={[ruta]}>
       <QueryClientProvider client={cliente}>
         <ToastProvider>
           <ContextoAuthReact.Provider
@@ -104,8 +109,14 @@ function montar() {
             }}
           >
             <Routes>
-              <Route path="/empresas" element={<PanelGeneralPage />} />
-              <Route path="/" element={<p>Panel de la empresa</p>} />
+              <Route element={<PanelGeneralShell />}>
+                <Route index element={<EmpresasPage />} />
+                <Route path="procesamiento" element={<ProcesamientoMasivoPage />} />
+                <Route path="solicitudes" element={<SolicitudesPage />} />
+                <Route path="historial" element={<HistorialPage />} />
+                <Route path="correos" element={<CorreosPage />} />
+              </Route>
+              <Route path="/dashboard" element={<p>Panel de la empresa</p>} />
               <Route path="/ajustes" element={<p>Ajustes</p>} />
             </Routes>
           </ContextoAuthReact.Provider>
@@ -128,7 +139,37 @@ afterEach(() => {
   limpiarSesion();
 });
 
+async function irA(enlace: string) {
+  await userEvent.click(await screen.findByRole('link', { name: enlace }));
+}
+
 describe('panel general de empresas', () => {
+  it('la barra lateral ofrece sus secciones y marca «Empresas» en la raíz', async () => {
+    montar();
+
+    const nav = screen.getByRole('navigation', { name: 'Secciones de la aplicación' });
+    for (const texto of ['Procesamiento masivo', 'Solicitudes', 'Historial', 'Correos']) {
+      expect(within(nav).getByRole('link', { name: texto })).not.toHaveAttribute(
+        'aria-current',
+      );
+    }
+    expect(within(nav).getByRole('link', { name: 'Empresas' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Empresas' }),
+    ).toBeInTheDocument();
+  });
+
+  it('ofrece volver a la empresa activa si sigue existiendo', async () => {
+    guardarSesion({ token: 'jwt', correo: 'prueba@example.com', ruc: '20603391692' });
+    montar();
+
+    await irA('Beta EIRL');
+    expect(await screen.findByText('Panel de la empresa')).toBeInTheDocument();
+  });
+
   it('muestra los totales de empresas y de procesos por estado', async () => {
     montar();
 
@@ -138,17 +179,26 @@ describe('panel general de empresas', () => {
     expect(screen.getByText('Con errores').parentElement).toHaveTextContent('1');
   });
 
-  it('lista cada empresa con sus periodos, su última descarga SIRE y sus correos', async () => {
+  it('lista cada empresa con la cantidad de periodos, su último proceso y sus correos', async () => {
     montar();
 
     const tabla = await screen.findByRole('group', { name: 'Listado de empresas' });
+    expect(
+      within(tabla).getByRole('columnheader', { name: 'Última actualización' }),
+    ).toBeInTheDocument();
     const alfa = within(tabla).getByText('Alfa SAC').closest('tr');
     const beta = within(tabla).getByText('Beta EIRL').closest('tr');
+    if (!alfa || !beta) throw new Error('Faltan filas en la tabla');
+    // Celdas `td`: procesar, periodos, actualización, último proceso, correos, acciones.
+    const celdasAlfa = within(alfa).getAllByRole('cell');
+    expect(celdasAlfa[1]).toHaveTextContent(/^2$/);
+    expect(celdasAlfa[3]).toHaveTextContent(/^Descarga SIRE$/);
     expect(alfa).toHaveTextContent('conta@alfa.pe');
-    expect(alfa).toHaveTextContent('sincronizado');
+    expect(alfa).not.toHaveTextContent('sincronizado');
+    expect(alfa).not.toHaveTextContent('Completado');
+    expect(within(beta).getAllByRole('cell')[1]).toHaveTextContent(/^0$/);
     expect(beta).toHaveTextContent('Nunca');
     expect(beta).toHaveTextContent('Sin correos');
-    expect(beta).toHaveTextContent('Sin periodos');
   });
 
   it('filtra por RUC o nombre', async () => {
@@ -161,7 +211,7 @@ describe('panel general de empresas', () => {
     expect(within(tabla).getByText('Beta EIRL')).toBeInTheDocument();
   });
 
-  it('«Entrar» deja la empresa activa y abre su panel', async () => {
+  it('«Entrar» deja la empresa activa y abre su dashboard', async () => {
     montar();
 
     await userEvent.click(
@@ -172,7 +222,7 @@ describe('panel general de empresas', () => {
     expect(obtenerSesion()?.ruc).toBe('20603391692');
   });
 
-  it('«Editar» los correos lleva a los ajustes de esa empresa', async () => {
+  it('«Editar correo» lleva a los ajustes de esa empresa', async () => {
     montar();
 
     await userEvent.click(
@@ -184,7 +234,7 @@ describe('panel general de empresas', () => {
   });
 
   it('el historial muestra los procesos de todas las empresas', async () => {
-    montar();
+    montar('/historial');
 
     const historial = await screen.findByRole('group', {
       name: 'Historial de procesos de todas las empresas',
@@ -198,6 +248,11 @@ describe('panel general de empresas', () => {
     montar();
 
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Procesar Alfa SAC' }));
+    await irA('Procesar 1 seleccionada');
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Procesamiento masivo' }),
+    ).toBeInTheDocument();
     const desde = screen.getByLabelText('Desde');
     await userEvent.clear(desde);
     await userEvent.type(desde, '2026-07');
@@ -213,7 +268,10 @@ describe('panel general de empresas', () => {
     });
     expect(await screen.findByText('Procesamiento en cola')).toBeInTheDocument();
     // La selección se limpia tras lanzar.
-    expect(screen.getByRole('checkbox', { name: 'Procesar Alfa SAC' })).not.toBeChecked();
+    await irA('Empresas');
+    expect(
+      await screen.findByRole('checkbox', { name: 'Procesar Alfa SAC' }),
+    ).not.toBeChecked();
   });
 
   it('con todas marcadas pide «todas» y todos sus periodos registrados', async () => {
@@ -221,8 +279,11 @@ describe('panel general de empresas', () => {
     montar();
 
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Seleccionar todas' }));
+    await irA('Procesamiento masivo');
     await userEvent.click(
-      screen.getByRole('radio', { name: 'Todos los periodos registrados de cada empresa' }),
+      await screen.findByRole('radio', {
+        name: 'Todos los periodos registrados de cada empresa',
+      }),
     );
     await userEvent.click(screen.getByRole('checkbox', { name: /Clasificar con IA/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Procesar' }));
@@ -235,7 +296,7 @@ describe('panel general de empresas', () => {
   });
 
   it('sin empresas marcadas no deja procesar', async () => {
-    montar();
+    montar('/procesamiento');
     expect(await screen.findByRole('button', { name: 'Procesar' })).toBeDisabled();
   });
 

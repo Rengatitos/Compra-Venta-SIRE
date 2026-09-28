@@ -37,7 +37,7 @@ const OTRA = empresa('20610202251', 'Beta');
 function montar() {
   const cliente = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={['/dashboard']}>
       <QueryClientProvider client={cliente}>
         <ToastProvider>
           <ContextoAuthReact.Provider
@@ -50,7 +50,7 @@ function montar() {
             }}
           >
             <Routes>
-              <Route path="/empresas" element={<p>Panel general</p>} />
+              <Route path="/" element={<p>Panel general</p>} />
               <Route element={<EmpresaGate />}>
                 <Route path="*" element={<p>Panel abierto</p>} />
               </Route>
@@ -112,7 +112,7 @@ describe('elección de empresa', () => {
   });
 
   it('sin ninguna empresa ofrece dar de alta la primera ahí mismo', async () => {
-    // El formulario va incrustado y no como enlace: `/empresas/nueva` vive
+    // El formulario va incrustado y no como enlace: `/nueva-empresa` vive
     // dentro del panel, que a su vez exige una empresa activa.
     mocks.listarEmpresas.mockResolvedValue([]);
 
