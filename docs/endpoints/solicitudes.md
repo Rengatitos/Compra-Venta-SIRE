@@ -45,8 +45,23 @@ Vuelve a encolar lo que falló: los pasos fallidos (y los que se omitieron porqu
 
 Registro de los correos enviados: `correo`, `empresas`, `periodos`, `estado` (`pendiente`, `enviado`, `fallido`, `bloqueado`), `modo` (`adjunto` o `enlace`), `intentos`, `error`, `enviado_en`, `solicitud_id`. Hasta 100, de las solicitudes más recientes.
 
+## Configuración del correo (solo administradores)
+
+Todo lo del correo vive en Mongo (colección `configuracion`, documento `correo`) y se edita desde **Correos** en el panel. No hay variables de entorno para esto.
+
+- `GET /api/v1/correos/configuracion`. Devuelve:
+  - servidor (`host`, `puerto`, `seguridad`: `starttls`, `ssl` o `ninguna`) y `usuario`;
+  - `password_configurada` (la contraseña nunca sale);
+  - remitente, `destinatarios_permitidos`, `max_adjunto_mb`, `dias_enlace` y `url_publica`;
+  - la plantilla (`plantilla_asunto`, `plantilla_cuerpo`), las `variables` disponibles y la `plantilla_por_defecto`.
+- `PUT /api/v1/correos/configuracion`: cambios parciales. Una `password` vacía conserva la guardada; la nueva se cifra como las claves SOL. `422` con valores inválidos.
+- `POST /api/v1/correos/configuracion/vista-previa`: `{plantilla_asunto, plantilla_cuerpo}` → `{asunto, texto, html}` con datos de ejemplo. No guarda nada.
+- `POST /api/v1/correos/configuracion/prueba`: `{destinatario}` envía un correo de prueba con la configuración **guardada**. Respeta la lista blanca. `422` con el motivo legible (sin servidor, destinatario no permitido, contraseña rechazada, sin conexión). Límite: 5/minuto.
+
+Las variables de la plantilla se escriben `{{nombre}}`: `destinatario`, `resumen`, `empresas`, `periodos`, `fecha`, `etapas`, `resultados` y `entrega`. La sustitución es literal (sin Jinja). En el HTML el texto se escapa, `etapas` sale como lista y `resultados` como tabla.
+
 ## `GET /api/v1/descargas/{token}`
 
-**Sin sesión.** Es el enlace del correo cuando el ZIP no cabe como adjunto. El token es un JWT `tipo: "descarga"` con la solicitud y el archivo, y caduca a los `DESCARGA_ENLACE_DIAS`. No sirve como sesión (`usuario_actual` exige `tipo: "usuario"`), y la ruta solo sirve `.zip` de la carpeta de esa solicitud. `401` si el token no vale, `404` si el archivo ya no está. Límite: 20/minuto.
+**Sin sesión.** Es el enlace del correo cuando el ZIP no cabe como adjunto. El token es un JWT `tipo: "descarga"` con la solicitud y el archivo, y caduca a los días configurados en **Correos**. No sirve como sesión (`usuario_actual` exige `tipo: "usuario"`), y la ruta solo sirve `.zip` de la carpeta de esa solicitud. `401` si el token no vale, `404` si el archivo ya no está. Límite: 20/minuto.
 
 Ver [flujo de procesamiento masivo](../flujo/09-procesamiento-masivo.md) y [modelo de datos](../modelo-datos/solicitudes.md).

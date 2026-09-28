@@ -7,10 +7,12 @@ Recibe el correo:
   las empresas a las que está asociada. Es un cliente del contador y no debe
   ver los archivos de los demás, así que recibe un ZIP propio.
 
-Un destinatario fuera de `CORREO_DESTINATARIOS_PERMITIDOS` queda «bloqueado» y
-no se le escribe: en local solo se admite el correo de pruebas. El envío es
-SMTP (`smtplib`, en un hilo). Si el ZIP pasa de `CORREO_MAX_ADJUNTO_MB`, en vez
-de adjuntarlo se manda un enlace firmado que caduca.
+El servidor SMTP, el remitente, la lista blanca y la plantilla se configuran en
+el panel (`/correos`) y se leen de Mongo en cada envío
+(`app.repositories.configuracion`). Un destinatario fuera de la lista blanca
+queda «bloqueado» y no se le escribe: en local solo se admite el correo de
+pruebas. Si el ZIP pasa del tamaño máximo, en vez de adjuntarlo se manda un
+enlace firmado que caduca.
 """
 
 from __future__ import annotations
@@ -27,6 +29,13 @@ from typing import Any
 
 from app.core.auth import crear_token_descarga
 from app.core.config import settings
+from app.core.encryption import decrypt_password
+from app.domain.configuracion_correo import (
+    ConfiguracionCorreo,
+    Valor,
+    renderizar_html,
+    renderizar_texto,
+)
 from app.domain.jobs import Job
 from app.domain.solicitudes import (
     EstadoEnvio,
@@ -34,14 +43,19 @@ from app.domain.solicitudes import (
     EstadoPaso,
     ModoEnvio,
     Paso,
+    fecha_peru,
     nombre_zip,
 )
+from app.repositories import configuracion as repo_configuracion
 from app.repositories import empresas as repo_empresas
 from app.repositories import solicitudes as repo_solicitudes
 from app.services import empaquetado_service
 from app.services.cola.errores import ErrorPermanente, ErrorTransitorio
 
 logger = logging.getLogger(__name__)
+
+TIMEOUT_ENVIO_S = 60
+TIMEOUT_PRUEBA_S = 20
 
 ETIQUETA_ITEM = {
     EstadoItem.COMPLETADO.value: "Completado",
@@ -59,13 +73,8 @@ ETAPAS = (
 )
 
 
-def smtp_configurado() -> bool:
-    return bool(settings.SMTP_HOST)
-
-
-def permitido(correo: str) -> bool:
-    lista = settings.CORREO_DESTINATARIOS_PERMITIDOS
-    return not lista or correo.lower() in lista
+class CorreoNoEnviado(Exception):
+    """El envío de prueba falló; el mensaje ya viene en palabras del usuario."""
 
 
 async def destinatarios(db, solicitud: dict[str, Any]) -> list[dict[str, Any]]:
@@ -98,6 +107,9 @@ async def destinatarios(db, solicitud: dict[str, Any]) -> list[dict[str, Any]]:
     return envios
 
 
+# --- Mensaje -------------------------------------------------------------------
+
+
 def _estado_etapa(items: list[dict[str, Any]], pasos: set[Paso]) -> str:
     estados = [
         p["estado"]
@@ -112,75 +124,101 @@ def _estado_etapa(items: list[dict[str, Any]], pasos: set[Paso]) -> str:
     return "completado"
 
 
-def construir(
+def _mes(periodo: str) -> str:
+    return f"{periodo[4:]}/{periodo[:4]}"
+
+
+def _plural(n: int, singular: str, plural: str) -> str:
+    return f"{n} {singular if n == 1 else plural}"
+
+
+def valores(
     solicitud: dict[str, Any],
     envio: dict[str, Any],
+    config: ConfiguracionCorreo,
     *,
-    adjunto: Path | None,
+    adjunto: bool,
     enlace: str | None,
-) -> EmailMessage:
+) -> dict[str, Valor]:
+    """Lo que pone cada variable de la plantilla para este destinatario."""
     items = [i for i in solicitud["items"] if i["ruc"] in envio["rucs"]]
     nombres = {e["ruc"]: e.get("nombre") or e["ruc"] for e in envio["empresas"]}
     etapas = [(nombre, _estado_etapa(items, pasos)) for nombre, pasos in ETAPAS]
     etapas.append(("Generación de los archivos finales", "completado"))
 
-    mensaje = EmailMessage()
-    mensaje["Subject"] = (
-        f"Sire · Procesamiento terminado: {len(envio['rucs'])} "
-        f"{'empresa' if len(envio['rucs']) == 1 else 'empresas'}, "
-        f"{len(items)} {'periodo' if len(items) == 1 else 'periodos'}"
-    )
-    mensaje["From"] = settings.SMTP_REMITENTE or settings.SMTP_USUARIO or ""
-    mensaje["To"] = envio["correo"]
-
     if adjunto:
-        entrega = "Adjuntamos el ZIP con los reportes y comprobantes de cada empresa y periodo."
+        entrega = Valor(
+            "Adjuntamos el ZIP con los reportes y comprobantes de cada empresa y periodo."
+        )
     elif enlace:
-        entrega = (
+        entrega = Valor(
             f"El ZIP pesa más de lo que admite el correo; descárgalo aquí (válido "
-            f"{settings.DESCARGA_ENLACE_DIAS} días): {enlace}"
+            f"{config.dias_enlace} días): {enlace}",
+            f'El ZIP pesa más de lo que admite el correo: <a href="{escape(enlace)}">'
+            f"descárgalo aquí</a> (válido {config.dias_enlace} días).",
         )
     else:
-        entrega = "El ZIP pesa más de lo que admite el correo; descárgalo desde el panel de Sire."
+        entrega = Valor(
+            "El ZIP pesa más de lo que admite el correo; descárgalo desde el panel de Sire."
+        )
 
-    texto = [
-        "El procesamiento que pediste en Sire ha terminado.",
-        "",
-        *[f"- {nombre}: {estado}" for nombre, estado in etapas],
-        "",
-        *[
-            f"- {nombres[i['ruc']]} ({i['ruc']}) · {i['periodo'][4:]}/{i['periodo'][:4]}: "
-            f"{ETIQUETA_ITEM.get(i['estado'], i['estado'])}"
-            for i in items
-        ],
-        "",
-        entrega,
-    ]
-    mensaje.set_content("\n".join(texto))
-
-    filas = "".join(
-        f"<tr><td>{escape(nombres[i['ruc']])}</td><td>{i['ruc']}</td>"
-        f"<td>{i['periodo'][4:]}/{i['periodo'][:4]}</td>"
-        f"<td>{escape(ETIQUETA_ITEM.get(i['estado'], i['estado']))}</td></tr>"
+    filas = [
+        (
+            nombres[i["ruc"]],
+            i["ruc"],
+            _mes(i["periodo"]),
+            ETIQUETA_ITEM.get(i["estado"], i["estado"]),
+        )
         for i in items
-    )
-    lista_etapas = "".join(
-        f"<li>{escape(nombre)}: <strong>{escape(estado)}</strong></li>" for nombre, estado in etapas
-    )
-    entrega_html = (
-        f'<a href="{escape(enlace)}">Descargar el ZIP</a> (válido '
-        f"{settings.DESCARGA_ENLACE_DIAS} días)."
-        if enlace and not adjunto
-        else escape(entrega)
-    )
-    mensaje.add_alternative(
-        "<p>El procesamiento que pediste en Sire ha terminado.</p>"
-        f"<ul>{lista_etapas}</ul>"
+    ]
+    tabla = (
         '<table cellpadding="6" style="border-collapse:collapse" border="1">'
         "<tr><th>Empresa</th><th>RUC</th><th>Periodo</th><th>Estado</th></tr>"
-        f"{filas}</table><p>{entrega_html}</p>",
-        subtype="html",
+        + "".join(
+            "<tr>" + "".join(f"<td>{escape(c)}</td>" for c in fila) + "</tr>" for fila in filas
+        )
+        + "</table>"
     )
+    periodos = sorted({i["periodo"] for i in items})
+    return {
+        "destinatario": Valor(envio["correo"]),
+        "resumen": Valor(
+            f"{_plural(len(envio['rucs']), 'empresa', 'empresas')}, "
+            f"{_plural(len(items), 'periodo', 'periodos')}"
+        ),
+        "empresas": Valor(", ".join(nombres[r] for r in envio["rucs"])),
+        "periodos": Valor(", ".join(_mes(p) for p in periodos)),
+        "fecha": Valor(fecha_peru(solicitud.get("terminado_en")).strftime("%d/%m/%Y")),
+        "etapas": Valor(
+            "\n".join(f"- {nombre}: {estado}" for nombre, estado in etapas),
+            "<ul>" + "".join(
+                f"<li>{escape(nombre)}: <strong>{escape(estado)}</strong></li>"
+                for nombre, estado in etapas
+            ) + "</ul>",
+        ),
+        "resultados": Valor(
+            "\n".join(f"- {n} ({r}) · {p}: {e}" for n, r, p, e in filas), tabla
+        ),
+        "entrega": entrega,
+    }
+
+
+def construir(
+    solicitud: dict[str, Any],
+    envio: dict[str, Any],
+    config: ConfiguracionCorreo,
+    *,
+    adjunto: Path | None,
+    enlace: str | None,
+) -> EmailMessage:
+    datos = valores(solicitud, envio, config, adjunto=adjunto is not None, enlace=enlace)
+    mensaje = EmailMessage()
+    # Un salto de línea en el asunto rompería la cabecera.
+    mensaje["Subject"] = " ".join(renderizar_texto(config.plantilla_asunto, datos).split())
+    mensaje["From"] = config.remitente
+    mensaje["To"] = envio["correo"]
+    mensaje.set_content(renderizar_texto(config.plantilla_cuerpo, datos))
+    mensaje.add_alternative(renderizar_html(config.plantilla_cuerpo, datos), subtype="html")
     if adjunto:
         mensaje.add_attachment(
             adjunto.read_bytes(), maintype="application", subtype="zip", filename=adjunto.name
@@ -188,12 +226,99 @@ def construir(
     return mensaje
 
 
-def _enviar(mensaje: EmailMessage) -> None:
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=60) as smtp:
-        smtp.starttls()
-        if settings.SMTP_USUARIO:
-            smtp.login(settings.SMTP_USUARIO, settings.SMTP_PASSWORD or "")
+# Datos de ejemplo para la vista previa del panel y el correo de prueba.
+SOLICITUD_EJEMPLO: dict[str, Any] = {
+    "_id": "ejemplo",
+    "creado_por": "contador@ejemplo.pe",
+    "terminado_en": None,
+    "items": [
+        {"ruc": "20123456789", "periodo": "202608", "estado": "completado", "pasos": [
+            {"paso": "sire_compras", "estado": "completado"},
+            {"paso": "detalle_compras", "estado": "completado"},
+            {"paso": "clasificacion_compras", "estado": "completado"},
+        ]},
+        {"ruc": "20987654321", "periodo": "202608", "estado": "con_errores", "pasos": [
+            {"paso": "sire_compras", "estado": "completado"},
+            {"paso": "detalle_compras", "estado": "fallido"},
+            {"paso": "clasificacion_compras", "estado": "completado"},
+        ]},
+    ],
+}
+ENVIO_EJEMPLO: dict[str, Any] = {
+    "correo": "contador@ejemplo.pe",
+    "rucs": ["20123456789", "20987654321"],
+    "empresas": [
+        {"ruc": "20123456789", "nombre": "Empresa Alfa SAC"},
+        {"ruc": "20987654321", "nombre": "Comercial Beta EIRL"},
+    ],
+}
+
+
+def vista_previa(config: ConfiguracionCorreo) -> dict[str, str]:
+    datos = valores(SOLICITUD_EJEMPLO, ENVIO_EJEMPLO, config, adjunto=True, enlace=None)
+    return {
+        "asunto": " ".join(renderizar_texto(config.plantilla_asunto, datos).split()),
+        "texto": renderizar_texto(config.plantilla_cuerpo, datos),
+        "html": renderizar_html(config.plantilla_cuerpo, datos),
+    }
+
+
+# --- SMTP ----------------------------------------------------------------------
+
+
+def _enviar(mensaje: EmailMessage, config: ConfiguracionCorreo, timeout: int = TIMEOUT_ENVIO_S):
+    if config.seguridad == "ssl":
+        smtp = smtplib.SMTP_SSL(config.host, config.puerto, timeout=timeout)
+    else:
+        smtp = smtplib.SMTP(config.host, config.puerto, timeout=timeout)
+    with smtp:
+        if config.seguridad == "starttls":
+            smtp.starttls()
+        if config.usuario:
+            password = decrypt_password(config.password_cifrada) if config.password_cifrada else ""
+            smtp.login(config.usuario, password)
         smtp.send_message(mensaje)
+
+
+def _explicar(exc: Exception) -> tuple[str, bool]:
+    """Mensaje para el usuario y si es definitivo (reintentar no lo arregla)."""
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return "El servidor de correo rechazó el usuario o la contraseña (SMTP)", True
+    if isinstance(exc, smtplib.SMTPRecipientsRefused | smtplib.SMTPSenderRefused):
+        return f"El servidor de correo rechazó la dirección: {exc}", True
+    if isinstance(exc, TimeoutError | ConnectionError | OSError) and not isinstance(
+        exc, smtplib.SMTPException
+    ):
+        return f"No se pudo conectar con el servidor de correo: {exc}", False
+    return str(exc)[:500] or type(exc).__name__, False
+
+
+async def enviar_prueba(db, destinatario: str) -> None:
+    """Un correo de prueba con la configuración guardada. Lanza `CorreoNoEnviado`."""
+    config = await repo_configuracion.obtener_correo(db)
+    if not config.configurado:
+        raise CorreoNoEnviado("Primero guarda el servidor SMTP")
+    if not config.permitido(destinatario):
+        raise CorreoNoEnviado("Ese destinatario no está en la lista de destinatarios permitidos")
+    previa = vista_previa(config)
+    mensaje = EmailMessage()
+    mensaje["Subject"] = f"[Prueba] {previa['asunto']}"
+    mensaje["From"] = config.remitente
+    mensaje["To"] = destinatario
+    mensaje.set_content(
+        "Correo de prueba de Sire con datos de ejemplo.\n\n" + previa["texto"]
+    )
+    mensaje.add_alternative(
+        "<p><em>Correo de prueba de Sire con datos de ejemplo.</em></p>" + previa["html"],
+        subtype="html",
+    )
+    try:
+        await asyncio.to_thread(_enviar, mensaje, config, TIMEOUT_PRUEBA_S)
+    except Exception as exc:
+        raise CorreoNoEnviado(_explicar(exc)[0]) from exc
+
+
+# --- Manejador de la cola ------------------------------------------------------
 
 
 async def _zip_para(db, solicitud: dict[str, Any], envio: dict[str, Any]) -> Path:
@@ -211,12 +336,11 @@ async def _zip_para(db, solicitud: dict[str, Any], envio: dict[str, Any]) -> Pat
     return parcial
 
 
-def _enlace(solicitud_id: str, archivo: str) -> str | None:
-    if not settings.APP_URL_PUBLICA:
+def _enlace(solicitud_id: str, archivo: str, config: ConfiguracionCorreo) -> str | None:
+    if not config.url_publica:
         return None
-    token = crear_token_descarga(solicitud_id, archivo)
-    base = settings.APP_URL_PUBLICA.rstrip("/")
-    return f"{base}{settings.API_V1_PREFIX}/descargas/{token}"
+    token = crear_token_descarga(solicitud_id, archivo, config.dias_enlace)
+    return f"{config.url_publica.rstrip('/')}{settings.API_V1_PREFIX}/descargas/{token}"
 
 
 async def enviar_solicitud(db, job: Job, reportar) -> dict[str, Any]:
@@ -225,6 +349,7 @@ async def enviar_solicitud(db, job: Job, reportar) -> dict[str, Any]:
     solicitud = await repo_solicitudes.obtener(db, solicitud_id)
     if not solicitud:
         raise ErrorPermanente("La solicitud ya no existe")
+    config = await repo_configuracion.obtener_correo(db)
 
     envios = solicitud.get("envios") or []
     if not envios:
@@ -239,19 +364,19 @@ async def enviar_solicitud(db, job: Job, reportar) -> dict[str, Any]:
             continue
         await reportar(indice, len(envios), f"Enviando a {envio['correo']}")
         cambios: dict[str, Any]
-        if not permitido(envio["correo"]):
+        if not config.permitido(envio["correo"]):
             cambios = {
                 "estado": EstadoEnvio.BLOQUEADO.value,
-                "error": "Destinatario fuera de CORREO_DESTINATARIOS_PERMITIDOS en este entorno",
+                "error": "Destinatario fuera de la lista de destinatarios permitidos",
             }
-        elif not smtp_configurado():
+        elif not config.configurado:
             cambios = {
                 "estado": EstadoEnvio.FALLIDO.value,
                 "definitivo": True,
-                "error": "El correo no está configurado (SMTP_HOST vacío)",
+                "error": "El correo no está configurado: guarda el servidor SMTP en «Correos»",
             }
         else:
-            cambios = await _enviar_uno(db, solicitud, envio)
+            cambios = await _enviar_uno(db, solicitud, envio, config)
             if cambios["estado"] == EstadoEnvio.FALLIDO.value and not cambios.get("definitivo"):
                 pendientes_reintentables += 1
         await repo_solicitudes.guardar_envio(db, solicitud_id, indice, cambios)
@@ -267,33 +392,25 @@ async def enviar_solicitud(db, job: Job, reportar) -> dict[str, Any]:
     }
 
 
-async def _enviar_uno(db, solicitud: dict[str, Any], envio: dict[str, Any]) -> dict[str, Any]:
+async def _enviar_uno(
+    db, solicitud: dict[str, Any], envio: dict[str, Any], config: ConfiguracionCorreo
+) -> dict[str, Any]:
     intentos = envio.get("intentos", 0) + 1
     try:
         zip_ = await _zip_para(db, solicitud, envio)
-        limite = settings.CORREO_MAX_ADJUNTO_MB * 1024 * 1024
-        adjunto = zip_ if zip_.stat().st_size <= limite else None
-        enlace = None if adjunto else _enlace(str(solicitud["_id"]), zip_.name)
-        mensaje = construir(solicitud, envio, adjunto=adjunto, enlace=enlace)
-        await asyncio.to_thread(_enviar, mensaje)
-    except smtplib.SMTPAuthenticationError as exc:
-        logger.error("SMTP rechazó el usuario o la contraseña: %s", exc.smtp_code)
-        return {
-            "estado": EstadoEnvio.FALLIDO.value,
-            "definitivo": True,
-            "intentos": intentos,
-            "error": "El servidor de correo rechazó el usuario o la contraseña (SMTP)",
-        }
-    except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused) as exc:
-        return {
-            "estado": EstadoEnvio.FALLIDO.value,
-            "definitivo": True,
-            "intentos": intentos,
-            "error": f"El servidor de correo rechazó la dirección: {exc}",
-        }
+        adjunto = zip_ if zip_.stat().st_size <= config.max_adjunto_mb * 1024 * 1024 else None
+        enlace = None if adjunto else _enlace(str(solicitud["_id"]), zip_.name, config)
+        mensaje = construir(solicitud, envio, config, adjunto=adjunto, enlace=enlace)
+        await asyncio.to_thread(_enviar, mensaje, config)
     except Exception as exc:
-        logger.warning("No se pudo enviar el correo a %s: %s", envio["correo"], exc)
-        return {"estado": EstadoEnvio.FALLIDO.value, "intentos": intentos, "error": str(exc)[:500]}
+        error, definitivo = _explicar(exc)
+        logger.warning("No se pudo enviar el correo a %s: %s", envio["correo"], error)
+        return {
+            "estado": EstadoEnvio.FALLIDO.value,
+            "definitivo": definitivo,
+            "intentos": intentos,
+            "error": error,
+        }
     logger.info("Correo enviado a %s (%s)", envio["correo"], "adjunto" if adjunto else "enlace")
     return {
         "estado": EstadoEnvio.ENVIADO.value,

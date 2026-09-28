@@ -25,6 +25,18 @@ Los archivos van en `{SUNAT_DATA_DIR}/solicitudes/{id}/`: el ZIP completo (`DESC
 
 Índice: `creado_en` descendente.
 
+## `configuracion`
+
+Configuración editable desde el panel, un documento por área ([repositories/configuracion.py](../../app/repositories/configuracion.py)). Hoy solo `_id: "correo"`, con los campos de [ConfiguracionCorreo](../../app/domain/configuracion_correo.py):
+
+- servidor SMTP: `host`, `puerto`, `seguridad`, `usuario` y `password_cifrada` (Fernet con `SOL_USER_CRYPTO_KEY`);
+- `remitente_nombre`, `remitente_correo` y `destinatarios_permitidos`;
+- `max_adjunto_mb`, `dias_enlace` y `url_publica`;
+- `plantilla_asunto` y `plantilla_cuerpo`;
+- quién la cambió y cuándo (`actualizado_por`, `actualizado_en`).
+
+Sin documento, se usan los valores por defecto (sin servidor: no se envía nada).
+
 ## `cargas_empresas`
 
 Una por alta individual o por Excel subido. Persistida por [repositories/cargas_empresas.py](../../app/repositories/cargas_empresas.py).

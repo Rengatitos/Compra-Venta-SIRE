@@ -62,12 +62,12 @@ Un trabajo `envio_correo` ([correo_service.py](../../app/services/correo_service
 - quien pidió la solicitud, con todas las empresas;
 - cada correo de `correos_notificacion` de las empresas incluidas, **solo con las suyas**, en un ZIP aparte.
 
-El correo avisa del fin y resume cada etapa (SIRE, comprobantes, IA, archivos) y el estado de cada empresa y periodo. El ZIP va adjunto hasta `CORREO_MAX_ADJUNTO_MB`; si pesa más, va un enlace firmado ([GET /descargas/{token}](../endpoints/solicitudes.md)) que caduca a los `DESCARGA_ENLACE_DIAS`.
+El servidor SMTP, el remitente, los límites y la plantilla se configuran en el panel, en **Correos** ([configuración del correo](../endpoints/solicitudes.md#configuración-del-correo-solo-administradores)). El mensaje sale de esa plantilla: por defecto avisa del fin y resume cada etapa (SIRE, comprobantes, IA, archivos) y el estado de cada empresa y periodo. El ZIP va adjunto hasta el tamaño máximo configurado; si pesa más, va un enlace firmado ([GET /descargas/{token}](../endpoints/solicitudes.md)) que caduca a los días configurados.
 
 Reglas del envío:
 
-- Un destinatario fuera de `CORREO_DESTINATARIOS_PERMITIDOS` queda «bloqueado» y no se le escribe. En local solo se admite el correo de pruebas.
-- Sin `SMTP_HOST`, o con la contraseña SMTP rechazada, el envío queda fallido sin reintentarse.
+- Un destinatario fuera de los «destinatarios permitidos» queda «bloqueado» y no se le escribe. En local solo se admite el correo de pruebas.
+- Sin servidor SMTP guardado, o con la contraseña SMTP rechazada, el envío queda fallido sin reintentarse.
 - Un corte de red se reintenta solo para los correos que no salieron.
 
 Cada envío queda en la solicitud y se lista en [GET /correos/envios](../endpoints/solicitudes.md): correo, empresas asociadas, periodos procesados, fecha y estado.

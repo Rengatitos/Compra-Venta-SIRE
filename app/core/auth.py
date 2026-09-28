@@ -58,12 +58,12 @@ def decode_token(token: str) -> dict:
 TIPO_TOKEN_DESCARGA = "descarga"
 
 
-def crear_token_descarga(solicitud_id: str, archivo: str) -> str:
+def crear_token_descarga(solicitud_id: str, archivo: str, dias: int) -> str:
     payload = {
         "tipo": TIPO_TOKEN_DESCARGA,
         "sid": solicitud_id,
         "archivo": archivo,
-        "exp": datetime.now(UTC) + timedelta(days=settings.DESCARGA_ENLACE_DIAS),
+        "exp": datetime.now(UTC) + timedelta(days=dias),
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 

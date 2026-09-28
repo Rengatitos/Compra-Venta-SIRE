@@ -6,13 +6,16 @@ import asyncio
 import io
 import smtplib
 import zipfile
+from dataclasses import replace
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from bson import ObjectId
 
 from app.domain.comprobante import Libro
+from app.domain.configuracion_correo import ConfiguracionCorreo
 from app.domain.jobs import Job, TipoJob
 from app.services import correo_service, empaquetado_service
 from app.services.cola.errores import ErrorPermanente, ErrorTransitorio
@@ -152,13 +155,25 @@ class RepoSolicitudes:
 
 @pytest.fixture
 def smtp(monkeypatch):
-    enviados = []
-    monkeypatch.setattr(correo_service.settings, "SMTP_HOST", "smtp.example.com")
-    monkeypatch.setattr(correo_service.settings, "SMTP_USUARIO", "sire@example.com")
-    monkeypatch.setattr(correo_service.settings, "CORREO_DESTINATARIOS_PERMITIDOS", [])
-    monkeypatch.setattr(correo_service.settings, "APP_URL_PUBLICA", "https://sire.example.com")
-    monkeypatch.setattr(correo_service, "_enviar", lambda mensaje: enviados.append(mensaje))
-    return enviados
+    """SMTP falso y la configuración que se leería de Mongo."""
+    estado = SimpleNamespace(
+        enviados=[],
+        config=ConfiguracionCorreo(
+            host="smtp.example.com",
+            usuario="sire@example.com",
+            url_publica="https://sire.example.com",
+        ),
+    )
+
+    async def obtener(db):
+        return estado.config
+
+    monkeypatch.setattr(correo_service.repo_configuracion, "obtener_correo", obtener)
+    monkeypatch.setattr(
+        correo_service, "_enviar",
+        lambda mensaje, config, timeout=60: estado.enviados.append(mensaje),
+    )
+    return estado
 
 
 def enviar(monkeypatch, solicitud, intentos=1, max_intentos=5):
@@ -178,8 +193,9 @@ def test_el_contador_recibe_todo_y_cada_cliente_solo_lo_suyo(datos, smtp, monkey
     resultado = enviar(monkeypatch, solicitud)
 
     assert resultado == {"enviados": 2, "bloqueados": 0, "fallidos": 0}
-    por_correo = {m["To"]: m for m in smtp}
+    por_correo = {m["To"]: m for m in smtp.enviados}
     assert set(por_correo) == {"contador@example.com", "c@alfa.pe"}
+    assert por_correo["c@alfa.pe"]["From"] == "Sire <sire@example.com>"
     adjunto_contador = next(por_correo["contador@example.com"].iter_attachments())
     assert adjunto_contador.get_filename() == "DESCARGA_2026-09-27.zip"
     # El cliente de Alfa recibe un ZIP aparte, sin la carpeta de Beta.
@@ -193,46 +209,43 @@ def test_el_contador_recibe_todo_y_cada_cliente_solo_lo_suyo(datos, smtp, monkey
 
 
 def test_fuera_de_la_lista_blanca_no_se_escribe(datos, smtp, monkeypatch):
-    monkeypatch.setattr(
-        correo_service.settings,
-        "CORREO_DESTINATARIOS_PERMITIDOS",
-        ["espinozavaleracinve@gmail.com"],
-    )
+    smtp.config = replace(smtp.config, destinatarios_permitidos=["espinozavaleracinve@gmail.com"])
     solicitud = solicitud_con_zip(datos, [item(RUC_A)])
 
     resultado = enviar(monkeypatch, solicitud)
 
     assert resultado["bloqueados"] == 2
-    assert smtp == []
+    assert smtp.enviados == []
 
 
 def test_un_zip_grande_va_como_enlace_firmado(datos, smtp, monkeypatch):
-    monkeypatch.setattr(correo_service.settings, "CORREO_MAX_ADJUNTO_MB", 0)
+    smtp.config = replace(smtp.config, max_adjunto_mb=0, dias_enlace=3)
     solicitud = solicitud_con_zip(datos, [item(RUC_B)])
 
     enviar(monkeypatch, solicitud)
 
-    [mensaje] = smtp
+    [mensaje] = smtp.enviados
     assert list(mensaje.iter_attachments()) == []
     texto = mensaje.get_body(("plain",)).get_content()
     assert "https://sire.example.com/api/v1/descargas/" in texto
+    assert "válido 3 días" in texto
     assert solicitud["envios"][0]["modo"] == "enlace"
 
 
 def test_sin_smtp_configurado_falla_sin_reintentar(datos, smtp, monkeypatch):
-    monkeypatch.setattr(correo_service.settings, "SMTP_HOST", None)
+    smtp.config = replace(smtp.config, host="")
     solicitud = solicitud_con_zip(datos, [item(RUC_B)])
 
     resultado = enviar(monkeypatch, solicitud)
 
     assert resultado["fallidos"] == 1
-    assert "SMTP_HOST" in solicitud["envios"][0]["error"]
+    assert "Correos" in solicitud["envios"][0]["error"]
 
 
 def test_un_fallo_pasajero_reintenta_solo_lo_que_no_salio(datos, smtp, monkeypatch):
     llamadas = []
 
-    def falla_una_vez(mensaje):
+    def falla_una_vez(mensaje, config, timeout=60):
         llamadas.append(mensaje["To"])
         if len(llamadas) == 1:
             raise smtplib.SMTPServerDisconnected("se cortó")
@@ -250,7 +263,7 @@ def test_un_fallo_pasajero_reintenta_solo_lo_que_no_salio(datos, smtp, monkeypat
 
 
 def test_una_contrasena_smtp_mala_no_se_reintenta(datos, smtp, monkeypatch):
-    def rechaza(mensaje):
+    def rechaza(mensaje, config, timeout=60):
         raise smtplib.SMTPAuthenticationError(535, b"bad")
 
     monkeypatch.setattr(correo_service, "_enviar", rechaza)
@@ -262,7 +275,7 @@ def test_una_contrasena_smtp_mala_no_se_reintenta(datos, smtp, monkeypatch):
     assert "contraseña" in solicitud["envios"][0]["error"]
 
 
-def test_el_correo_cuenta_las_etapas_y_el_estado_de_cada_periodo(datos):
+def test_el_correo_por_defecto_cuenta_las_etapas_y_el_estado_de_cada_periodo(datos):
     pasos = [
         {"paso": "sire_compras", "estado": "completado"},
         {"paso": "detalle_compras", "estado": "fallido"},
@@ -271,14 +284,104 @@ def test_el_correo_cuenta_las_etapas_y_el_estado_de_cada_periodo(datos):
     solicitud = solicitud_con_zip(datos, [{**item(RUC_A, estado="con_errores"), "pasos": pasos}])
     envio = {"correo": "a@b.pe", "rucs": [RUC_A], "empresas": [{"ruc": RUC_A, "nombre": "Alfa"}]}
 
-    mensaje = correo_service.construir(solicitud, envio, adjunto=None, enlace=None)
+    mensaje = correo_service.construir(
+        solicitud, envio, ConfiguracionCorreo(), adjunto=None, enlace=None
+    )
 
     texto = mensaje.get_body(("plain",)).get_content()
     assert "Descarga de reportes SIRE: completado" in texto
     assert "Descarga de comprobantes: con errores" in texto
     assert "clasificación con IA: omitido" in texto
     assert "Alfa (20610202251) · 08/2026: Completado con observaciones" in texto
-    assert mensaje["Subject"].startswith("Sire · Procesamiento terminado: 1 empresa, 1 periodo")
+    assert mensaje["Subject"] == "Sire · Procesamiento terminado: 1 empresa, 1 periodo"
+    html = mensaje.get_body(("html",)).get_content()
+    assert "<table" in html and "<li>Descarga de comprobantes" in html
+
+
+def test_la_plantilla_guardada_manda_sobre_el_texto(datos):
+    config = ConfiguracionCorreo(
+        plantilla_asunto="Listo {{empresas}}\npara revisar",
+        plantilla_cuerpo="Hola {{destinatario}}:\n<b>{{periodos}}</b> {{desconocida}}",
+    )
+    solicitud = solicitud_con_zip(datos, [item(RUC_A)])
+    envio = {"correo": "a@b.pe", "rucs": [RUC_A], "empresas": [{"ruc": RUC_A, "nombre": "Alfa"}]}
+
+    mensaje = correo_service.construir(solicitud, envio, config, adjunto=None, enlace=None)
+
+    # El salto de línea del asunto no rompe la cabecera.
+    assert mensaje["Subject"] == "Listo Alfa para revisar"
+    assert mensaje.get_body(("plain",)).get_content().startswith("Hola a@b.pe:\n<b>08/2026</b>")
+    html = mensaje.get_body(("html",)).get_content()
+    # El texto de la plantilla se escapa y la variable desconocida queda a la vista.
+    assert "&lt;b&gt;08/2026&lt;/b&gt;" in html
+    assert "{{desconocida}}" in html
+
+
+class SmtpFalso:
+    creados: list = []
+
+    def __init__(self, host, puerto, timeout):
+        self.acciones = [("conectar", host, puerto, timeout)]
+        SmtpFalso.creados.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def starttls(self):
+        self.acciones.append(("starttls",))
+
+    def login(self, usuario, password):
+        self.acciones.append(("login", usuario, password))
+
+    def send_message(self, mensaje):
+        self.acciones.append(("enviar", mensaje["To"]))
+
+
+class SmtpSslFalso(SmtpFalso):
+    pass
+
+
+@pytest.mark.parametrize(
+    ("seguridad", "clase", "con_starttls"),
+    [("starttls", SmtpFalso, True), ("ssl", SmtpSslFalso, False), ("ninguna", SmtpFalso, False)],
+)
+def test_la_seguridad_elige_la_conexion(monkeypatch, seguridad, clase, con_starttls):
+    from email.message import EmailMessage
+
+    from app.core.encryption import encrypt_password
+
+    SmtpFalso.creados = []
+    monkeypatch.setattr(correo_service.smtplib, "SMTP", SmtpFalso)
+    monkeypatch.setattr(correo_service.smtplib, "SMTP_SSL", SmtpSslFalso)
+    config = ConfiguracionCorreo(
+        host="smtp.example.com", puerto=465, seguridad=seguridad, usuario="u@x.pe",
+        password_cifrada=encrypt_password("clave-app"),
+    )
+    mensaje = EmailMessage()
+    mensaje["To"] = "a@b.pe"
+
+    correo_service._enviar(mensaje, config)
+
+    [conexion] = SmtpFalso.creados
+    assert type(conexion) is clase
+    assert (("starttls",) in conexion.acciones) is con_starttls
+    assert ("login", "u@x.pe", "clave-app") in conexion.acciones
+
+
+def test_la_prueba_respeta_la_lista_blanca_y_exige_servidor(smtp):
+    smtp.config = replace(smtp.config, destinatarios_permitidos=["ok@x.pe"])
+    with pytest.raises(correo_service.CorreoNoEnviado, match="permitidos"):
+        asyncio.run(correo_service.enviar_prueba(None, "otro@x.pe"))
+
+    asyncio.run(correo_service.enviar_prueba(None, "ok@x.pe"))
+    assert smtp.enviados[0]["Subject"].startswith("[Prueba] Sire")
+
+    smtp.config = replace(smtp.config, host="")
+    with pytest.raises(correo_service.CorreoNoEnviado, match="SMTP"):
+        asyncio.run(correo_service.enviar_prueba(None, "ok@x.pe"))
 
 
 def test_una_solicitud_borrada_es_un_error_permanente(monkeypatch):

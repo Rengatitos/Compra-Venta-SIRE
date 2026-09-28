@@ -4,17 +4,34 @@ público de descarga del ZIP."""
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.core.auth import leer_token_descarga, usuario_actual
+from app.core.auth import exigir_admin, leer_token_descarga, usuario_actual
+from app.core.encryption import encrypt_password
 from app.db.database import get_db
+from app.domain.configuracion_correo import (
+    ASUNTO_POR_DEFECTO,
+    CUERPO_POR_DEFECTO,
+    VARIABLES,
+    ConfiguracionCorreo,
+)
+from app.repositories import configuracion as repo_configuracion
 from app.repositories import solicitudes as repo_solicitudes
+from app.schemas.configuracion_correo import (
+    ConfiguracionCorreoResponse,
+    ConfiguracionCorreoUpdate,
+    PruebaRequest,
+    VistaPreviaRequest,
+    VistaPreviaResponse,
+)
+from app.schemas.generic import MessageResponse
 from app.schemas.solicitudes import EnvioListado, SolicitudCreate, SolicitudResponse
-from app.services import empaquetado_service, solicitudes_service
+from app.services import correo_service, empaquetado_service, solicitudes_service
 from app.services.solicitudes_service import SolicitudInvalida
 
 router = APIRouter(dependencies=[Depends(usuario_actual)])
@@ -111,6 +128,89 @@ async def descargar_zip(solicitud_id: str, db=Depends(get_db)):
 )
 async def listar_envios(db=Depends(get_db)):
     return await repo_solicitudes.listar_envios(db)
+
+
+def _respuesta_configuracion(config: ConfiguracionCorreo) -> dict:
+    return {
+        "host": config.host,
+        "puerto": config.puerto,
+        "seguridad": config.seguridad,
+        "usuario": config.usuario,
+        "password_configurada": bool(config.password_cifrada),
+        "remitente_nombre": config.remitente_nombre,
+        "remitente_correo": config.remitente_correo,
+        "destinatarios_permitidos": config.destinatarios_permitidos,
+        "max_adjunto_mb": config.max_adjunto_mb,
+        "dias_enlace": config.dias_enlace,
+        "url_publica": config.url_publica,
+        "plantilla_asunto": config.plantilla_asunto,
+        "plantilla_cuerpo": config.plantilla_cuerpo,
+        "configurado": config.configurado,
+        "variables": [{"nombre": n, "descripcion": d} for n, d in VARIABLES.items()],
+        "plantilla_por_defecto": {"asunto": ASUNTO_POR_DEFECTO, "cuerpo": CUERPO_POR_DEFECTO},
+    }
+
+
+@router_correos.get(
+    "/configuracion",
+    response_model=ConfiguracionCorreoResponse,
+    summary="Servidor SMTP, remitente y plantilla del correo",
+)
+async def leer_configuracion(_admin: dict = Depends(exigir_admin), db=Depends(get_db)):
+    return _respuesta_configuracion(await repo_configuracion.obtener_correo(db))
+
+
+@router_correos.put(
+    "/configuracion",
+    response_model=ConfiguracionCorreoResponse,
+    summary="Guardar la configuración del correo",
+)
+async def guardar_configuracion(
+    datos: ConfiguracionCorreoUpdate,
+    admin: dict = Depends(exigir_admin),
+    db=Depends(get_db),
+):
+    cambios = datos.model_dump(exclude_unset=True, exclude_none=True)
+    # Una contraseña vacía es «no la toques», igual que en las credenciales SOL.
+    password = cambios.pop("password", "")
+    if password:
+        cambios["password_cifrada"] = encrypt_password(password)
+    config = await repo_configuracion.guardar_correo(db, cambios, por=admin["email"])
+    logger.info("Configuración de correo actualizada por %s: %s", admin["email"], sorted(cambios))
+    return _respuesta_configuracion(config)
+
+
+@router_correos.post(
+    "/configuracion/vista-previa",
+    response_model=VistaPreviaResponse,
+    summary="Ver cómo queda la plantilla con datos de ejemplo",
+)
+async def previsualizar(
+    datos: VistaPreviaRequest, _admin: dict = Depends(exigir_admin), db=Depends(get_db)
+):
+    config = await repo_configuracion.obtener_correo(db)
+    return correo_service.vista_previa(replace(
+        config, plantilla_asunto=datos.plantilla_asunto, plantilla_cuerpo=datos.plantilla_cuerpo
+    ))
+
+
+@router_correos.post(
+    "/configuracion/prueba",
+    response_model=MessageResponse,
+    summary="Enviar un correo de prueba con la configuración guardada",
+)
+@limiter.limit("5/minute")
+async def enviar_prueba(
+    request: Request,
+    datos: PruebaRequest,
+    _admin: dict = Depends(exigir_admin),
+    db=Depends(get_db),
+):
+    try:
+        await correo_service.enviar_prueba(db, datos.destinatario)
+    except correo_service.CorreoNoEnviado as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"mensaje": f"Correo de prueba enviado a {datos.destinatario}"}
 
 
 @router_descargas.get(

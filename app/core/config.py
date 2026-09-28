@@ -144,26 +144,9 @@ class Settings(BaseSettings):
     COLA_LATIDO_S: int = 30
     COLA_LATIDO_VENCIDO_S: int = 120
 
-    # Correo SMTP para avisar del fin de una solicitud. Con Gmail: smtp.gmail.com,
-    # 587 y una contraseña de aplicación (no la de la cuenta). Sin `SMTP_HOST`
-    # los envíos quedan fallidos con el motivo, sin reintentarse.
-    SMTP_HOST: str | None = None
-    SMTP_PORT: int = 587
-    SMTP_USUARIO: str | None = None
-    SMTP_PASSWORD: str | None = None
-    # Dirección del remitente; si falta se usa `SMTP_USUARIO`.
-    SMTP_REMITENTE: str | None = None
-    # Lista blanca de destinatarios. Vacía = cualquiera. En local se deja solo
-    # el correo de pruebas para no escribir por error a un cliente real.
-    CORREO_DESTINATARIOS_PERMITIDOS: Annotated[list[str], NoDecode] = []
-    # Por encima de este tamaño el ZIP no se adjunta: va un enlace firmado.
-    # Gmail rechaza adjuntos de más de 25 MB (y el base64 infla un tercio).
-    CORREO_MAX_ADJUNTO_MB: int = 18
-    # Días que vale el enlace de descarga del correo.
-    DESCARGA_ENLACE_DIAS: int = 7
-    # Dirección pública de la API con la que se arman esos enlaces
-    # (p. ej. https://sire.apaclla.com). Sin ella el correo no lleva enlace.
-    APP_URL_PUBLICA: str | None = None
+    # El correo de fin de solicitud (servidor SMTP, remitente, lista blanca y
+    # plantilla) no va aquí: se configura en el panel, en «Correos», y se
+    # guarda en Mongo (`app.repositories.configuracion`).
 
     # Clave con la que sire-bot (Apaclla Bot) se autentica en la cabecera
     # `X-Api-Key`. Sin ella los endpoints del bot responden 503: la integración
@@ -226,7 +209,7 @@ class Settings(BaseSettings):
 
         return [origen.strip() for origen in texto.split(",") if origen.strip()]
 
-    @field_validator("GOOGLE_ALLOWED_EMAILS", "CORREO_DESTINATARIOS_PERMITIDOS", mode="before")
+    @field_validator("GOOGLE_ALLOWED_EMAILS", mode="before")
     @classmethod
     def _parsear_correos(cls, v):
         # Google entrega el correo en minúsculas, pero el .env lo escribe una

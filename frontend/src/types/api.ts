@@ -773,3 +773,47 @@ export interface SolicitudResponse {
   zip: { archivo: string; bytes: number; generado_en: string | null } | null;
   envios: EnvioCorreo[];
 }
+
+/* — configuración del correo (app/schemas/configuracion_correo.py) — */
+
+export type SeguridadSmtp = 'starttls' | 'ssl' | 'ninguna';
+
+export interface VariablePlantilla {
+  nombre: string;
+  descripcion: string;
+}
+
+export interface ConfiguracionCorreo {
+  host: string;
+  puerto: number;
+  seguridad: SeguridadSmtp;
+  usuario: string;
+  /** La contraseña nunca viaja al navegador; solo si hay una guardada. */
+  password_configurada: boolean;
+  remitente_nombre: string;
+  remitente_correo: string;
+  /** Vacía = se puede escribir a cualquiera. */
+  destinatarios_permitidos: string[];
+  max_adjunto_mb: number;
+  dias_enlace: number;
+  url_publica: string;
+  plantilla_asunto: string;
+  plantilla_cuerpo: string;
+  configurado: boolean;
+  variables: VariablePlantilla[];
+  plantilla_por_defecto: { asunto: string; cuerpo: string };
+}
+
+/** Cambios parciales. `password` vacío conserva la guardada. */
+export type ConfiguracionCorreoUpdate = Partial<
+  Omit<
+    ConfiguracionCorreo,
+    'password_configurada' | 'configurado' | 'variables' | 'plantilla_por_defecto'
+  >
+> & { password?: string };
+
+export interface VistaPreviaCorreo {
+  asunto: string;
+  texto: string;
+  html: string;
+}

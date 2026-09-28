@@ -18,6 +18,7 @@ NOMBRE_COL_USUARIOS = "usuarios"
 NOMBRE_COL_CLASIFICACIONES_FRECUENTES = "clasificaciones_frecuentes"
 NOMBRE_COL_CARGAS_EMPRESAS = "cargas_empresas"
 NOMBRE_COL_SOLICITUDES = "solicitudes"
+NOMBRE_COL_CONFIGURACION = "configuracion"
 
 
 def monto_a_bson(valor: Decimal | None) -> Decimal128 | None:

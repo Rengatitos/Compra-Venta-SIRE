@@ -149,7 +149,7 @@ describe('envíos de correo', () => {
       ...solicitud().envios[0]!,
       correo: 'cliente@alfa.pe',
       estado: 'bloqueado',
-      error: 'Destinatario fuera de CORREO_DESTINATARIOS_PERMITIDOS en este entorno',
+      error: 'Destinatario fuera de la lista de destinatarios permitidos',
       solicitud_id: 's1',
       solicitud_creada_en: '2026-09-27T15:00:00Z',
     };

@@ -302,11 +302,11 @@ def test_el_enlace_del_correo_descarga_el_zip_y_nada_fuera_de_su_carpeta(
     (tmp_path / "otro.zip").write_bytes(b"PK")
     monkeypatch.setattr(ruta.empaquetado_service, "raiz_solicitud", lambda s: tmp_path / s)
 
-    ok = cliente.get(f"/descargas/{crear_token_descarga(sid, 'DESCARGA_2026-09-27.zip')}")
+    ok = cliente.get(f"/descargas/{crear_token_descarga(sid, 'DESCARGA_2026-09-27.zip', 7)}")
     assert ok.status_code == 200
     assert ok.content == b"PK"
 
-    fuera = cliente.get(f"/descargas/{crear_token_descarga(sid, '../otro.zip')}")
+    fuera = cliente.get(f"/descargas/{crear_token_descarga(sid, '../otro.zip', 7)}")
     assert fuera.status_code == 404
     assert cliente.get("/descargas/no-es-un-token").status_code == 401
 
