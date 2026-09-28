@@ -9,14 +9,19 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, TableFooter } from '@/components/ui/DataTable';
 import type { Columna } from '@/components/ui/DataTable';
-import { Dialog } from '@/components/ui/Dialog';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/Feedback';
 import { SelectField } from '@/components/ui/Field';
 import type { Opcion } from '@/components/ui/Field';
 import { Pagination } from '@/components/ui/Pagination';
 import { Panel } from '@/components/ui/Panel';
 import { useRuc } from '@/features/auth/useAuth';
-import { presentarEstadoJob, presentarTipoJob } from '@/features/jobs/estadoJob';
+import { DetalleJobDialog } from '@/features/jobs/DetalleJobDialog';
+import {
+  OPCIONES_ESTADO_JOB,
+  describirReintento,
+  presentarEstadoJob,
+  presentarTipoJob,
+} from '@/features/jobs/estadoJob';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { formatearFechaHora, formatearPeriodo } from '@/lib/format';
 import { ApiError } from '@/lib/http';
@@ -26,13 +31,7 @@ import type { EstadoJob } from '@/types/domain';
 
 const POR_PAGINA = 25;
 
-const ESTADOS: readonly Opcion[] = [
-  { valor: '', texto: 'Todos' },
-  { valor: 'pendiente', texto: 'En cola' },
-  { valor: 'en_progreso', texto: 'En progreso' },
-  { valor: 'completado', texto: 'Completado' },
-  { valor: 'fallido', texto: 'Fallido' },
-];
+const ESTADOS: readonly Opcion[] = [{ valor: '', texto: 'Todos' }, ...OPCIONES_ESTADO_JOB];
 
 export function ProcesosPage() {
   useDocumentTitle('Procesos');
@@ -98,10 +97,19 @@ export function ProcesosPage() {
       cabecera: 'Estado',
       render: (fila) => {
         const presentacion = presentarEstadoJob(fila.estado);
+        const reintento = describirReintento(fila);
         return (
-          <Badge tono={presentacion.tono} conPunto>
-            {presentacion.texto}
-          </Badge>
+          <>
+            <Badge tono={presentacion.tono} conPunto>
+              {presentacion.texto}
+            </Badge>
+            {reintento ? (
+              <>
+                <br />
+                <span className={layout.textoSecundario}>{reintento}</span>
+              </>
+            ) : null}
+          </>
         );
       },
     },
@@ -110,9 +118,7 @@ export function ProcesosPage() {
       cabecera: 'Avance',
       numerica: true,
       render: (fila) =>
-        fila.progreso.total > 0
-          ? `${fila.progreso.actual} / ${fila.progreso.total}`
-          : '—',
+        fila.progreso.total > 0 ? `${fila.progreso.actual} / ${fila.progreso.total}` : '—',
     },
     {
       clave: 'creado_en',
@@ -219,59 +225,7 @@ export function ProcesosPage() {
         </Panel>
       </div>
 
-      <Dialog
-        abierto={aInspeccionar !== null}
-        titulo={
-          aInspeccionar
-            ? `${presentarTipoJob(aInspeccionar.tipo)} · ${formatearPeriodo(aInspeccionar.periodo)}`
-            : ''
-        }
-        onCerrar={() => setAInspeccionar(null)}
-        acciones={
-          <Button variante="fantasma" onClick={() => setAInspeccionar(null)}>
-            Cerrar
-          </Button>
-        }
-      >
-        {aInspeccionar ? (
-          <div className={layout.pila}>
-            <dl className={layout.definiciones}>
-              <div>
-                <dt className={layout.termino}>Identificador</dt>
-                <dd className={layout.descripcion}>{aInspeccionar.job_id}</dd>
-              </div>
-              <div>
-                <dt className={layout.termino}>Estado</dt>
-                <dd className={layout.descripcion}>
-                  {presentarEstadoJob(aInspeccionar.estado).texto}
-                </dd>
-              </div>
-              <div>
-                <dt className={layout.termino}>Creado</dt>
-                <dd className={layout.descripcion}>
-                  {formatearFechaHora(aInspeccionar.creado_en)}
-                </dd>
-              </div>
-              <div>
-                <dt className={layout.termino}>Actualizado</dt>
-                <dd className={layout.descripcion}>
-                  {formatearFechaHora(aInspeccionar.actualizado_en)}
-                </dd>
-              </div>
-            </dl>
-
-            {aInspeccionar.error ? (
-              <ErrorState titulo="El trabajo terminó con error" texto={aInspeccionar.error} />
-            ) : null}
-
-            {aInspeccionar.resultado ? (
-              <pre className={layout.preformateado}>
-                {JSON.stringify(aInspeccionar.resultado, null, 2)}
-              </pre>
-            ) : null}
-          </div>
-        ) : null}
-      </Dialog>
+      <DetalleJobDialog job={aInspeccionar} onCerrar={() => setAInspeccionar(null)} />
     </>
   );
 }

@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -31,12 +31,11 @@ async def disponibilidad(
 @limiter.limit("5/minute")
 async def iniciar(
     request: Request,
-    background_tasks: BackgroundTasks,
     periodo: str = Depends(periodo_valido),
     empresa: dict = Depends(empresa_actual),
     db=Depends(get_db),
 ):
-    job = await detracciones_service.encolar(db, empresa, periodo, background_tasks)
+    job = await detracciones_service.encolar(db, empresa, periodo)
     return {
         "job_id": job.job_id,
         "estado": job.estado.value,

@@ -17,6 +17,10 @@
   border-radius: var(--radius-card);
 }
 
+.amplia {
+  inline-size: min(64rem, 100%);
+}
+
 .encabezado {
   display: flex;
   align-items: center;

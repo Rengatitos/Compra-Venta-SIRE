@@ -30,6 +30,7 @@ FastAPI servido con Uvicorn (un solo worker en producción, para ahorrar RAM). M
 - [Cifrado](arquitectura/cifrado.md) — cómo se protegen las contraseñas SOL, e implicaciones de rotar secretos.
 - [Rate limiting](arquitectura/rate-limiting.md) — límites de tasa por endpoint.
 - [Ciclo de vida](arquitectura/ciclo-de-vida.md) — qué ocurre al arrancar y al apagar el servidor, y la recarga en desarrollo.
+- [Cola durable](arquitectura/cola.md) — trabajos en Mongo, carriles, reintentos y recuperación tras un reinicio.
 
 ## Endpoints
 
@@ -45,6 +46,7 @@ FastAPI servido con Uvicorn (un solo worker en producción, para ahorrar RAM). M
 - [Auditoría](endpoints/auditoria.md)
 - [Reporte y comprobantes asociados](endpoints/reporte-asociado.md)
 - [Jobs](endpoints/jobs.md)
+- [Solicitudes de procesamiento masivo](endpoints/solicitudes.md) — varias empresas y periodos, ZIP, correos y enlace de descarga
 - [Analytics](endpoints/analytics.md)
 - [Apaclla Bot](endpoints/apaclla-bot.md) — vinculación del bot y comprobantes externos
 
@@ -60,6 +62,7 @@ Recorrido end-to-end, en orden:
 6. [Consulta y exportación de comprobantes](flujo/06-consulta-exportacion.md)
 7. [Detracciones (NPD)](flujo/07-detracciones.md)
 8. [Analytics](flujo/08-analytics.md)
+9. [Procesamiento masivo](flujo/09-procesamiento-masivo.md) — varias empresas y periodos en la cola, ZIP y correo
 
 ## Modelo de datos
 
@@ -69,6 +72,7 @@ Todas las colecciones viven en una sola base lógica de MongoDB. No hay un ODM: 
 - [periodos](modelo-datos/periodos.md)
 - [comprobantes](modelo-datos/comprobantes.md)
 - [jobs](modelo-datos/jobs.md)
+- [solicitudes y cargas de empresas](modelo-datos/solicitudes.md)
 - [comprobantes externos y códigos de vinculación](modelo-datos/comprobantes-externos.md)
 - [Índices creados en el arranque](modelo-datos/indices.md)
 

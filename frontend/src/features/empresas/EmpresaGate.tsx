@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
-import { Outlet, useNavigate } from 'react-router';
+import { Navigate, Outlet, useNavigate } from 'react-router';
 
 import { listarEmpresas } from '@/api/empresas';
 import { Button, ButtonLink } from '@/components/ui/Button';
@@ -14,7 +14,6 @@ import type { EmpresaResponse } from '@/types/api';
 
 import { ContextoEmpresasReact } from './empresasContext';
 import { FormularioNuevaEmpresa } from './FormularioNuevaEmpresa';
-import { ListaEmpresas } from './ListaEmpresas';
 import { Marco } from './Marco';
 import estilos from './Marco.module.css';
 
@@ -94,7 +93,7 @@ export function EmpresaGate() {
       // solo y no hace falta vaciarlo. Lo que sí hace falta es salir de la ruta
       // actual: `/periodos/202607` puede no existir en la empresa nueva, y el
       // `?comprobante=` de la anterior tampoco.
-      void navegar('/', { replace: true });
+      void navegar('/dashboard', { replace: true });
     },
     [activo, navegar],
   );
@@ -104,7 +103,7 @@ export function EmpresaGate() {
       guardarEmpresaActiva(empresa.ruc);
       void consulta.refetch();
       mostrar({ tono: 'exito', titulo: 'Empresa registrada' });
-      void navegar('/', { replace: true });
+      void navegar('/dashboard', { replace: true });
     },
     [consulta, mostrar, navegar],
   );
@@ -147,13 +146,13 @@ export function EmpresaGate() {
   if (empresas.length === 0) {
     // Antes este estado era inalcanzable: se entraba con las credenciales de una
     // empresa que por definición existía. Ahora es el primer arranque en limpio,
-    // y el formulario va incrustado porque `/empresas/nueva` vive dentro del
+    // y el formulario va incrustado porque `/nueva-empresa` vive dentro del
     // panel, que a su vez exige una empresa activa.
     return (
       <MarcoDelGate titulo="Todavía no hay ninguna empresa">
         <p className={estilos.intro}>
-          La base de datos no tiene ninguna empresa registrada. Da de alta la primera con su RUC y
-          sus credenciales SOL para empezar a sincronizar el SIRE.
+          La base de datos no tiene ninguna empresa registrada. Da de alta la primera con su RUC
+          y sus credenciales SOL para empezar a sincronizar el SIRE.
         </p>
         <FormularioNuevaEmpresa onCreada={alCrear} />
       </MarcoDelGate>
@@ -161,15 +160,11 @@ export function EmpresaGate() {
   }
 
   if (!activo) {
-    return (
-      <MarcoDelGate titulo="Elige una empresa">
-        <p className={estilos.intro}>
-          Podrás cambiar de empresa en cualquier momento desde la barra lateral, sin volver a
-          iniciar sesión.
-        </p>
-        <ListaEmpresas empresas={empresas} onElegir={(elegido) => guardarEmpresaActiva(elegido)} />
-      </MarcoDelGate>
-    );
+    // Varias empresas y ninguna elegida (o la recordada ya no existe): el punto
+    // de partida es el panel general, donde se ven todas y se entra en la que
+    // toque. No se autoselecciona «la primera»: con dos cuentas abiertas se
+    // podría sincronizar o borrar datos creyendo estar en la otra.
+    return <Navigate to="/" replace />;
   }
 
   return (

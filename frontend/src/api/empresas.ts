@@ -1,13 +1,18 @@
-import { pedir, segmento } from '@/lib/http';
+import { descargar, enviarFormulario, pedir, segmento } from '@/lib/http';
 import type {
   ActividadEconomica,
+  CargaAceptada,
+  CargaEmpresas,
+  CargaResumen,
   ClaseCiiu,
   CodigoVinculacion,
   CredencialesSunatResultado,
+  EmpresaCreada,
   EmpresaCreate,
   EmpresaResponse,
   EmpresaUpdate,
   MessageResponse,
+  ResumenEmpresas,
   StatusResponse,
 } from '@/types/api';
 
@@ -22,9 +27,60 @@ export function listarEmpresas(): Promise<EmpresaResponse[]> {
   return pedir<EmpresaResponse[]>('/empresas');
 }
 
-/** `POST /api/v1/empresas`. Alta de empresa. Requiere sesión. Límite 5/min. */
-export function crearEmpresa(datos: EmpresaCreate): Promise<EmpresaResponse> {
-  return pedir<EmpresaResponse>('/empresas', { metodo: 'POST', cuerpo: datos });
+/**
+ * `GET /api/v1/empresas/resumen`. Todas las empresas con sus periodos, su
+ * última descarga SIRE, su último proceso y cuántos hay por estado.
+ */
+export function obtenerResumenEmpresas(): Promise<ResumenEmpresas> {
+  return pedir<ResumenEmpresas>('/empresas/resumen');
+}
+
+/**
+ * Guarda la lista completa de correos de la empresa. Va aparte de
+ * `actualizarEmpresa`, que solo envía textos: aquí `[]` vacía la lista.
+ */
+export function guardarCorreos(ruc: string, correos: string[]): Promise<EmpresaResponse> {
+  return pedir<EmpresaResponse>(base(ruc), {
+    metodo: 'PUT',
+    cuerpo: { correos_notificacion: correos },
+  });
+}
+
+/**
+ * `POST /api/v1/empresas`. Alta individual. Requiere sesión. Límite 5/min.
+ * Responde en cuanto la empresa existe; el token y el CIIU se completan en la
+ * cola y se siguen con `obtenerCarga(carga_id)`.
+ */
+export function crearEmpresa(datos: EmpresaCreate): Promise<EmpresaCreada> {
+  return pedir<EmpresaCreada>('/empresas', { metodo: 'POST', cuerpo: datos });
+}
+
+/**
+ * `POST /api/v1/empresas/cargas`. Excel con razón social, RUC, usuario y
+ * contraseña SOL en las columnas A a D. Límite 3/min y 2 MB.
+ */
+export function cargarEmpresas(archivo: File): Promise<CargaAceptada> {
+  const datos = new FormData();
+  datos.append('archivo', archivo);
+  return enviarFormulario<CargaAceptada>('/empresas/cargas', datos);
+}
+
+/** `GET /api/v1/empresas/cargas/{id}`: estado, progreso y resultado por fila. */
+export function obtenerCarga(cargaId: string): Promise<CargaEmpresas> {
+  return pedir<CargaEmpresas>(`/empresas/cargas/${segmento(cargaId)}`);
+}
+
+/** `GET /api/v1/empresas/cargas`: historial de altas, sin las filas. */
+export function listarCargas(): Promise<CargaResumen[]> {
+  return pedir<CargaResumen[]>('/empresas/cargas');
+}
+
+export function descargarReporteCarga(cargaId: string): Promise<void> {
+  return descargar(`/empresas/cargas/${segmento(cargaId)}/reporte`, 'reporte_carga.xlsx');
+}
+
+export function descargarPlantillaCarga(): Promise<void> {
+  return descargar('/empresas/cargas/plantilla', 'plantilla_empresas.xlsx');
 }
 
 export function obtenerEmpresa(ruc: string): Promise<EmpresaResponse> {

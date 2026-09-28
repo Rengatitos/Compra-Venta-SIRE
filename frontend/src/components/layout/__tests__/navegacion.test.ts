@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { construirNavegacion, subEntradasDePeriodo } from '../navegacion';
+import {
+  construirNavegacion,
+  construirNavegacionGeneral,
+  subEntradasDePeriodo,
+} from '../navegacion';
 
 describe('construirNavegacion', () => {
   it('siempre ofrece las siete secciones y cada una con su icono', () => {
     const entradas = construirNavegacion(null);
 
     expect(entradas.map((entrada) => entrada.a)).toEqual([
-      '/',
+      '/dashboard',
       '/clasificaciones',
       '/periodos',
       '/externos',
@@ -48,5 +52,23 @@ describe('subEntradasDePeriodo', () => {
     expect(comprobantes?.exacto).toBe(true);
     expect(auditoria?.exacto).toBeUndefined();
     expect(reporte?.exacto).toBeUndefined();
+  });
+});
+
+describe('construirNavegacionGeneral', () => {
+  it('abre con «Empresas» en la raíz y sigue con las secciones de todas', () => {
+    const entradas = construirNavegacionGeneral();
+
+    expect(entradas.map((entrada) => [entrada.a, entrada.texto])).toEqual([
+      ['/', 'Empresas'],
+      ['/procesamiento', 'Procesamiento masivo'],
+      ['/solicitudes', 'Solicitudes'],
+      ['/historial', 'Historial'],
+      ['/correos', 'Correos'],
+    ]);
+  });
+
+  it('«Empresas» es exacta: si no, quedaría activa en todas las demás', () => {
+    expect(construirNavegacionGeneral()[0]?.exacto).toBe(true);
   });
 });

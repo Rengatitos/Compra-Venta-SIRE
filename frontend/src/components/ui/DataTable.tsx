@@ -29,6 +29,8 @@ interface Props<T> {
   vacio?: ReactNode;
   /** Oculta el `<caption>` visualmente sin quitarlo del árbol accesible. */
   leyendaOculta?: boolean;
+  /** Centra cabeceras y celdas, también las numéricas. */
+  centrada?: boolean;
 }
 
 /**
@@ -43,12 +45,13 @@ export function DataTable<T>({
   claveDeFila,
   vacio,
   leyendaOculta = false,
+  centrada = false,
 }: Props<T>) {
   if (filas.length === 0 && vacio) return <>{vacio}</>;
 
   return (
     <div className={estilos.region} role="group" aria-label={leyenda} tabIndex={0}>
-      <table className={estilos.tabla}>
+      <table className={`${estilos.tabla} ${centrada ? (estilos.centrada ?? '') : ''}`}>
         <caption className={leyendaOculta ? 'visually-hidden' : estilos.leyenda}>
           {leyenda}
         </caption>

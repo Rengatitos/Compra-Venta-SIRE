@@ -58,11 +58,10 @@
 }
 
 /*
- * En escritorio no hay barra superior: la marca, la empresa, las secciones, el
- * tema, la sesión y la campana viven en la barra lateral, así que una banda
- * arriba solo añadiría una franja vacía y un escalón contra la tarjeta. La
- * cabecera reaparece por debajo de 60rem, que es donde hace falta un sitio para
- * el botón del cajón y la campana.
+ * En escritorio no hay barra superior: todo lo que se navega vive en la barra
+ * lateral, así que una banda arriba solo añadiría una franja vacía y un escalón
+ * contra la tarjeta. La cabecera reaparece por debajo de 60rem, que es donde
+ * hace falta un sitio para el botón del cajón y la campana.
  */
 .cabecera {
   display: none;

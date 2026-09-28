@@ -120,6 +120,33 @@ class Settings(BaseSettings):
     # mientras no dé cuenta. Pasado el tope, el resto queda en revisión sin
     # gastar más consultas; recibe la cuenta en cuanto otro igual acierte.
     CLASIFICADOR_INTENTOS_POR_GLOSA: int = 3
+    # Veces que un comprobante puede fallar al clasificarse (error de la IA, no
+    # «requiere revisión») antes de darlo por error persistente. A partir de
+    # ahí la clasificación automática deja de mandarlo y queda para revisión.
+    CLASIFICADOR_MAX_INTENTOS_COMPROBANTE: int = 5
+
+    # Cola durable (`app.services.cola`). Corre dentro de la API: la VM tiene
+    # 4 GB y cada Chromium pide medio, así que dos trabajos a la vez es lo que
+    # cabe junto al clasificador.
+    COLA_HABILITADA: bool = True
+    COLA_TRABAJADORES: int = 2
+    # Intentos por trabajo ante fallos pasajeros (SUNAT caído, un timeout). Los
+    # permanentes (clave SOL rechazada) no se reintentan.
+    COLA_MAX_INTENTOS: int = 5
+    # Espera antes del reintento n: base · 2^(n-1), con techo.
+    COLA_BACKOFF_BASE_S: int = 30
+    COLA_BACKOFF_MAX_S: int = 1800
+    # Cada cuánto busca trabajo el worker si nadie lo despierta.
+    COLA_INTERVALO_S: float = 2.0
+    # Un trabajo en curso late cada `COLA_LATIDO_S`; si pasa
+    # `COLA_LATIDO_VENCIDO_S` sin latir, se da por muerto con su proceso y
+    # vuelve a la cola.
+    COLA_LATIDO_S: int = 30
+    COLA_LATIDO_VENCIDO_S: int = 120
+
+    # El correo de fin de solicitud (servidor SMTP, remitente, lista blanca y
+    # plantilla) no va aquí: se configura en el panel, en «Correos», y se
+    # guarda en Mongo (`app.repositories.configuracion`).
 
     # Clave con la que sire-bot (Apaclla Bot) se autentica en la cabecera
     # `X-Api-Key`. Sin ella los endpoints del bot responden 503: la integración

@@ -26,6 +26,7 @@ import { guardarEmpresaActiva } from '@/lib/session';
 import layout from '@/styles/layouts.module.css';
 
 import { ActividadesEmpresaPanel } from './ActividadesEmpresaPanel';
+import { CorreosEmpresaPanel } from './CorreosEmpresaPanel';
 import { VinculacionBotPanel } from './VinculacionBotPanel';
 
 export function AjustesPage() {
@@ -184,13 +185,26 @@ export function AjustesPage() {
               </div>
               <div>
                 <dt className={layout.termino}>Cuenta</dt>
-                <dd className={layout.descripcion}>{formatearFechaHora(datos.fecha_creacion)}</dd>
+                <dd className={layout.descripcion}>
+                  {formatearFechaHora(datos.fecha_creacion)}
+                </dd>
               </div>
+              {datos.registro ? (
+                <div>
+                  <dt className={layout.termino}>Registrada por</dt>
+                  <dd className={layout.descripcion}>
+                    {datos.registro.por} ·{' '}
+                    {datos.registro.modalidad === 'masiva' ? 'carga masiva' : 'alta individual'}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           ) : null}
         </Panel>
 
         <ActividadesEmpresaPanel ruc={ruc} empresa={datos} />
+
+        <CorreosEmpresaPanel ruc={ruc} empresa={datos} />
 
         <Panel
           titulo="Actualizar credenciales"

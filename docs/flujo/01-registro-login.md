@@ -8,11 +8,21 @@ Quién puede entrar lo decide `GOOGLE_ALLOWED_EMAILS`, una lista de correos en e
 
 Una vez dentro se elige la empresa sobre la que trabajar, y se puede cambiar de una a otra desde la barra superior **sin volver a iniciar sesión**.
 
-## Alta de una empresa
+## Alta de empresas
 
-Se registra con [POST /api/v1/empresas](../endpoints/empresas.md), que ahora **exige sesión**. En el panel es la pantalla `/empresas/nueva`, alcanzable desde el selector de cuentas y servida fuera del armazón, porque la barra superior anuncia la empresa activa y no la que se está dando de alta. Recibe: RUC, nombre opcional, usuario SOL, contraseña SOL (que se cifra antes de guardarse, ver [cifrado](../arquitectura/cifrado.md)), y opcionalmente las credenciales OAuth del cliente SIRE (`sunat_client_id`/`sunat_client_secret`) si la empresa tiene las suyas propias registradas en SUNAT — si no las tiene, se usan las globales de `SUNAT_CLIENT_ID`/`SUNAT_CLIENT_SECRET` como respaldo.
+Hay dos modalidades en la pantalla `/empresas/nueva`, servida fuera del armazón porque la barra superior anuncia la empresa activa y no la que se está dando de alta:
 
-Estas credenciales OAuth se ingresan manualmente. No existe un flujo de scraping que las obtenga automáticamente navegando el portal SOL. Lo único que hace Playwright en el sistema es la extracción del detalle de ítems de comprobantes ya sincronizados, descrita en [flujo de extracción de detalle](04-extraccion-detalle.md).
+- **Carga masiva** (la que abre por defecto): [POST /api/v1/empresas/cargas](../endpoints/empresas.md) con un Excel de razón social, RUC, usuario y contraseña SOL en las columnas A a D.
+- **Individual**: [POST /api/v1/empresas](../endpoints/empresas.md), con RUC, razón social opcional, usuario y contraseña SOL (cifrada antes de guardarse, ver [cifrado](../arquitectura/cifrado.md)) y, opcionalmente, el client_id y la clave del API SUNAT.
+
+En los dos casos el RUC se valida con su dígito verificador y uno ya registrado se rechaza sin tocar el existente. La empresa queda registrada en el acto, con `registro` (quién, cuándo, cómo). Lo que depende de SUNAT se completa en la [cola](../arquitectura/cola.md), con reintentos:
+
+1. Credenciales del API SUNAT desde SOL, si faltan ([credenciales_sunat_service](../../app/services/credenciales_sunat_service.py)). En la masiva las pide la cola; en la individual, el formulario justo después del alta.
+2. Token de la API SIRE, que trae el CIIU principal.
+3. Ficha RUC: actividades económicas y, si el token no trajo CIIU, el de la actividad principal.
+4. CIIU y rubro guardados en la empresa.
+
+Si algún paso falla, la empresa se conserva como «agregada con observaciones». El resultado por fila queda en `cargas_empresas` y se descarga como reporte Excel.
 
 ## Las credenciales SOL ya no son la llave del panel
 

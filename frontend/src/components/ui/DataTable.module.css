@@ -66,6 +66,11 @@
   text-align: end;
 }
 
+.centrada .celdaCabecera,
+.centrada .celda {
+  text-align: center;
+}
+
 .monoespaciada {
   font-family: var(--font-mono);
   white-space: nowrap;

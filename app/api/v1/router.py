@@ -19,6 +19,7 @@ from app.api.v1.routes import (
     plan_cuentas,
     propuesta,
     reporte_asociado,
+    solicitudes,
     usuarios,
     vinculacion,
 )
@@ -35,6 +36,11 @@ api_router.include_router(usuarios.router, prefix="/usuarios", tags=["Auth"])
 api_router.include_router(empresas.router, prefix="/empresas", tags=["Empresas"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
+api_router.include_router(solicitudes.router, prefix="/solicitudes", tags=["Solicitudes"])
+api_router.include_router(solicitudes.router_correos, prefix="/correos", tags=["Solicitudes"])
+api_router.include_router(
+    solicitudes.router_descargas, prefix="/descargas", tags=["Solicitudes"]
+)
 
 api_router.include_router(
     plan_cuentas.router,

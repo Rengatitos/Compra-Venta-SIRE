@@ -170,3 +170,55 @@ export function IconoSalir() {
     </Lienzo>
   );
 }
+
+/** Edificio con ventanas: las empresas registradas. */
+export function IconoEmpresas() {
+  return (
+    <Lienzo>
+      <path d="M4.75 20.25V5.5a1.75 1.75 0 0 1 1.75-1.75h6.5a1.75 1.75 0 0 1 1.75 1.75v14.75" />
+      <path d="M14.75 9.75h2.75a1.75 1.75 0 0 1 1.75 1.75v8.75M3.25 20.25h17.5" />
+      <path d="M8.25 7.75h2.5M8.25 11.25h2.5M8.25 14.75h2.5" />
+    </Lienzo>
+  );
+}
+
+/** Capas apiladas: muchas empresas procesadas de una vez. */
+export function IconoMasivo() {
+  return (
+    <Lienzo>
+      <path d="m12 3.75 8.25 4.5L12 12.75l-8.25-4.5Z" />
+      <path d="m3.75 12 8.25 4.5 8.25-4.5" />
+      <path d="m3.75 15.75 8.25 4.5 8.25-4.5" />
+    </Lienzo>
+  );
+}
+
+/** Bandeja de entrada: las solicitudes en cola. */
+export function IconoSolicitudes() {
+  return (
+    <Lienzo>
+      <path d="M4.25 13.25 6.6 5.6a1.75 1.75 0 0 1 1.67-1.35h7.46a1.75 1.75 0 0 1 1.67 1.35l2.35 7.65" />
+      <path d="M4.25 13.25v5a1.5 1.5 0 0 0 1.5 1.5h12.5a1.5 1.5 0 0 0 1.5-1.5v-5h-4.5a3.25 3.25 0 0 1-6.5 0Z" />
+    </Lienzo>
+  );
+}
+
+/** Reloj: el historial de procesos. */
+export function IconoHistorial() {
+  return (
+    <Lienzo>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M12 7.5V12l3 2" />
+    </Lienzo>
+  );
+}
+
+/** Sobre: los correos con los resultados. */
+export function IconoCorreos() {
+  return (
+    <Lienzo>
+      <rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2" />
+      <path d="m4.5 6.75 7.5 6 7.5-6" />
+    </Lienzo>
+  );
+}

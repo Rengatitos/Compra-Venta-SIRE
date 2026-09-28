@@ -3,7 +3,6 @@ import logging
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     HTTPException,
     Query,
@@ -20,7 +19,7 @@ from app.db.database import get_db
 from app.domain.comprobante import Libro
 from app.domain.jobs import TipoJob
 from app.schemas.job import JobAceptado
-from app.services import clasificacion_service, jobs_service
+from app.services import clasificacion_service, cola, jobs_service
 from app.services.clasificador.motor import MotorNoDisponible, motor
 
 router = APIRouter()
@@ -29,9 +28,10 @@ router_motor = APIRouter(dependencies=[Depends(usuario_actual)])
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
-# Una sola cola para todas las empresas: el motor es uno por proceso y serializa
-# sus llamadas a Gemini, así que dos lotes en paralelo sólo se estorbarían.
-COLA = "clasificador"
+# Un solo carril para todas las empresas: el motor es uno por proceso y
+# serializa sus llamadas a Gemini, así que dos lotes en paralelo sólo se
+# estorbarían.
+COLA = cola.CARRIL_CLASIFICADOR
 
 
 def exigir_habilitado() -> None:
@@ -52,7 +52,6 @@ def exigir_habilitado() -> None:
 @limiter.limit("5/minute")
 async def iniciar_clasificacion(
     request: Request,
-    background_tasks: BackgroundTasks,
     reclasificar: bool = Query(
         False, description="Vuelve a clasificar también los que ya tienen clasificación"
     ),
@@ -73,16 +72,15 @@ async def iniciar_clasificacion(
             ),
         )
 
-    job = await jobs_service.crear(
-        db, TipoJob.CLASIFICACION_CUENTAS, empresa["ruc"], periodo, libro
+    job = await cola.encolar(
+        db,
+        TipoJob.CLASIFICACION_CUENTAS,
+        empresa["ruc"],
+        periodo,
+        libro,
+        cola=COLA,
+        parametros={"reclasificar": reclasificar},
     )
-
-    async def tarea(reportar):
-        return await clasificacion_service.clasificar_periodo(
-            db, empresa, periodo, libro, reportar, reclasificar=reclasificar
-        )
-
-    background_tasks.add_task(jobs_service.ejecutar, db, job.job_id, tarea, COLA)
     logger.info(
         "Clasificación encolada ruc=%s periodo=%s libro=%s job_id=%s",
         empresa["ruc"], periodo, libro.value, job.job_id,

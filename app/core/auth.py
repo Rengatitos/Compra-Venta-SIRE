@@ -53,6 +53,28 @@ def decode_token(token: str) -> dict:
         ) from None
 
 
+# Enlace del correo de una solicitud. Lleva su propio `tipo` para que no sirva
+# como sesión (`usuario_actual` exige `usuario`) y solo abre un archivo concreto.
+TIPO_TOKEN_DESCARGA = "descarga"
+
+
+def crear_token_descarga(solicitud_id: str, archivo: str, dias: int) -> str:
+    payload = {
+        "tipo": TIPO_TOKEN_DESCARGA,
+        "sid": solicitud_id,
+        "archivo": archivo,
+        "exp": datetime.now(UTC) + timedelta(days=dias),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def leer_token_descarga(token: str) -> dict:
+    payload = decode_token(token)
+    if payload.get("tipo") != TIPO_TOKEN_DESCARGA or not payload.get("sid"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Enlace inválido")
+    return payload
+
+
 async def rol_de(db, correo: str) -> Rol | None:
     """Rol con el que entra ese correo, o `None` si no tiene acceso.
 

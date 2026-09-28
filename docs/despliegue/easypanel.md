@@ -84,7 +84,13 @@ CLASIFICADOR_HABILITADO=true
 CPU_THREADS=2
 OMP_NUM_THREADS=2
 EMBEDDING_BATCH_SIZE=8
+# Cola durable: dos trabajos a la vez caben junto al clasificador.
+COLA_TRABAJADORES=2
 ```
+
+El correo de fin de solicitud no lleva variables de entorno. Se configura en el panel, en **Correos**: servidor SMTP, remitente, destinatarios permitidos (vacío en producción), URL pública para los enlaces de descarga y plantilla. Se guarda en la colección `configuracion`, con la contraseña SMTP cifrada con `SOL_USER_CRYPTO_KEY`.
+
+Los ZIP de las solicitudes se guardan en `/app/data/solicitudes`, dentro del mismo volumen `datos`.
 
 `JWT_SECRET_KEY` y `SOL_USER_CRYPTO_KEY` deben ser **los mismos del entorno de donde vienen los datos**: con otra `SOL_USER_CRYPTO_KEY` las contraseñas SOL guardadas no se pueden descifrar.
 

@@ -13,6 +13,8 @@ interface Props {
   pie?: ReactNode;
   /** Opciones junto al selector de tema, arriba a la derecha. */
   acciones?: ReactNode;
+  /** `amplio` para pantallas con tablas, como el resultado de una carga. */
+  ancho?: 'normal' | 'amplio';
 }
 
 /**
@@ -25,12 +27,16 @@ interface Props {
  * el armazón deja la barra contradiciendo al contenido y la navegación sin
  * ninguna sección marcada.
  */
-export function Marco({ titulo, intro, children, pie, acciones }: Props) {
+export function Marco({ titulo, intro, children, pie, acciones, ancho = 'normal' }: Props) {
   useDocumentTitle(titulo);
 
   return (
     <main className={estilos.pagina}>
-      <div className={estilos.tarjeta}>
+      <div
+        className={
+          ancho === 'amplio' ? `${estilos.tarjeta} ${estilos.amplia}` : estilos.tarjeta
+        }
+      >
         <div className={estilos.encabezado}>
           <p className={estilos.marca}>Sire · SUNAT</p>
           <div className={estilos.herramientas}>

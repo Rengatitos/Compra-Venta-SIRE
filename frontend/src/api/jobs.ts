@@ -20,10 +20,21 @@ export interface FiltroJobs {
 
 /**
  * `GET /api/v1/jobs`. El RUC va explícito: el token identifica a una persona
- * con acceso a todas las empresas, así que ya no puede deducirse de él. Sin RUC
- * el backend devuelve el historial de todas. Viene ordenada del job más reciente
- * al más antiguo.
+ * con acceso a todas las empresas, así que ya no puede deducirse de él. Con
+ * `null` el backend devuelve el historial de todas (`pedir` descarta los
+ * valores vacíos). Viene ordenada del job más reciente al más antiguo.
  */
-export function listarJobs(ruc: string, filtro: FiltroJobs = {}): Promise<JobResponse[]> {
+export function listarJobs(
+  ruc: string | null,
+  filtro: FiltroJobs = {},
+): Promise<JobResponse[]> {
   return pedir<JobResponse[]>('/jobs', { consulta: { ruc, ...filtro } });
+}
+
+/**
+ * `POST /api/v1/jobs/{job_id}/reintentar`. Solo para los de la cola durable
+ * que quedaron fallidos: vuelven a `pendiente` con los intentos a cero.
+ */
+export function reintentarJob(jobId: string): Promise<JobResponse> {
+  return pedir<JobResponse>(`/jobs/${segmento(jobId)}/reintentar`, { metodo: 'POST' });
 }

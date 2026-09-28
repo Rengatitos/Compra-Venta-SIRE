@@ -124,7 +124,6 @@ def test_error_playwright_no_expone_cabeceras(monkeypatch):
 
 @pytest.mark.parametrize("libro, automatico", [("compras", True), ("ventas", False)])
 def test_propuesta_encola_detracciones_despues_de_guardar(monkeypatch, libro, automatico):
-    from fastapi import BackgroundTasks
     from starlette.requests import Request
 
     from app.api.v1.routes import propuesta
@@ -137,7 +136,6 @@ def test_propuesta_encola_detracciones_despues_de_guardar(monkeypatch, libro, au
     respuesta = asyncio.run(
         propuesta.sincronizar_propuesta.__wrapped__(
             Request({"type": "http"}),
-            BackgroundTasks(),
             periodo="202608",
             libro=Libro(libro),
             empresa={"ruc": RUC},

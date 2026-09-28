@@ -28,7 +28,6 @@ import type { AnalyticsSummary, ComprobanteResponse } from '@/types/api';
 
 import estilos from './Dashboard.module.css';
 import { SerieDiaria, TopContrapartes } from './graficos';
-import { ResumenActividades } from './ResumenActividades';
 
 /**
  * Los totales van siempre en soles: lo que viene en moneda extranjera se
@@ -101,8 +100,6 @@ export function DashboardPage() {
           ) : null
         }
       />
-
-      <ResumenActividades ruc={ruc} />
 
       {periodos.isPending ? <Skeleton lineas={4} etiqueta="Cargando los periodos" /> : null}
 

@@ -371,6 +371,16 @@ async def guardar_clasificacion(db, documento_id, clasificacion: dict[str, Any])
     )
 
 
+# Estados de la clasificación automática de un comprobante. Un `error` o un
+# `sin_codigo` vuelve a mandarse a la IA en la siguiente vuelta; tras
+# `CLASIFICADOR_MAX_INTENTOS_COMPROBANTE` intentos pasa a `error_persistente` y
+# la clasificación automática deja de insistir.
+CLASIFICADO = "clasificado"
+SIN_CODIGO = "sin_codigo"
+ERROR = "error"
+ERROR_PERSISTENTE = "error_persistente"
+
+
 def _filtro_para_clasificar(
     empresa_id: str, periodo: str, libro: Libro, reclasificar: bool
 ) -> dict[str, Any]:
@@ -382,7 +392,16 @@ def _filtro_para_clasificar(
         "libro": libro.value,
     }
     if not reclasificar:
-        filtro["clasificacion_contable"] = {"$exists": False}
+        # Los que ya tienen un código válido no se vuelven a mandar. Sí los que
+        # no tienen clasificación, los que la IA dejó sin cuenta y los que
+        # quedaron en revisión (su cuenta no pasa al Excel), salvo que ya se
+        # hayan dado por error persistente.
+        filtro["clasificacion_estado"] = {"$ne": ERROR_PERSISTENTE}
+        filtro["$or"] = [
+            {"clasificacion_contable": {"$exists": False}},
+            {"clasificacion_contable.requiere_revision": True},
+            {"clasificacion_contable.cuenta_base.codigo": {"$in": [None, ""]}},
+        ]
     return filtro
 
 
@@ -394,6 +413,21 @@ async def listar_para_clasificar(
     trabajo; un periodo son cientos de comprobantes, no miles."""
     cursor = _col(db).find(_filtro_para_clasificar(empresa_id, periodo, libro, reclasificar))
     return await cursor.to_list(length=None)
+
+
+async def registrar_intento_clasificacion(
+    db, documento_id, estado: str, *, intentos: int, error: str | None = None
+) -> None:
+    """Deja constancia de cómo fue el último intento automático con la IA."""
+    await _col(db).update_one(
+        {"_id": documento_id},
+        {"$set": {
+            "clasificacion_estado": estado,
+            "clasificacion_intentos": intentos,
+            "clasificacion_ultimo_error": error,
+            "clasificacion_ultimo_intento_en": datetime.now(UTC),
+        }},
+    )
 
 
 async def listar_que_requieren_revision(db, empresa_id: str, libro: str) -> list[dict[str, Any]]:

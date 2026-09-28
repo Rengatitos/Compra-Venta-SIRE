@@ -7,6 +7,7 @@ import { AuthProvider } from '@/features/auth/AuthProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { ProtectedRoute } from '@/features/auth/ProtectedRoute';
 import { EmpresaGate } from '@/features/empresas/EmpresaGate';
+import { PanelGeneralShell } from '@/features/panel-general/PanelGeneralShell';
 import { NoEncontradaPage } from '@/features/shared/NoEncontradaPage';
 
 /**
@@ -54,6 +55,25 @@ const ReportePage = lazy(() =>
 const ExternosPage = lazy(() =>
   import('@/features/externos/ExternosPage').then((m) => ({ default: m.ExternosPage })),
 );
+const EmpresasPage = lazy(() =>
+  import('@/features/panel-general/EmpresasPage').then((m) => ({ default: m.EmpresasPage })),
+);
+const ProcesamientoMasivoPage = lazy(() =>
+  import('@/features/panel-general/ProcesamientoMasivoPage').then((m) => ({
+    default: m.ProcesamientoMasivoPage,
+  })),
+);
+const SolicitudesPage = lazy(() =>
+  import('@/features/panel-general/SolicitudesPage').then((m) => ({
+    default: m.SolicitudesPage,
+  })),
+);
+const HistorialPage = lazy(() =>
+  import('@/features/panel-general/HistorialPage').then((m) => ({ default: m.HistorialPage })),
+);
+const CorreosPage = lazy(() =>
+  import('@/features/panel-general/CorreosPage').then((m) => ({ default: m.CorreosPage })),
+);
 const NuevaEmpresaPage = lazy(() =>
   import('@/features/empresas/NuevaEmpresaPage').then((m) => ({ default: m.NuevaEmpresaPage })),
 );
@@ -67,21 +87,31 @@ export function App() {
             <Route path="/login" element={<LoginPage />} />
             {/* El alta dejó de ser pública al dejar de ser la puerta de entrada.
                 La redirección es por cortesía con los enlaces antiguos. */}
-            <Route path="/registro" element={<Navigate to="/empresas/nueva" replace />} />
+            <Route path="/registro" element={<Navigate to="/nueva-empresa" replace />} />
 
             <Route element={<ProtectedRoute />}>
               {/* Fuera del armazón: la barra anuncia la empresa activa, que no
                   es la que se está registrando, y la navegación lateral no
                   tiene ninguna sección para esta pantalla. */}
-              <Route path="empresas/nueva" element={<NuevaEmpresaPage />} />
+              <Route path="nueva-empresa" element={<NuevaEmpresaPage />} />
               {/* También fuera: los accesos no dependen de ninguna empresa. */}
               <Route path="accesos" element={<AccesosPage />} />
+              {/* El panel general es de todas a la vez: no pasa por el gate y
+                  tiene su propia barra lateral. Vive en la raíz porque es la
+                  pantalla de entrada. */}
+              <Route element={<PanelGeneralShell />}>
+                <Route index element={<EmpresasPage />} />
+                <Route path="procesamiento" element={<ProcesamientoMasivoPage />} />
+                <Route path="solicitudes" element={<SolicitudesPage />} />
+                <Route path="historial" element={<HistorialPage />} />
+                <Route path="correos" element={<CorreosPage />} />
+              </Route>
 
               {/* ProtectedRoute exige sesión; EmpresaGate, empresa activa.
                   AppShell da por hecha la segunda, así que va dentro. */}
               <Route element={<EmpresaGate />}>
                 <Route element={<AppShell />}>
-                  <Route index element={<DashboardPage />} />
+                  <Route path="dashboard" element={<DashboardPage />} />
                   <Route path="clasificaciones" element={<ClasificacionesPage />} />
                   <Route path="periodos" element={<PeriodosPage />} />
                   <Route path="periodos/:periodo" element={<ComprobantesPage />} />

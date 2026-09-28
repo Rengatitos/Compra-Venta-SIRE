@@ -4,13 +4,21 @@
  * repo lleve directamente a su origen.
  */
 import type {
+  EstadoCarga,
+  EstadoEnvio,
+  EstadoFilaCarga,
   EstadoGlosa,
+  EstadoItemSolicitud,
   EstadoJob,
+  EstadoPasoSolicitud,
   EstadoPeriodo,
   EstadoProcesamiento,
+  EstadoSolicitud,
   FuenteDato,
   FuenteExterna,
   Libro,
+  ModalidadCarga,
+  PasoSolicitud,
   TipoJob,
 } from './domain';
 
@@ -114,14 +122,27 @@ export interface EmpresaUpdate {
   sunat_client_secret?: string;
 }
 
+/** `app/schemas/empresa.py::RegistroEmpresa`: quién la dio de alta y cómo. */
+export interface RegistroEmpresa {
+  modalidad: ModalidadCarga;
+  /** Correo de la persona que la registró. */
+  por: string;
+  fecha: string | null;
+  carga_id: string | null;
+}
+
 export interface EmpresaResponse {
   id: string;
   ruc: string;
   nombre: string | null;
   usuario: string;
   fecha_creacion: string | null;
-  /** Deducido del CIIU dentro del token de SUNAT (`app/domain/rubro.py`). */
+  /** Del CIIU guardado al completar el alta o, en las antiguas, del token de SUNAT. */
   rubro: string | null;
+  ciiu?: string | null;
+  registro?: RegistroEmpresa | null;
+  /** A quién se envían los resultados de esta empresa. */
+  correos_notificacion?: string[];
   /** Actividades de la ficha RUC; contexto del clasificador contable. */
   actividades_economicas?: ActividadEconomica[];
   /** CIIU que manda al clasificar, elegido en Ajustes. `null` = el principal de SUNAT. */
@@ -370,6 +391,12 @@ export interface ProgresoResponse {
   porcentaje: number;
 }
 
+export interface ErrorIntento {
+  intento: number | null;
+  en: string | null;
+  error: string;
+}
+
 export interface JobResponse {
   job_id: string;
   tipo: TipoJob | (string & {});
@@ -382,6 +409,15 @@ export interface JobResponse {
   error: string | null;
   creado_en: string;
   actualizado_en: string;
+  /** Lo ejecuta la cola durable: sobrevive a reinicios y se reintenta solo. */
+  gestionado?: boolean;
+  solicitud_id?: string | null;
+  intentos?: number;
+  max_intentos?: number;
+  ultimo_intento_en?: string | null;
+  /** Solo en un `pendiente` que ya falló alguna vez: cuándo toca el reintento. */
+  siguiente_intento_en?: string | null;
+  historial_errores?: ErrorIntento[];
 }
 
 export interface JobAceptado {
@@ -588,4 +624,196 @@ export interface ListaComprobantesExternos {
 export interface CodigoVinculacion {
   codigo: string;
   expira_en: string;
+}
+
+/* — alta de empresas (app/schemas/carga_empresas.py) — */
+
+/** Respuesta de `POST /empresas`: la empresa y la carga que completa sus datos. */
+export interface EmpresaCreada extends EmpresaResponse {
+  carga_id: string;
+}
+
+export interface FilaCarga {
+  fila: number;
+  ruc: string;
+  razon_social: string;
+  usuario: string;
+  estado: EstadoFilaCarga;
+  motivos: string[];
+  empresa_id: string | null;
+  fecha_registro: string | null;
+}
+
+export interface ProgresoCarga {
+  actual: number;
+  total: number;
+  mensaje: string;
+}
+
+export interface CargaResumen {
+  id: string;
+  modalidad: ModalidadCarga;
+  archivo: string | null;
+  registrado_por: string;
+  estado: EstadoCarga;
+  progreso: ProgresoCarga;
+  creado_en: string;
+  terminado_en: string | null;
+}
+
+export interface CargaEmpresas extends CargaResumen {
+  filas: FilaCarga[];
+}
+
+export interface CargaAceptada {
+  carga_id: string;
+}
+
+/* — panel general (app/schemas/resumen_empresas.py) — */
+
+export interface ProcesosPorEstado {
+  pendiente: number;
+  en_progreso: number;
+  completado: number;
+  fallido: number;
+}
+
+export interface PeriodoResumen {
+  periodo: string;
+  estado: EstadoPeriodo | null;
+}
+
+export interface ResumenEmpresa {
+  ruc: string;
+  nombre: string | null;
+  correos_notificacion: string[];
+  total_periodos: number;
+  /** Del más reciente al más antiguo. */
+  periodos: PeriodoResumen[];
+  /** Última descarga SIRE completada; `null` si nunca se hizo. */
+  ultima_actualizacion_sire: string | null;
+  ultimo_proceso: JobResponse | null;
+  procesos_por_estado: ProcesosPorEstado;
+}
+
+export interface ResumenEmpresas {
+  total_empresas: number;
+  /** Ventana, en días, de los procesos terminados que se cuentan. */
+  dias: number;
+  procesos_por_estado: ProcesosPorEstado;
+  empresas: ResumenEmpresa[];
+}
+
+/* — solicitudes de procesamiento masivo (app/schemas/solicitudes.py) — */
+
+export interface SolicitudCreate {
+  /** RUC de las empresas, o `'todas'`. */
+  empresas: string[] | 'todas';
+  /** Periodos `YYYYMM`, o `'todos'` (los registrados de cada empresa). */
+  periodos: string[] | 'todos';
+  clasificar: boolean;
+}
+
+export interface PasoSolicitudResponse {
+  paso: PasoSolicitud;
+  estado: EstadoPasoSolicitud;
+  job_id: string | null;
+  nota: string | null;
+  /** Estado vivo del trabajo que ejecuta el paso. */
+  job_estado?: EstadoJob | null;
+  intentos?: number | null;
+  max_intentos?: number | null;
+  siguiente_intento_en?: string | null;
+  mensaje?: string | null;
+  error?: string | null;
+}
+
+export interface ItemSolicitud {
+  ruc: string;
+  nombre: string | null;
+  periodo: string;
+  estado: EstadoItemSolicitud;
+  observaciones: string[];
+  pasos: PasoSolicitudResponse[];
+}
+
+export interface EmpresaEnvio {
+  ruc: string;
+  nombre: string | null;
+}
+
+export interface EnvioCorreo {
+  correo: string;
+  empresas: EmpresaEnvio[];
+  periodos: string[];
+  estado: EstadoEnvio;
+  modo: 'adjunto' | 'enlace' | null;
+  intentos: number | null;
+  error: string | null;
+  creado_en: string | null;
+  enviado_en: string | null;
+}
+
+export interface EnvioListado extends EnvioCorreo {
+  solicitud_id: string;
+  solicitud_creada_en: string | null;
+}
+
+export interface SolicitudResponse {
+  id: string;
+  creado_por: string;
+  creado_en: string;
+  terminado_en: string | null;
+  estado: EstadoSolicitud;
+  clasificar: boolean;
+  error: string | null;
+  /** Items (empresa × periodo) terminados de los totales. */
+  progreso: { actual: number; total: number };
+  items: ItemSolicitud[];
+  zip: { archivo: string; bytes: number; generado_en: string | null } | null;
+  envios: EnvioCorreo[];
+}
+
+/* — configuración del correo (app/schemas/configuracion_correo.py) — */
+
+export type SeguridadSmtp = 'starttls' | 'ssl' | 'ninguna';
+
+export interface VariablePlantilla {
+  nombre: string;
+  descripcion: string;
+}
+
+export interface ConfiguracionCorreo {
+  host: string;
+  puerto: number;
+  seguridad: SeguridadSmtp;
+  usuario: string;
+  /** La contraseña nunca viaja al navegador; solo si hay una guardada. */
+  password_configurada: boolean;
+  remitente_nombre: string;
+  remitente_correo: string;
+  /** Vacía = se puede escribir a cualquiera. */
+  destinatarios_permitidos: string[];
+  max_adjunto_mb: number;
+  dias_enlace: number;
+  url_publica: string;
+  plantilla_asunto: string;
+  plantilla_cuerpo: string;
+  configurado: boolean;
+  variables: VariablePlantilla[];
+  plantilla_por_defecto: { asunto: string; cuerpo: string };
+}
+
+/** Cambios parciales. `password` vacío conserva la guardada. */
+export type ConfiguracionCorreoUpdate = Partial<
+  Omit<
+    ConfiguracionCorreo,
+    'password_configurada' | 'configurado' | 'variables' | 'plantilla_por_defecto'
+  >
+> & { password?: string };
+
+export interface VistaPreviaCorreo {
+  asunto: string;
+  texto: string;
+  html: string;
 }

@@ -29,6 +29,7 @@ from app.domain.glosa_similar import clave, palabras, similitud
 from app.repositories import clasificaciones_frecuentes as repo_frecuentes
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import empresas as repo_empresas
+from app.repositories.comprobantes import CLASIFICADO, ERROR, ERROR_PERSISTENTE, SIN_CODIGO
 from app.services import ficha_ruc_service, plan_contable
 from app.services.clasificador.motor import MotorNoDisponible, motor
 from app.services.clasificador.schemas import (
@@ -595,7 +596,7 @@ async def clasificar_periodo(
 
     conteo = {
         "clasificados": 0, "reutilizados": 0, "propagados": 0, "requieren_revision": 0,
-        "sin_descripcion": 0, "errores": 0,
+        "sin_descripcion": 0, "errores": 0, "errores_persistentes": 0, "reintentables": 0,
     }
     errores: list[dict[str, str]] = []
     for i, documento in enumerate(documentos, start=1):
@@ -612,11 +613,18 @@ async def clasificar_periodo(
             logger.warning("No se pudo clasificar %s: %s", serie_numero, exc)
             conteo["errores"] += 1
             errores.append({"serie_numero": serie_numero, "error": str(exc)[:300]})
+            estado = await _registrar_intento(db, documento, error=str(exc)[:300])
+            conteo["errores_persistentes" if estado == ERROR_PERSISTENTE else "reintentables"] += 1
             continue
         conteo["clasificados"] += 1
         conteo["reutilizados"] += int(resultado.get("origen") == "memoria")
         conteo["propagados"] += resultado.get("propagados", 0)
         conteo["requieren_revision"] += int(resultado["requiere_revision"])
+        estado = await _registrar_intento(db, documento, resultado=resultado)
+        if estado == ERROR_PERSISTENTE:
+            conteo["errores_persistentes"] += 1
+        elif estado == SIN_CODIGO:
+            conteo["reintentables"] += 1
 
     await reportar(total, total, "Clasificación terminada")
     # Los que el tope dejó fuera, más los que fallaron: entran en otra vuelta.
@@ -627,8 +635,79 @@ async def clasificar_periodo(
         "sin_glosa_omitidos": len(pendientes) - len(con_glosa),
         "contrapartes_con_ciiu": len(contextos),
         "pendientes_restantes": restantes,
+        # Los que ni se miraron porque el lote llegó a su tope.
+        "restantes_por_tope": len(con_glosa) - total,
         "detalle_errores": errores[:20],
     }
+
+
+def tiene_codigo_valido(clasificacion: dict[str, Any] | None) -> bool:
+    """El código llega al Excel: hay cuenta base utilizable y no está en revisión
+    (misma regla que `plantilla_excel._cuenta_contable`)."""
+    if not clasificacion or clasificacion.get("requiere_revision", True):
+        return False
+    codigo = (clasificacion.get("cuenta_base") or {}).get("codigo")
+    return bool(codigo) and len(str(codigo)) <= 10
+
+
+async def _registrar_intento(
+    db, documento: dict[str, Any], *, resultado: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> str:
+    """Anota el intento en el comprobante y devuelve su nuevo estado."""
+    if resultado is not None and tiene_codigo_valido(resultado):
+        estado = CLASIFICADO
+        intentos = documento.get("clasificacion_intentos", 0)
+    else:
+        intentos = documento.get("clasificacion_intentos", 0) + 1
+        agotado = intentos >= settings.CLASIFICADOR_MAX_INTENTOS_COMPROBANTE
+        estado = ERROR_PERSISTENTE if agotado else (ERROR if error else SIN_CODIGO)
+        if agotado:
+            logger.warning(
+                "Comprobante %s sin código tras %s intentos: queda para revisión manual",
+                documento.get("serie_numero"), intentos,
+            )
+    await repo_comprobantes.registrar_intento_clasificacion(
+        db, documento["_id"], estado, intentos=intentos, error=error
+    )
+    return estado
+
+
+# Rondas de un trabajo automático: cada una cubre `CLASIFICADOR_MAX_COMPROBANTES`.
+MAX_RONDAS = 10
+# Lo que describe cómo quedó el periodo y no se suma entre rondas.
+NO_ACUMULABLES = frozenset({"pendientes_restantes", "restantes_por_tope", "reintentables"})
+
+
+async def clasificar_hasta_terminar(
+    db, empresa: dict, periodo: str, libro: Libro, reportar: Reportador, *, ultimo_intento: bool
+) -> dict[str, Any]:
+    """Clasificación sin intervención, para las solicitudes masivas.
+
+    Repite lotes mientras el tope deje comprobantes sin mirar. Si al final
+    quedan comprobantes que fallaron pero aún tienen intentos, lanza un error
+    transitorio para que la cola lo reintente más tarde con espera. En el
+    último intento del trabajo devuelve lo conseguido: los que siguen sin
+    código quedan con su estado para revisarlos a mano.
+    """
+    from app.services.cola.errores import ErrorTransitorio
+
+    acumulado: dict[str, Any] = {}
+    for ronda in range(1, MAX_RONDAS + 1):
+        resultado = await clasificar_periodo(db, empresa, periodo, libro, reportar)
+        for campo, valor in resultado.items():
+            if isinstance(valor, int) and campo not in NO_ACUMULABLES:
+                acumulado[campo] = acumulado.get(campo, 0) + valor
+        acumulado["rondas"] = ronda
+        if not resultado["restantes_por_tope"] or not resultado["clasificados"]:
+            break
+    acumulado["reintentables"] = resultado["reintentables"]
+    acumulado["detalle_errores"] = resultado["detalle_errores"]
+    if resultado["reintentables"] and not ultimo_intento:
+        raise ErrorTransitorio(
+            f"{resultado['reintentables']} comprobantes siguen sin código; se reintentará"
+        )
+    return acumulado
 
 
 async def aplicar_correccion(db, empresa_id: str, entrada: dict[str, Any]) -> int:

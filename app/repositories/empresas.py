@@ -48,6 +48,14 @@ async def listar(db: AsyncIOMotorDatabase, limit: int = 100) -> list[dict[str, A
     return await _col(db).find().to_list(length=limit)
 
 
+async def rucs_existentes(db: AsyncIOMotorDatabase, rucs: list[str]) -> set[str]:
+    """Cuáles de esos RUC ya están registrados."""
+    if not rucs:
+        return set()
+    cursor = _col(db).find({"ruc": {"$in": rucs}}, {"ruc": 1})
+    return {documento["ruc"] async for documento in cursor}
+
+
 async def listar_ids_por_rucs(db: AsyncIOMotorDatabase, rucs: list[str]) -> list[str]:
     empresas = await _col(db).find({"ruc": {"$in": rucs}}).to_list(length=None)
     return [str(e["_id"]) for e in empresas]

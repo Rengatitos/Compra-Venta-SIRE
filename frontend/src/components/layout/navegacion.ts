@@ -5,12 +5,17 @@ import {
   IconoAuditoria,
   IconoClasificaciones,
   IconoComprobantes,
+  IconoCorreos,
   IconoCuentas,
+  IconoEmpresas,
   IconoExternos,
+  IconoHistorial,
+  IconoMasivo,
   IconoPanel,
   IconoPeriodos,
   IconoProcesos,
   IconoReporte,
+  IconoSolicitudes,
 } from './IconosNav';
 
 export interface SubEntrada {
@@ -52,7 +57,7 @@ export function subEntradasDePeriodo(periodo: string): readonly SubEntrada[] {
 /** Árbol de navegación del render actual. Puro: se prueba sin montar nada. */
 export function construirNavegacion(periodo: string | null): readonly Entrada[] {
   return [
-    { a: '/', texto: 'Dashboard', icono: IconoPanel, exacto: true },
+    { a: '/dashboard', texto: 'Dashboard', icono: IconoPanel },
     { a: '/clasificaciones', texto: 'Clasificaciones', icono: IconoClasificaciones },
     {
       a: '/periodos',
@@ -68,5 +73,19 @@ export function construirNavegacion(periodo: string | null): readonly Entrada[] 
     { a: '/procesos', texto: 'Procesos', icono: IconoProcesos },
     { a: '/plan-cuentas', texto: 'Maestro de cuentas', icono: IconoCuentas },
     { a: '/ajustes', texto: 'Ajustes', icono: IconoAjustes },
+  ];
+}
+
+/**
+ * Secciones del panel de todas las empresas, que vive en la raíz. «Empresas» es
+ * exacta: sin eso quedaría activa en todas las demás, que cuelgan de `/`.
+ */
+export function construirNavegacionGeneral(): readonly Entrada[] {
+  return [
+    { a: '/', texto: 'Empresas', icono: IconoEmpresas, exacto: true },
+    { a: '/procesamiento', texto: 'Procesamiento masivo', icono: IconoMasivo },
+    { a: '/solicitudes', texto: 'Solicitudes', icono: IconoSolicitudes },
+    { a: '/historial', texto: 'Historial', icono: IconoHistorial },
+    { a: '/correos', texto: 'Correos', icono: IconoCorreos },
   ];
 }
