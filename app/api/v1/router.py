@@ -9,6 +9,7 @@ from app.api.v1.routes import (
     comprobantes,
     comprobantes_externos,
     consulta_ruc,
+    cuentas_api,
     detalle,
     detracciones,
     empresas,
@@ -33,6 +34,7 @@ api_router.include_router(
 
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(usuarios.router, prefix="/usuarios", tags=["Auth"])
+api_router.include_router(cuentas_api.router, prefix="/cuentas-api", tags=["Auth"])
 api_router.include_router(empresas.router, prefix="/empresas", tags=["Empresas"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])

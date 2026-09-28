@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.config import settings
 from app.db.database import get_db
 from app.domain.usuario import Rol, normalizar_correo, resolver_rol
+from app.repositories import cuentas_api as repo_cuentas_api
 from app.repositories import usuarios as repo_usuarios
 
 bearer_scheme = HTTPBearer()
@@ -75,7 +76,7 @@ def leer_token_descarga(token: str) -> dict:
     return payload
 
 
-async def rol_de(db, correo: str) -> Rol | None:
+async def rol_de(db, correo: str, *, cuentas_api: bool = True) -> Rol | None:
     """Rol con el que entra ese correo, o `None` si no tiene acceso.
 
     Los administradores fijos del entorno se resuelven sin tocar Mongo.
@@ -83,7 +84,13 @@ async def rol_de(db, correo: str) -> Rol | None:
     rol = resolver_rol(correo, settings.GOOGLE_ALLOWED_EMAILS, None)
     if rol is not None:
         return rol
-    return resolver_rol(correo, [], await repo_usuarios.rol_de(db, correo))
+    rol = resolver_rol(correo, [], await repo_usuarios.rol_de(db, correo))
+    if rol is not None or not cuentas_api:
+        return rol
+    # Cuentas de API (integraciones): solo mientras su contraseña esté vigente.
+    # Se revisa en cada petición, así que borrarla o dejarla vencer corta
+    # también los tokens que ya había emitido.
+    return resolver_rol(correo, [], await repo_cuentas_api.rol_de(db, correo))
 
 
 async def usuario_actual(

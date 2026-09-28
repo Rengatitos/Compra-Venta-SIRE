@@ -4,9 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core import claves
 from app.core.auth import create_token, rol_de, usuario_actual
 from app.db.database import get_db
-from app.schemas.auth import LoginGoogle, TokenResponse, UsuarioResponse
+from app.domain.usuario import Rol
+from app.repositories import cuentas_api as repo_cuentas_api
+from app.schemas.auth import LoginCuentaApi, LoginGoogle, TokenResponse, UsuarioResponse
 from app.services import google_oauth
 
 router = APIRouter()
@@ -36,7 +39,8 @@ async def login_google(request: Request, payload: LoginGoogle, db=Depends(get_db
         raise HTTPException(status_code=401, detail="Token de Google inválido") from None
 
     correo = datos["email"]
-    rol = await rol_de(db, correo)
+    # Una cuenta de API no entra con Google aunque exista un buzón con ese nombre.
+    rol = await rol_de(db, correo, cuentas_api=False)
     if rol is None:
         # Autenticado pero no autorizado, así que 403. Es la única traza que
         # queda de un intento de acceso, de ahí el warning.
@@ -55,6 +59,47 @@ async def login_google(request: Request, payload: LoginGoogle, db=Depends(get_db
             foto=datos.get("foto"),
             rol=rol.value,
         ),
+    )
+
+
+# Una sola respuesta para correo inexistente y contraseña mala: no revela qué
+# cuentas existen.
+CREDENCIALES_MALAS = "Correo o contraseña incorrectos"
+# Con un correo que no existe también se calcula un scrypt, para que el tiempo
+# de respuesta no delate si la cuenta existe.
+_HASH_RELLENO = claves.hashear(claves.generar())
+
+
+@router.post(
+    "/token",
+    response_model=TokenResponse,
+    summary="Token para integraciones con correo y contraseña (cuentas de API)",
+)
+@limiter.limit("5/minute")
+async def login_cuenta_api(request: Request, payload: LoginCuentaApi, db=Depends(get_db)):
+    """Para programas (ELT, scripts): sin Google y sin abrir el panel.
+
+    Solo sirve para las cuentas de API que un administrador crea en el panel
+    («Accesos» › «Cuentas de API»); las personas entran con Google. Devuelve el
+    mismo token que el login con Google, con la misma vigencia.
+    """
+    cuenta = await repo_cuentas_api.obtener(db, payload.email)
+    guardado = cuenta["clave_hash"] if cuenta else _HASH_RELLENO
+    valida = claves.verificar(payload.password, guardado)
+    if cuenta is None or not valida:
+        logger.warning("Login de cuenta de API rechazado: %s", payload.email)
+        raise HTTPException(status_code=401, detail=CREDENCIALES_MALAS)
+    if not repo_cuentas_api.vigente(cuenta):
+        raise HTTPException(
+            status_code=401,
+            detail="La contraseña de esta cuenta venció: un administrador debe generar una nueva",
+        )
+
+    await repo_cuentas_api.marcar_uso(db, cuenta["email"])
+    logger.info("Token emitido para la cuenta de API %s", cuenta["email"])
+    return TokenResponse(
+        access_token=create_token(email=cuenta["email"]),
+        usuario=UsuarioResponse(email=cuenta["email"], rol=Rol(cuenta["rol"]).value),
     )
 
 

@@ -5,6 +5,7 @@ import { ButtonLink } from '@/components/ui/Button';
 import { EmptyState, Skeleton } from '@/components/ui/Feedback';
 import { Marco } from '@/features/empresas/Marco';
 
+import { CuentasApi } from './CuentasApi';
 import { GestionAccesos } from './GestionAccesos';
 
 /**
@@ -32,7 +33,12 @@ export function AccesosPage() {
           texto="Pide a un administrador que te dé acceso o que cambie tu rol."
         />
       ) : null}
-      {yo.data?.rol === 'admin' ? <GestionAccesos independiente /> : null}
+      {yo.data?.rol === 'admin' ? (
+        <>
+          <GestionAccesos independiente />
+          <CuentasApi />
+        </>
+      ) : null}
     </Marco>
   );
 }

@@ -78,6 +78,25 @@ export interface UsuarioResponse {
 /** `app/domain/usuario.py::Rol`. */
 export type RolUsuario = 'admin' | 'usuario';
 
+/** Cuenta de API para integraciones (`app/api/v1/routes/cuentas_api.py`). */
+export interface CuentaApi {
+  email: string;
+  rol: RolUsuario;
+  vigencia_dias: number;
+  expira_en: string;
+  vigente: boolean;
+  creada_por: string | null;
+  creada_en: string | null;
+  clave_generada_en: string | null;
+  ultimo_uso_en: string | null;
+}
+
+/** Alta o regeneración: la única vez que se ve la contraseña. */
+export interface CuentaApiConClave {
+  cuenta: CuentaApi;
+  password: string;
+}
+
 /** `GET /usuarios` (`app/api/v1/routes/usuarios.py::UsuarioAcceso`). */
 export interface UsuarioAcceso {
   email: string;

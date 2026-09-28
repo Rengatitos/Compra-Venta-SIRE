@@ -19,6 +19,7 @@ from app.repositories import clasificaciones_frecuentes as repo_frecuentes
 from app.repositories import codigos_vinculacion as repo_codigos_vinculacion
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import comprobantes_externos as repo_comprobantes_externos
+from app.repositories import cuentas_api as repo_cuentas_api
 from app.repositories import empresas as repo_empresas
 from app.repositories import fichas_ruc as repo_fichas_ruc
 from app.repositories import jobs as repo_jobs
@@ -64,6 +65,7 @@ async def lifespan(app: FastAPI):
         await repo_comprobantes_externos.crear_indices(db)
         await repo_fichas_ruc.crear_indices(db)
         await repo_usuarios.crear_indices(db)
+        await repo_cuentas_api.crear_indices(db)
         await repo_frecuentes.crear_indices(db)
         await repo_cargas_empresas.crear_indices(db)
         await repo_solicitudes.crear_indices(db)
