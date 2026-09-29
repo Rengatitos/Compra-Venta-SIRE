@@ -16,6 +16,7 @@ Rutas por defecto:
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,8 +27,18 @@ try:
 except ImportError:
     pass
 
+logger = logging.getLogger(__name__)
+
 RAIZ_REPO = Path(__file__).resolve().parents[3]
 RECURSOS = RAIZ_REPO / "app" / "resources" / "clasificador"
+
+# El modelo más barato de Gemini: el que se usa salvo que se encienda el Pro.
+MODELO_BARATO = "gemini-3.5-flash-lite"
+
+# Interruptor de costo. Con `False` ningún modelo Pro se usa, aunque
+# `GEMINI_MODEL` lo pida: se cambia por `MODELO_BARATO`. Para volver a usar Pro,
+# `GEMINI_PRO_HABILITADO=true` en el entorno.
+GEMINI_PRO_HABILITADO = False
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -35,6 +46,19 @@ def _bool(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on", "si", "sí"}
+
+
+def modelo_gemini() -> str:
+    """`GEMINI_MODEL`, salvo que sea un Pro y el Pro esté apagado."""
+    modelo = (os.getenv("GEMINI_MODEL") or MODELO_BARATO).strip()
+    if "pro" in modelo.lower() and not _bool("GEMINI_PRO_HABILITADO", GEMINI_PRO_HABILITADO):
+        logger.warning(
+            "GEMINI_MODEL=%s es un modelo Pro y GEMINI_PRO_HABILITADO está apagado: se usa %s",
+            modelo,
+            MODELO_BARATO,
+        )
+        return MODELO_BARATO
+    return modelo
 
 
 def _int(name: str, default: int) -> int:
@@ -59,7 +83,7 @@ class Settings:
     cache_dir: Path
     source_weights_path: Path
 
-    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_model: str = MODELO_BARATO
     gemini_api_key: str | None = None
     vertex_project: str = "project-577228a1-457d-489f-972"
     vertex_location: str = "global"
@@ -112,7 +136,7 @@ class Settings:
             index_dir=index_dir,
             cache_dir=cache_dir,
             source_weights_path=source_weights,
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+            gemini_model=modelo_gemini(),
             gemini_api_key=os.getenv("GEMINI_API_KEY"),
             vertex_project=os.getenv("VERTEX_PROJECT", "project-577228a1-457d-489f-972"),
             vertex_location=os.getenv("VERTEX_LOCATION", "global"),

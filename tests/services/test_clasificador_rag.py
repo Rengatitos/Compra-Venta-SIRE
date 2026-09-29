@@ -54,3 +54,18 @@ def test_incremental_index_and_retrieval(tmp_path: Path):
     assert hits
     assert "6011020" in hits[0].chunk.content
     assert 0 <= conf <= 1
+
+
+def test_el_gemini_pro_esta_apagado_y_se_usa_el_modelo_barato(monkeypatch):
+    from app.services.clasificador import config
+
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.1-pro-preview")
+    monkeypatch.delenv("GEMINI_PRO_HABILITADO", raising=False)
+    assert config.GEMINI_PRO_HABILITADO is False
+    assert config.modelo_gemini() == config.MODELO_BARATO == "gemini-3.5-flash-lite"
+
+    monkeypatch.setenv("GEMINI_PRO_HABILITADO", "true")
+    assert config.modelo_gemini() == "gemini-3.1-pro-preview"
+
+    monkeypatch.delenv("GEMINI_MODEL")
+    assert config.modelo_gemini() == "gemini-3.5-flash-lite"
