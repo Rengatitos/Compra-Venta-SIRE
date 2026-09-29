@@ -10,7 +10,7 @@ uv run playwright install chromium   # necesario para la extracción de detalle,
 uv run uvicorn app.main:app --host 0.0.0.0 --port 9007 --reload
 ```
 
-O con el `Makefile`: `make back` levanta la API y `make front` el panel web (`npm run dev --prefix frontend`). Documentación interactiva (Swagger) en `http://127.0.0.1:9007/docs`.
+O con el `Makefile`: `make back` levanta la API y `make front` el panel web (`npm run dev --prefix frontend`). Documentación interactiva (Swagger) en `http://127.0.0.1:9007/api/docs`.
 
 `--reload` vigila todos los `.py` del repositorio: no editar código mientras corre un job de scraping, porque el reinicio mata el navegador (ver [ciclo de vida](arquitectura/ciclo-de-vida.md)).
 

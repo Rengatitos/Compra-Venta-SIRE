@@ -133,6 +133,10 @@ app = FastAPI(
     description="API para orquestar la automatización del SIRE de SUNAT",
     version="1.0.0",
     lifespan=lifespan,
+    # Bajo /api para que el nginx del frontend (que solo proxya /api/) los sirva en producción.
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
 )
 
 app.state.limiter = limiter

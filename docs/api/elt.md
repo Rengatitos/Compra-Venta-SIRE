@@ -5,6 +5,16 @@ ventas, su clasificación contable, comprobantes recibidos por el bot y los
 agregados del panel— para cargarlos en un almacén de datos y transformarlos allí.
 
 ## 1. Conexión
+* Correo: vasquezciro654@gmail.com
+* Contraseña: V5eL972g_bBERmFhJMyyrDq4903PiftW
+
+CURL CONEXIÓN:
+
+```bash
+curl -s -X POST "https://apaclla-web.p7slsc.easypanel.host/api/v1/auth/token" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "vasquezciro654@gmail.com", "password": "V5eL972g_bBERmFhJMyyrDq4903PiftW"}' 
+```
 
 | | |
 |---|---|

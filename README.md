@@ -54,7 +54,7 @@ La identidad del recurso es el **RUC**, no el `_id` de Mongo. El **permiso** sal
 | `GET` | `/jobs/{job_id}` | Estado y progreso de una operación asíncrona |
 | `GET` | `/analytics/*` | Agregados para el dashboard externo |
 
-Documentación interactiva en `http://127.0.0.1:9007/docs`.
+Documentación interactiva en `http://127.0.0.1:9007/api/docs`.
 
 ## Limitaciones conocidas
 
