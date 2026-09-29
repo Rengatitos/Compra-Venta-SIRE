@@ -15,6 +15,11 @@ interface Props {
   acciones?: ReactNode;
   /** `amplio` para pantallas con tablas, como el resultado de una carga. */
   ancho?: 'normal' | 'amplio';
+  /**
+   * El `<h1>` sigue existiendo para lectores de pantalla, pero no se ve: para
+   * pantallas cuyo contenido ya trae sus propios títulos (p. ej. con pestañas).
+   */
+  tituloOculto?: boolean;
 }
 
 /**
@@ -27,7 +32,15 @@ interface Props {
  * el armazón deja la barra contradiciendo al contenido y la navegación sin
  * ninguna sección marcada.
  */
-export function Marco({ titulo, intro, children, pie, acciones, ancho = 'normal' }: Props) {
+export function Marco({
+  titulo,
+  intro,
+  children,
+  pie,
+  acciones,
+  ancho = 'normal',
+  tituloOculto = false,
+}: Props) {
   useDocumentTitle(titulo);
 
   return (
@@ -44,7 +57,7 @@ export function Marco({ titulo, intro, children, pie, acciones, ancho = 'normal'
             <ThemeToggle />
           </div>
         </div>
-        <h1 className={estilos.titulo}>{titulo}</h1>
+        <h1 className={tituloOculto ? 'visually-hidden' : estilos.titulo}>{titulo}</h1>
         {intro ? <p className={estilos.intro}>{intro}</p> : null}
         {children}
         {pie ? <p className={estilos.pie}>{pie}</p> : null}

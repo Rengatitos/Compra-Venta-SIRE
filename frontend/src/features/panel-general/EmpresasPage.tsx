@@ -8,7 +8,6 @@ import { type Columna, DataTable } from '@/components/ui/DataTable';
 import { EmptyState, ErrorState, MetricTile, Skeleton } from '@/components/ui/Feedback';
 import { TextField } from '@/components/ui/Field';
 import { Panel } from '@/components/ui/Panel';
-import { ANCLA_CORREOS } from '@/features/empresa/correos';
 import { presentarTipoJob } from '@/features/jobs/estadoJob';
 import { useEsAdmin } from '@/features/usuarios/useEsAdmin';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -120,20 +119,6 @@ export function EmpresasPage() {
         ),
     },
     {
-      clave: 'correos',
-      cabecera: 'Correos de envío',
-      render: (fila) =>
-        fila.correos_notificacion.length ? (
-          <ul className={estilos.listaCorreos}>
-            {fila.correos_notificacion.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-        ) : (
-          <span className={layout.textoSecundario}>Sin correos</span>
-        ),
-    },
-    {
       clave: 'acciones',
       cabecera: 'Acciones',
       render: (fila) => (
@@ -149,10 +134,10 @@ export function EmpresasPage() {
           <Button
             pequeno
             variante="fantasma"
-            aria-label={`Editar los correos de ${fila.nombre ?? fila.ruc}`}
-            onClick={() => entrar(fila.ruc, `/ajustes#${ANCLA_CORREOS}`)}
+            aria-label={`Ajustes de ${fila.nombre ?? fila.ruc}`}
+            onClick={() => entrar(fila.ruc, '/ajustes')}
           >
-            Editar correo
+            Ajustes
           </Button>
         </div>
       ),

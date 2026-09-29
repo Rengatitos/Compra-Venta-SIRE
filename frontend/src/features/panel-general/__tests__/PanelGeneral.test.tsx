@@ -179,7 +179,7 @@ describe('panel general de empresas', () => {
     expect(screen.getByText('Con errores').parentElement).toHaveTextContent('1');
   });
 
-  it('lista cada empresa con la cantidad de periodos, su último proceso y sus correos', async () => {
+  it('lista cada empresa con la cantidad de periodos y su último proceso', async () => {
     montar();
 
     const tabla = await screen.findByRole('group', { name: 'Listado de empresas' });
@@ -189,16 +189,16 @@ describe('panel general de empresas', () => {
     const alfa = within(tabla).getByText('Alfa SAC').closest('tr');
     const beta = within(tabla).getByText('Beta EIRL').closest('tr');
     if (!alfa || !beta) throw new Error('Faltan filas en la tabla');
-    // Celdas `td`: procesar, periodos, actualización, último proceso, correos, acciones.
+    // Celdas `td`: procesar, periodos, actualización, último proceso, acciones.
     const celdasAlfa = within(alfa).getAllByRole('cell');
     expect(celdasAlfa[1]).toHaveTextContent(/^2$/);
     expect(celdasAlfa[3]).toHaveTextContent(/^Descarga SIRE$/);
-    expect(alfa).toHaveTextContent('conta@alfa.pe');
+    // Los correos por empresa ya no se usan: el ZIP va solo a quien lo pide.
+    expect(alfa).not.toHaveTextContent('conta@alfa.pe');
     expect(alfa).not.toHaveTextContent('sincronizado');
     expect(alfa).not.toHaveTextContent('Completado');
     expect(within(beta).getAllByRole('cell')[1]).toHaveTextContent(/^0$/);
     expect(beta).toHaveTextContent('Nunca');
-    expect(beta).toHaveTextContent('Sin correos');
   });
 
   it('filtra por RUC o nombre', async () => {
@@ -222,11 +222,11 @@ describe('panel general de empresas', () => {
     expect(obtenerSesion()?.ruc).toBe('20603391692');
   });
 
-  it('«Editar correo» lleva a los ajustes de esa empresa', async () => {
+  it('«Ajustes» lleva a los ajustes de esa empresa', async () => {
     montar();
 
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Editar los correos de Alfa SAC' }),
+      await screen.findByRole('button', { name: 'Ajustes de Alfa SAC' }),
     );
 
     expect(await screen.findByText('Ajustes')).toBeInTheDocument();

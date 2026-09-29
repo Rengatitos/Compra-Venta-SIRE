@@ -31,7 +31,7 @@ function detalle(fallo: unknown): string {
  * Los administradores fijos (`GOOGLE_ALLOWED_EMAILS` del servidor) salen en la
  * lista pero sin acciones: se cambian en el servidor, no desde aquí.
  */
-export function GestionAccesos({ independiente = false }: { independiente?: boolean }) {
+export function GestionAccesos() {
   const esAdmin = useEsAdmin();
   const cliente = useQueryClient();
   const { mostrar } = useToast();
@@ -94,23 +94,16 @@ export function GestionAccesos({ independiente = false }: { independiente?: bool
   const ocupado = cambiar.isPending || quitar.isPending;
 
   return (
-    <section
-      className={independiente ? estilos.contenido : estilos.seccion}
-      aria-labelledby={independiente ? undefined : idTitulo}
-      aria-label={independiente ? 'Cuentas con acceso' : undefined}
-    >
-      {/* En su propia página el título y la explicación ya los pone el marco. */}
-      {independiente ? null : (
-        <>
-          <h2 className={estilos.titulo} id={idTitulo}>
-            Cuentas con acceso
-          </h2>
-          <p className={layout.textoSecundario}>
-            Correos de Google que pueden entrar. Los administradores también dan y quitan
-            accesos; los usuarios solo trabajan con las empresas.
-          </p>
-        </>
-      )}
+    <section className={estilos.contenido} aria-labelledby={idTitulo}>
+      <header className={estilos.cabeceraVista}>
+        <h2 className={estilos.tituloVista} id={idTitulo}>
+          Cuentas con acceso
+        </h2>
+        <p className={layout.textoSecundario}>
+          Correos de Google que pueden entrar. Los administradores también pueden dar y quitar
+          accesos; los usuarios solo trabajan con las empresas.
+        </p>
+      </header>
 
       <form className={estilos.formulario} onSubmit={alEnviar}>
         <TextField
@@ -149,6 +142,11 @@ export function GestionAccesos({ independiente = false }: { independiente?: bool
         />
       ) : null}
 
+      {usuarios.data ? (
+        <h3 className={estilos.subtitulo}>
+          Usuarios existentes <span>{usuarios.data.length}</span>
+        </h3>
+      ) : null}
       {usuarios.data ? (
         <ul className={estilos.lista}>
           {usuarios.data.map((usuario) => (

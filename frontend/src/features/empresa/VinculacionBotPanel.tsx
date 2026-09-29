@@ -127,10 +127,9 @@ export function VinculacionBotPanel({ ruc }: { ruc: string }) {
         {codigo ? (
           <>
             <p className={estilos.etiqueta}>Código de vinculación</p>
-            <p
-              className={`${estilos.digitos} ${vencido ? (estilos.vencido ?? '') : ''}`}
-              aria-label={`Código ${codigo.codigo.split('').join(' ')}`}
-            >
+            <p className={`${estilos.digitos} ${vencido ? (estilos.vencido ?? '') : ''}`}>
+              {/* Separado para que el lector de pantalla lo diga dígito a dígito. */}
+              <span className="visually-hidden">{`Código ${codigo.codigo.split('').join(' ')}`}</span>
               {codigo.codigo.split('').map((digito, i) => (
                 // El índice es la identidad: la posición del dígito.
                 <span key={i} className={estilos.digito} aria-hidden="true">

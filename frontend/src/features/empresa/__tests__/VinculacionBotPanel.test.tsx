@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,9 +19,11 @@ const OPCIONES = { rules: { 'color-contrast': { enabled: false } } } as const;
 function Envoltura({ children }: { children: ReactNode }) {
   const cliente = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   return (
-    <QueryClientProvider client={cliente}>
-      <ToastProvider>{children}</ToastProvider>
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={cliente}>
+        <ToastProvider>{children}</ToastProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
 
@@ -39,20 +42,29 @@ afterEach(() => {
 });
 
 describe('VinculacionBotPanel', () => {
-  it('genera el código y lo muestra con su cuenta regresiva', async () => {
+  it('explica los pasos con el RUC antes de generar nada', () => {
+    render(<VinculacionBotPanel ruc={RUC} />, { wrapper: Envoltura });
+
+    expect(screen.getByRole('heading', { name: 'Conectar Apaclla Bot' })).toBeInTheDocument();
+    expect(screen.getByText(RUC)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Comprobantes externos' })).toHaveAttribute(
+      'href',
+      '/externos',
+    );
+  });
+
+  it('genera el código y lo muestra en la tarjeta con su cuenta regresiva', async () => {
     const expira = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     mocks.generar.mockResolvedValue({ codigo: '483921', expira_en: expira });
 
     const { container } = render(<VinculacionBotPanel ruc={RUC} />, { wrapper: Envoltura });
     await userEvent.click(screen.getByRole('button', { name: 'Generar código' }));
 
-    const dialogo = await screen.findByRole('dialog');
+    expect(await screen.findByText('Código 4 8 3 9 2 1')).toBeInTheDocument();
     expect(mocks.generar).toHaveBeenCalledWith(RUC);
-    expect(within(dialogo).getByText('483921')).toBeInTheDocument();
-    expect(
-      within(dialogo).getByText(`En Apaclla Bot, escribe el RUC ${RUC} y este código.`),
-    ).toBeInTheDocument();
-    expect(within(dialogo).getByRole('timer')).toHaveTextContent(/Vence en (9:5\d|10:00)/);
+    expect(screen.getByText('Código activo')).toBeInTheDocument();
+    expect(screen.getByRole('timer')).toHaveTextContent(/Vence en (9:5\d|10:00)/);
+    expect(screen.getByRole('button', { name: 'Copiar código' })).toBeInTheDocument();
     expect(await axe(container, OPCIONES)).toHaveNoViolations();
   });
 
@@ -63,15 +75,14 @@ describe('VinculacionBotPanel', () => {
 
     render(<VinculacionBotPanel ruc={RUC} />, { wrapper: Envoltura });
     await userEvent.click(screen.getByRole('button', { name: 'Generar código' }));
-    const dialogo = await screen.findByRole('dialog');
+    await screen.findByRole('timer');
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
-    expect(within(dialogo).getByRole('timer')).toHaveTextContent(
-      'Este código venció. Genera otro.',
-    );
-    expect(within(dialogo).getByRole('button', { name: 'Generar otro' })).toBeInTheDocument();
+    expect(screen.getByRole('timer')).toHaveTextContent('Este código venció. Genera otro.');
+    expect(screen.getByRole('button', { name: 'Generar otro' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copiar código' })).not.toBeInTheDocument();
   });
 });

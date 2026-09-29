@@ -1,0 +1,109 @@
+/* Control segmentado a todo el ancho de la tarjeta: las dos áreas pesan lo
+   mismo, así que ninguna se ve como secundaria. */
+.pestanas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.pestana {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 0;
+  padding: var(--space-3) var(--space-4);
+  font: inherit;
+  color: var(--color-text-secondary);
+  text-align: start;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-control) - 2px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pestana {
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
+  }
+}
+
+.pestana:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-hover);
+}
+
+.pestana:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.pestana[aria-selected='true'] {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-1);
+  border-color: var(--color-accent-strong);
+  box-shadow: var(--shadow-card);
+}
+
+.icono {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-surface-1);
+}
+
+.pestana[aria-selected='true'] .icono {
+  color: var(--color-bg);
+  background-color: var(--color-accent-strong);
+}
+
+.icono svg {
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.textos {
+  display: grid;
+  min-inline-size: 0;
+}
+
+.nombre {
+  font-weight: var(--weight-semibold);
+}
+
+.detalle {
+  overflow: hidden;
+  font-size: var(--text-body-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* En móvil el subtítulo no cabe: queda solo el icono y el nombre. */
+@media (max-width: 480px) {
+  .pestana {
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .detalle {
+    display: none;
+  }
+}
+
+.vista {
+  margin-block-start: var(--space-6);
+}

@@ -1,17 +1,63 @@
-/* Va dentro de la tarjeta del gate (sin superficie propia: anidar dos
-   tarjetas solo añade ruido) y en Ajustes. */
-
-.seccion {
-  display: grid;
-  gap: var(--space-4);
-  margin-block-start: var(--space-6);
-  padding-block-start: var(--space-5);
-  border-block-start: 1px solid var(--color-border);
-}
+/* Cada vista de «Administrar cuentas» va dentro de la tarjeta del marco, sin
+   superficie propia: anidar dos tarjetas solo añade ruido. */
 
 .contenido {
   display: grid;
   gap: var(--space-4);
+}
+
+.cabeceraVista {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.tituloVista {
+  font-size: var(--text-title);
+  font-weight: var(--weight-semibold);
+}
+
+.subtitulo {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-block-start: var(--space-3);
+  padding-block-end: var(--space-2);
+  font-size: var(--text-body-sm);
+  font-weight: var(--weight-semibold);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.subtitulo span {
+  padding-inline: var(--space-2);
+  font-size: var(--text-label-md);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  background-color: var(--color-surface-2);
+  border-radius: var(--radius-pill);
+}
+
+/* Aviso de seguridad de las cuentas de API. */
+.aviso {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-primary);
+  background-color: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: var(--radius-control);
+}
+
+.aviso svg {
+  flex: none;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  fill: none;
+  stroke: var(--color-info);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .titulo {

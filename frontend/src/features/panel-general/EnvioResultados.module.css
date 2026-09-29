@@ -1,0 +1,85 @@
+.flujo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.extremo {
+  display: grid;
+  flex: 1 1 14rem;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.etiqueta {
+  font-size: var(--text-label-md);
+  letter-spacing: var(--tracking-label);
+  color: var(--color-text-label);
+  text-transform: uppercase;
+}
+
+.correo {
+  overflow-wrap: anywhere;
+  font-weight: var(--weight-medium);
+}
+
+.flecha {
+  font-size: var(--text-title);
+  color: var(--color-text-secondary);
+}
+
+/* En pantallas estrechas las dos cajas se apilan y la flecha sobra. */
+@media (max-width: 560px) {
+  .flecha {
+    display: none;
+  }
+}
+
+.paso {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+  padding: var(--space-4);
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-control);
+}
+
+@media (max-width: 560px) {
+  .paso {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.avanzadas {
+  background-color: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.avanzadas > summary {
+  padding: var(--space-4) var(--card-padding);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.avanzadas > summary span {
+  margin-inline-start: var(--space-2);
+  font-size: var(--text-body-sm);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-secondary);
+}
+
+.avanzadas[open] > summary {
+  border-block-end: 1px solid var(--color-border);
+}
+
+.contenidoAvanzado {
+  padding: var(--card-padding);
+}

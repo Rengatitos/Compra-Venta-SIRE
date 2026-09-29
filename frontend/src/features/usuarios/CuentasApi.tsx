@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import {
@@ -91,6 +91,7 @@ export function CuentasApi() {
   const [correo, setCorreo] = useState('');
   const [vigencia, setVigencia] = useState('90');
   const [nueva, setNueva] = useState<CuentaApiConClave | null>(null);
+  const idTitulo = useId();
 
   const cuentas = useQuery({ queryKey: ['cuentas-api'], queryFn: listarCuentasApi });
   const refrescar = () => cliente.invalidateQueries({ queryKey: ['cuentas-api'] });
@@ -135,13 +136,24 @@ export function CuentasApi() {
   const ocupado = regenerar.isPending || eliminar.isPending;
 
   return (
-    <section className={estilos.seccion} aria-label="Cuentas de API">
-      <h2 className={estilos.titulo}>Cuentas de API</h2>
-      <p className={layout.textoSecundario}>
-        Para programas (ELT, reportes, scripts): entran con correo y contraseña en{' '}
-        <code>POST /api/v1/auth/token</code>, sin Google, y reciben un token de 5 horas con
-        acceso completo a la API. Sire genera la contraseña, la muestra una sola vez y la
-        cambia cuando vence o cuando la regeneras.
+    <section className={estilos.contenido} aria-labelledby={idTitulo}>
+      <header className={estilos.cabeceraVista}>
+        <h2 className={estilos.tituloVista} id={idTitulo}>
+          Cuentas de API
+        </h2>
+        <p className={layout.textoSecundario}>
+          Cuentas para programas, ELT, reportes y scripts. Se autentican mediante correo y
+          contraseña en <code>POST /api/v1/auth/token</code>, sin Google, y reciben un token de 5
+          horas con acceso completo a la API.
+        </p>
+      </header>
+
+      <p className={estilos.aviso}>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+          <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
+        </svg>
+        Las contraseñas se muestran una sola vez y pueden regenerarse cuando vencen.
       </p>
 
       {nueva ? <ClaveNueva nueva={nueva} alCerrar={() => setNueva(null)} /> : null}
@@ -184,6 +196,14 @@ export function CuentasApi() {
         />
       ) : null}
 
+      {cuentas.data ? (
+        <h3 className={estilos.subtitulo}>
+          Cuentas existentes <span>{cuentas.data.length}</span>
+        </h3>
+      ) : null}
+      {cuentas.data?.length === 0 ? (
+        <p className={layout.textoSecundario}>Todavía no hay cuentas de API.</p>
+      ) : null}
       {cuentas.data?.length ? (
         <ul className={estilos.lista}>
           {cuentas.data.map((cuenta) => (
@@ -202,6 +222,7 @@ export function CuentasApi() {
                 </small>
               </span>
               <span className={layout.fila}>
+                <Badge tono="info">Acceso completo</Badge>
                 <Badge tono={cuenta.vigente ? 'exito' : 'error'}>
                   {cuenta.vigente ? 'Vigente' : 'Vencida'}
                 </Badge>
