@@ -23,8 +23,20 @@ bearer_scheme = HTTPBearer()
 # scraping, las detracciones y la renovación del token de SUNAT.
 TIPO_TOKEN = "usuario"
 
+# Con qué se obtuvo el token. Un mismo correo puede entrar con Google (con el rol
+# de la persona) y a la vez tener una cuenta de API (acceso completo): el token
+# lleva su origen para que la sesión de Google no herede los permisos de la API.
+ORIGEN_GOOGLE = "google"
+ORIGEN_API = "api"
 
-def create_token(email: str, nombre: str | None = None, foto: str | None = None) -> str:
+
+def create_token(
+    email: str,
+    nombre: str | None = None,
+    foto: str | None = None,
+    horas: int | None = None,
+    origen: str | None = None,
+) -> str:
     # `nombre` y `foto` se aceptan por comodidad de quien llama pero no entran
     # en el payload: viajan en el cuerpo de la respuesta de login, para no
     # engordar la cabecera Authorization de todas las peticiones siguientes.
@@ -32,8 +44,10 @@ def create_token(email: str, nombre: str | None = None, foto: str | None = None)
         "tipo": TIPO_TOKEN,
         "sub": email,
         "email": email,
-        "exp": datetime.now(UTC) + timedelta(hours=settings.JWT_EXPIRE_HOURS),
+        "exp": datetime.now(UTC) + timedelta(hours=horas or settings.JWT_EXPIRE_HOURS),
     }
+    if origen:
+        payload["origen"] = origen
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
@@ -76,11 +90,14 @@ def leer_token_descarga(token: str) -> dict:
     return payload
 
 
-async def rol_de(db, correo: str, *, cuentas_api: bool = True) -> Rol | None:
+async def rol_de(db, correo: str, *, cuentas_api: bool = True, personas: bool = True) -> Rol | None:
     """Rol con el que entra ese correo, o `None` si no tiene acceso.
 
     Los administradores fijos del entorno se resuelven sin tocar Mongo.
+    `personas=False` mira solo las cuentas de API.
     """
+    if not personas:
+        return resolver_rol(correo, [], await repo_cuentas_api.rol_de(db, correo))
     rol = resolver_rol(correo, settings.GOOGLE_ALLOWED_EMAILS, None)
     if rol is not None:
         return rol
@@ -126,7 +143,15 @@ async def usuario_actual(
     # El acceso se revalida en cada petición, no solo al iniciar sesión: así
     # quitar un correo (del entorno o desde el panel) lo expulsa en el acto en
     # vez de dejarlo dentro hasta que caduque su token.
-    rol = await rol_de(db, correo)
+    # Token de cuenta de API: solo esa cuenta. Token de Google: solo la persona.
+    # Sin origen (tokens emitidos antes de marcarlo): como antes, ambas.
+    origen = payload.get("origen")
+    rol = await rol_de(
+        db,
+        correo,
+        cuentas_api=origen != ORIGEN_GOOGLE,
+        personas=origen != ORIGEN_API,
+    )
     if rol is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

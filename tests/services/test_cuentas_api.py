@@ -73,7 +73,6 @@ def sin_personas(monkeypatch):
     async def ninguno(db, correo):
         return None
 
-    monkeypatch.setattr(ruta_cuentas.repo_usuarios, "rol_de", ninguno)
     monkeypatch.setattr(core_auth.repo_usuarios, "rol_de", ninguno)
     monkeypatch.setattr(settings, "GOOGLE_ALLOWED_EMAILS", [ADMIN["email"]])
 
@@ -91,7 +90,7 @@ def cliente(coleccion, sin_personas):
 
 
 def _crear(cliente, **extra) -> str:
-    r = cliente.post("/cuentas-api", json={"email": CORREO, "rol": "admin", **extra})
+    r = cliente.post("/cuentas-api", json={"email": CORREO, **extra})
     assert r.status_code == 201, r.text
     return r.json()["password"]
 
@@ -129,6 +128,23 @@ def test_login_devuelve_un_token_de_sesion(cliente):
     cuerpo = r.json()
     assert cuerpo["usuario"] == {"email": CORREO, "nombre": None, "foto": None, "rol": "admin"}
     assert decode_token(cuerpo["access_token"])["email"] == CORREO
+
+
+def test_token_de_cuenta_api_dura_5_horas(cliente, monkeypatch):
+    monkeypatch.setattr(settings, "JWT_EXPIRE_HOURS", 2)
+    clave = _crear(cliente)
+    cuerpo = cliente.post("/auth/token", json={"email": CORREO, "password": clave}).json()
+    assert cuerpo["expires_in"] == 5 * 3600
+    restante = decode_token(cuerpo["access_token"])["exp"] - datetime.now(UTC).timestamp()
+    assert 5 * 3600 - 60 < restante <= 5 * 3600
+
+
+def test_cuenta_antigua_con_rol_usuario_entra_como_admin(cliente, coleccion):
+    clave = _crear(cliente)
+    coleccion.docs[CORREO]["rol"] = "usuario"
+    assert asyncio.run(core_auth.rol_de(object(), CORREO)) == Rol.ADMIN
+    r = cliente.post("/auth/token", json={"email": CORREO, "password": clave})
+    assert r.json()["usuario"]["rol"] == "admin"
 
 
 @pytest.mark.parametrize(
@@ -199,11 +215,33 @@ def test_listar_nunca_devuelve_hash_ni_clave(cliente):
     assert "clave_hash" not in r.text and clave not in r.text
 
 
-def test_no_se_duplica_ni_pisa_a_una_persona(cliente, monkeypatch):
+def test_no_se_duplica(cliente):
     _crear(cliente)
     assert cliente.post("/cuentas-api", json={"email": CORREO}).status_code == 409
-    r = cliente.post("/cuentas-api", json={"email": ADMIN["email"]})
-    assert r.status_code == 409
+
+
+def test_correo_de_una_persona_puede_tener_cuenta_de_api(cliente, monkeypatch):
+    persona = "contadora@apaclla.au.pe"
+
+    async def rol_persona(db, correo):
+        return "usuario" if correo == persona else None
+
+    monkeypatch.setattr(core_auth.repo_usuarios, "rol_de", rol_persona)
+    r = cliente.post("/cuentas-api", json={"email": persona})
+    assert r.status_code == 201
+    clave = r.json()["password"]
+
+    token_api = cliente.post("/auth/token", json={"email": persona, "password": clave}).json()
+    assert decode_token(token_api["access_token"])["origen"] == core_auth.ORIGEN_API
+    assert token_api["usuario"]["rol"] == "admin"
+
+    # Cada token resuelve el rol por su origen: la sesión de Google sigue siendo usuario.
+    def rol_con(token):
+        return cliente.get("/auth/yo", headers={"Authorization": f"Bearer {token}"}).json()["rol"]
+
+    token_google = core_auth.create_token(persona, origen=core_auth.ORIGEN_GOOGLE)
+    assert rol_con(token_api["access_token"]) == "admin"
+    assert rol_con(token_google) == "usuario"
 
 
 @pytest.mark.parametrize("dias", [0, 366])

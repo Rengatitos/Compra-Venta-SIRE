@@ -18,7 +18,6 @@ vi.mock('@/api/cuentasApi', () => mocks);
 
 const CUENTA: CuentaApi = {
   email: 'administrador@apaclla.au.pe',
-  rol: 'admin',
   vigencia_dias: 90,
   expira_en: '2026-12-27T00:00:00Z',
   vigente: true,
@@ -50,10 +49,9 @@ describe('cuentas de API', () => {
     montar();
 
     await userEvent.type(screen.getByLabelText(/Correo de la cuenta/), CUENTA.email);
-    await userEvent.selectOptions(screen.getByLabelText(/^Rol/), 'admin');
     await userEvent.click(screen.getByRole('button', { name: 'Crear cuenta y generar contraseña' }));
 
-    expect(mocks.crearCuentaApi).toHaveBeenCalledWith(CUENTA.email, 'admin', 90);
+    expect(mocks.crearCuentaApi).toHaveBeenCalledWith(CUENTA.email, 90);
     expect(await screen.findByText('clave-generada-XYZ')).toBeInTheDocument();
     expect(screen.getByText(/\/api\/v1\/auth\/token/, { selector: 'pre' })).toHaveTextContent(
       '"password": "clave-generada-XYZ"',
@@ -61,6 +59,7 @@ describe('cuentas de API', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Ya la guardé' }));
     expect(screen.queryByText('clave-generada-XYZ')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Rol/)).not.toBeInTheDocument();
   });
 
   it('lista las cuentas sin contraseña y permite regenerarla', async () => {

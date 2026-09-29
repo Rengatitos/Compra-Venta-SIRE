@@ -8,123 +8,58 @@ agregados del panel— para cargarlos en un almacén de datos y transformarlos a
 
 | | |
 |---|---|
-| **URL base de la API** | `https://apaclla-web.p7slsc.easypanel.host/api/v1` |
-| Salud (sin sesión) | `https://apaclla-web.p7slsc.easypanel.host/health` |
+| **URL base** | `https://apaclla-web.p7slsc.easypanel.host/api/v1` |
 | Formato | JSON (UTF-8). Las exportaciones devuelven Excel, PDF o ZIP. |
-| Autenticación | `Authorization: Bearer <token>` en todas las rutas salvo `/health` y el login |
-| Vigencia del token | **2 horas**. Al vencer, la API responde `401 Token expirado`: se vuelve a pedir. |
+| Credenciales | Un **correo** y una **contraseña** que te entrega Apaclla. Dan acceso a toda la API. |
+| Autenticación | `Authorization: Bearer <token>` en todas las rutas salvo el login |
+| Vigencia del token | **5 horas**. Al vencer, la API responde `401 Token expirado`: se pide otro igual. |
 
-Variables que usan todos los ejemplos:
-
-```bash
-export SIRE="https://apaclla-web.p7slsc.easypanel.host/api/v1"
-export TOKEN="<token de la sección 2>"
-export RUC="20603391692"      # 11 dígitos
-export PERIODO="202609"       # YYYYMM
-```
-
-Comprobar la conexión:
-
-```bash
-curl -s https://apaclla-web.p7slsc.easypanel.host/health
-# {"status":"ok"}
-```
+Hay una colección de Postman lista para importar:
+[`sire-api.postman_collection.json`](sire-api.postman_collection.json). Solo hay que
+llenar las variables `email` y `password`; el token se pide y se renueva solo.
 
 ## 2. Obtener el token
 
-### Opción recomendada — Cuenta de API (correo y contraseña)
-
-Sin Google, sin `gcloud` y sin abrir el panel en cada ejecución.
-
-Una sola vez, un administrador entra al panel → botón **Accesos al panel** →
-sección **Cuentas de API**, escribe el correo (por ejemplo
-`administrador@apaclla.au.pe`), elige el rol y cuándo vence la contraseña, y pulsa
-**Crear cuenta y generar contraseña**. Sire muestra la contraseña **una sola vez**
-junto con el curl listo para copiar; solo guarda su hash.
-
-En cada ejecución:
+Una sola llamada con el correo y la contraseña:
 
 ```bash
+export SIRE="https://apaclla-web.p7slsc.easypanel.host/api/v1"
+
 export TOKEN=$(curl -s -X POST "$SIRE/auth/token" \
   -H "Content-Type: application/json" \
-  -d '{"email": "administrador@apaclla.au.pe", "password": "<contraseña generada>"}' \
+  -d '{"email": "<correo>", "password": "<contraseña>"}' \
   | jq -r .access_token)
 ```
 
-- Respuesta: la misma que el login con Google (`access_token`, `token_type`,
-  `usuario`). El token dura 2 horas; al vencer se vuelve a pedir igual.
-- La contraseña **vence** a los días elegidos (30 a 365). Antes de eso, o si se
-  filtra, se pulsa **Nueva contraseña** en el panel: la anterior deja de servir en
-  el acto. **Eliminar** la cuenta corta también los tokens ya emitidos.
-- Errores: `401 Correo o contraseña incorrectos`, `401 … venció` (hay que
-  regenerarla) y `429` a partir de 5 intentos por minuto.
-- Guarda la contraseña en el gestor de secretos del ELT (variable de entorno,
-  Secret Manager…), nunca en el código.
+Respuesta:
 
-### Alternativa — Cuenta de Google
-
-Las personas entran con una cuenta de Google que un administrador haya autorizado
-en el panel (**Cuentas con acceso**). La API cambia el *ID token* de Google por
-un token de Sire:
-
-```
-POST /api/v1/auth/google   {"credential": "<ID token de Google>"}
-→ {"access_token": "...", "token_type": "bearer", "usuario": {"email": ..., "rol": ...}}
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "token_type": "bearer",
+  "expires_in": 18000,
+  "usuario": {"email": "<correo>", "nombre": null, "foto": null, "rol": "admin"}
+}
 ```
 
-El ID token tiene que estar emitido para el cliente web de Sire, así que su
-audiencia (`aud`) debe ser exactamente:
+- `expires_in` son los segundos de vigencia (18000 = 5 horas). Pasado ese tiempo
+  se vuelve a llamar a `/auth/token`.
+- Se admiten **5 intentos por minuto**; más allá, `429`.
+- Guarda la contraseña como variable de entorno o en un gestor de secretos, nunca
+  en el código.
 
-```
-257729885873-r2f868plc3gsr2jhe2db32hp9igg93ua.apps.googleusercontent.com
-```
-
-#### Cuenta de servicio de Google Cloud
-
-Una sola vez:
-
-1. En Google Cloud, crear una cuenta de servicio para el ELT, por ejemplo
-   `sire-elt@<proyecto>.iam.gserviceaccount.com`.
-2. Dar a quien ejecuta el proceso el rol **Creador de tokens de cuenta de
-   servicio** (`roles/iam.serviceAccountTokenCreator`) sobre esa cuenta, o
-   descargar una clave JSON de ella.
-3. Pedir a un administrador de Sire que agregue ese correo en **Cuentas con
-   acceso** con rol **usuario**. Ese rol lee los datos y puede lanzar procesos,
-   pero no gestiona accesos. Sire no tiene un rol de solo lectura: el proceso ELT
-   debe limitarse a las rutas de lectura (secciones 4 a 9).
-
-En cada ejecución:
-
-```bash
-AUD="257729885873-r2f868plc3gsr2jhe2db32hp9igg93ua.apps.googleusercontent.com"
-SA="sire-elt@<proyecto>.iam.gserviceaccount.com"
-
-# Con impersonación (sin archivos de clave):
-ID_TOKEN=$(gcloud auth print-identity-token \
-  --impersonate-service-account="$SA" --audiences="$AUD" --include-email)
-
-# …o con la clave JSON de la cuenta de servicio:
-# gcloud auth activate-service-account --key-file=sire-elt.json
-# ID_TOKEN=$(gcloud auth print-identity-token --audiences="$AUD" --include-email)
-
-export TOKEN=$(curl -s -X POST "$SIRE/auth/google" \
-  -H "Content-Type: application/json" \
-  -d "{\"credential\": \"$ID_TOKEN\"}" | jq -r .access_token)
-```
-
-`--include-email` es obligatorio: Sire rechaza un ID token sin correo verificado.
-
-#### Token de una sesión del panel (pruebas manuales)
-
-1. Entrar al panel `https://apaclla-web.p7slsc.easypanel.host` con Google.
-2. DevTools (F12) → **Application** → **Session Storage** → clave `sire.sesion`.
-3. Copiar el valor de `token` y exportarlo como `TOKEN`. Dura 2 horas.
-
-### Verificar el token
+Comprobar que el token funciona:
 
 ```bash
 curl -s "$SIRE/auth/yo" -H "Authorization: Bearer $TOKEN"
-# {"email":"sire-elt@…","nombre":null,"foto":null,"rol":"usuario"}
+# {"email":"<correo>","nombre":null,"foto":null,"rol":"admin"}
+```
+
+Variables que usan los ejemplos siguientes:
+
+```bash
+export RUC="20603391692"      # 11 dígitos
+export PERIODO="202609"       # YYYYMM
 ```
 
 ## 3. Convenciones
@@ -135,7 +70,7 @@ curl -s "$SIRE/auth/yo" -H "Authorization: Bearer $TOKEN"
 - **Importes**: números en la moneda del comprobante (`moneda`, con `tipo_cambio` si es USD).
 - **Paginación**: `limit` y `skip`. Se pide página a página hasta que llegue
   una lista más corta que `limit`.
-- **Límites**: el login admite 10 peticiones/min; las de lectura no tienen un
+- **Límites**: el login admite 5 peticiones/min; las de lectura no tienen un
   límite fijo, pero conviene no pasar de unas pocas por segundo: la API corre en
   una VM de 4 GB con un solo proceso.
 
@@ -370,7 +305,10 @@ tabla, listo para cargar en BigQuery, Postgres, DuckDB o similar.
 #!/usr/bin/env bash
 set -euo pipefail
 SIRE="https://apaclla-web.p7slsc.easypanel.host/api/v1"
-: "${TOKEN:?exporta TOKEN (sección 2)}"
+: "${SIRE_EMAIL:?exporta SIRE_EMAIL}" "${SIRE_PASSWORD:?exporta SIRE_PASSWORD}"
+TOKEN=$(jq -n --arg e "$SIRE_EMAIL" --arg p "$SIRE_PASSWORD" '{email: $e, password: $p}' \
+  | curl -sf -X POST "$SIRE/auth/token" -H "Content-Type: application/json" -d @- \
+  | jq -r .access_token)
 H=(-H "Authorization: Bearer $TOKEN" -H "Accept: application/json")
 SALIDA="extraccion_$(date +%Y%m%d_%H%M%S)"; mkdir -p "$SALIDA"
 
@@ -413,7 +351,13 @@ import requests
 
 SIRE = "https://apaclla-web.p7slsc.easypanel.host/api/v1"
 s = requests.Session()
-s.headers["Authorization"] = f"Bearer {os.environ['TOKEN']}"
+login = s.post(
+    f"{SIRE}/auth/token",
+    json={"email": os.environ["SIRE_EMAIL"], "password": os.environ["SIRE_PASSWORD"]},
+    timeout=60,
+)
+login.raise_for_status()
+s.headers["Authorization"] = f"Bearer {login.json()['access_token']}"  # dura 5 horas
 
 
 def paginas(url, limite=500, **params):
@@ -458,11 +402,12 @@ print(len(filas), "comprobantes")
 
 | Código | Significado | Qué hacer |
 |---|---|---|
-| 401 `Token expirado` / `Token inválido` | El token venció (2 h) o está mal copiado | Pedir uno nuevo (sección 2) |
-| 401 en `/auth/google` | ID token de Google inválido o con otra audiencia | Revisar `--audiences` e `--include-email` |
-| 403 | La cuenta no está en **Cuentas con acceso** | Pedir acceso a un administrador |
+| 401 `Correo o contraseña incorrectos` | Credenciales mal escritas | Revisar el correo y la contraseña |
+| 401 `… venció` | La contraseña caducó | Pedir una nueva a Apaclla |
+| 401 `Token expirado` / `Token inválido` | Pasaron las 5 horas o el token está mal copiado | Volver a llamar a `/auth/token` |
+| 403 | La cuenta fue desactivada | Contactar a Apaclla |
 | 404 | RUC, periodo o comprobante inexistente | Revisar el RUC (11 dígitos) y el periodo (`YYYYMM`) |
 | 409 | Ya hay un trabajo igual en curso | Esperar y consultar `/jobs` |
 | 422 | Parámetro con formato inválido (p. ej. `libro=venta`) | Revisar la sección 3 |
 | 429 | Demasiadas peticiones seguidas | Esperar un minuto |
-| 502 / 503 | SUNAT o Google no respondieron | Reintentar más tarde |
+| 502 / 503 | SUNAT no respondió | Reintentar más tarde |

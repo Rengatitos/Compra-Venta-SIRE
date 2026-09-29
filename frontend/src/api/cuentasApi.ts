@@ -1,20 +1,19 @@
 import { pedir, segmento } from '@/lib/http';
-import type { CuentaApi, CuentaApiConClave, RolUsuario } from '@/types/api';
+import type { CuentaApi, CuentaApiConClave } from '@/types/api';
 
 /** Cuentas de API (integraciones). Todo solo para administradores. */
 export function listarCuentasApi(): Promise<CuentaApi[]> {
   return pedir<CuentaApi[]>('/cuentas-api');
 }
 
-/** Devuelve la contraseña una sola vez. `409` si el correo ya existe. */
-export function crearCuentaApi(
-  email: string,
-  rol: RolUsuario,
-  vigenciaDias: number,
-): Promise<CuentaApiConClave> {
+/**
+ * Devuelve la contraseña una sola vez. `409` si el correo ya existe. La cuenta
+ * tiene acceso completo a la API.
+ */
+export function crearCuentaApi(email: string, vigenciaDias: number): Promise<CuentaApiConClave> {
   return pedir<CuentaApiConClave>('/cuentas-api', {
     metodo: 'POST',
-    cuerpo: { email, rol, vigencia_dias: vigenciaDias },
+    cuerpo: { email, vigencia_dias: vigenciaDias },
   });
 }
 

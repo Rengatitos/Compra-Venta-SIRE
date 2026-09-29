@@ -30,3 +30,6 @@ class TokenResponse(BaseModel):
     # Google ronda los cien caracteres y engordaría la cabecera de todas las
     # peticiones. Así el panel puede pintar el correo sin decodificar el token.
     usuario: UsuarioResponse
+    # Segundos de vigencia del token. Solo lo informa `POST /auth/token`, para
+    # que un programa sepa cuándo pedir otro sin decodificar el JWT.
+    expires_in: int | None = None

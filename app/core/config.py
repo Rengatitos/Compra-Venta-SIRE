@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     SOL_USER_CRYPTO_KEY: str | None = None
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 2
+    # Token de las cuentas de API (`POST /auth/token`): un ELT corre más que una
+    # sesión del panel y así no tiene que renovarlo a mitad de la extracción.
+    API_TOKEN_EXPIRE_HOURS: int = 5
 
     # Cliente OAuth de Google (tipo "aplicación web") contra el que se valida el
     # `aud` de los ID tokens. Sin él no se puede entrar: ver el guard explícito

@@ -3,6 +3,9 @@
 Una cuenta de API entra con correo y contraseña por `POST /auth/token`, sin
 Google. La contraseña la genera Sire, se muestra una sola vez (al crearla o
 regenerarla) y solo se guarda su hash. Vence a los `vigencia_dias`.
+
+Tienen acceso completo a la API (rol admin): un solo correo y contraseña sirve
+para todas las rutas.
 """
 
 import logging
@@ -13,11 +16,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.core import claves
 from app.core.auth import exigir_admin
-from app.core.config import settings
 from app.db.database import get_db
-from app.domain.usuario import Rol, esta_permitido, normalizar_correo
+from app.domain.usuario import normalizar_correo
 from app.repositories import cuentas_api as repo_cuentas_api
-from app.repositories import usuarios as repo_usuarios
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 class CuentaApi(BaseModel):
     email: str
-    rol: Rol
     vigencia_dias: int
     expira_en: datetime
     vigente: bool
@@ -43,7 +43,6 @@ class CuentaApiConClave(BaseModel):
 
 class AltaCuentaApi(BaseModel):
     email: str
-    rol: Rol = Rol.USUARIO
     vigencia_dias: int = Field(90, ge=1, le=365)
 
     @field_validator("email")
@@ -76,13 +75,6 @@ async def listar(_admin: dict = Depends(exigir_admin), db=Depends(get_db)):
     summary="Crear una cuenta de API (devuelve su contraseña una sola vez)",
 )
 async def crear(datos: AltaCuentaApi, admin: dict = Depends(exigir_admin), db=Depends(get_db)):
-    # Un correo es de una persona (Google) o de un programa, no de los dos.
-    if esta_permitido(datos.email, settings.GOOGLE_ALLOWED_EMAILS) or await repo_usuarios.rol_de(
-        db, datos.email
-    ):
-        raise HTTPException(
-            status_code=409, detail="Ese correo ya tiene acceso como persona (con Google)"
-        )
     if await repo_cuentas_api.obtener(db, datos.email):
         raise HTTPException(
             status_code=409, detail="Esa cuenta de API ya existe: regenera su contraseña"
@@ -92,12 +84,11 @@ async def crear(datos: AltaCuentaApi, admin: dict = Depends(exigir_admin), db=De
     documento = await repo_cuentas_api.guardar_clave(
         db,
         datos.email,
-        rol=datos.rol,
         clave_hash=claves.hashear(clave),
         vigencia_dias=datos.vigencia_dias,
         por=admin["email"],
     )
-    logger.info("Cuenta de API %s (%s) creada por %s", datos.email, datos.rol.value, admin["email"])
+    logger.info("Cuenta de API %s creada por %s", datos.email, admin["email"])
     return {"cuenta": _salida(documento), "password": clave}
 
 
@@ -120,7 +111,6 @@ async def regenerar(
     documento = await repo_cuentas_api.guardar_clave(
         db,
         cuenta["email"],
-        rol=Rol(cuenta["rol"]),
         clave_hash=claves.hashear(clave),
         vigencia_dias=datos.vigencia_dias or cuenta.get("vigencia_dias") or 90,
         por=admin["email"],

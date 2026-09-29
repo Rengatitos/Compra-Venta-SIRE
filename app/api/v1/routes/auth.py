@@ -5,7 +5,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.core import claves
-from app.core.auth import create_token, rol_de, usuario_actual
+from app.core.auth import ORIGEN_API, ORIGEN_GOOGLE, create_token, rol_de, usuario_actual
+from app.core.config import settings
 from app.db.database import get_db
 from app.domain.usuario import Rol
 from app.repositories import cuentas_api as repo_cuentas_api
@@ -39,7 +40,8 @@ async def login_google(request: Request, payload: LoginGoogle, db=Depends(get_db
         raise HTTPException(status_code=401, detail="Token de Google inválido") from None
 
     correo = datos["email"]
-    # Una cuenta de API no entra con Google aunque exista un buzón con ese nombre.
+    # Con Google entra la persona, con su rol: la cuenta de API del mismo correo
+    # (si la hay) no le da permisos extra.
     rol = await rol_de(db, correo, cuentas_api=False)
     if rol is None:
         # Autenticado pero no autorizado, así que 403. Es la única traza que
@@ -52,7 +54,7 @@ async def login_google(request: Request, payload: LoginGoogle, db=Depends(get_db
 
     logger.info("Sesión iniciada por %s", correo)
     return TokenResponse(
-        access_token=create_token(email=correo, nombre=datos.get("nombre")),
+        access_token=create_token(email=correo, nombre=datos.get("nombre"), origen=ORIGEN_GOOGLE),
         usuario=UsuarioResponse(
             email=correo,
             nombre=datos.get("nombre"),
@@ -81,7 +83,8 @@ async def login_cuenta_api(request: Request, payload: LoginCuentaApi, db=Depends
 
     Solo sirve para las cuentas de API que un administrador crea en el panel
     («Accesos» › «Cuentas de API»); las personas entran con Google. Devuelve el
-    mismo token que el login con Google, con la misma vigencia.
+    mismo token que el login con Google, con acceso completo (rol admin) y
+    vigencia de `API_TOKEN_EXPIRE_HOURS` (5 h).
     """
     cuenta = await repo_cuentas_api.obtener(db, payload.email)
     guardado = cuenta["clave_hash"] if cuenta else _HASH_RELLENO
@@ -97,9 +100,11 @@ async def login_cuenta_api(request: Request, payload: LoginCuentaApi, db=Depends
 
     await repo_cuentas_api.marcar_uso(db, cuenta["email"])
     logger.info("Token emitido para la cuenta de API %s", cuenta["email"])
+    horas = settings.API_TOKEN_EXPIRE_HOURS
     return TokenResponse(
-        access_token=create_token(email=cuenta["email"]),
-        usuario=UsuarioResponse(email=cuenta["email"], rol=Rol(cuenta["rol"]).value),
+        access_token=create_token(email=cuenta["email"], horas=horas, origen=ORIGEN_API),
+        usuario=UsuarioResponse(email=cuenta["email"], rol=Rol.ADMIN.value),
+        expires_in=horas * 3600,
     )
 
 

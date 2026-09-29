@@ -16,14 +16,9 @@ import { useToast } from '@/hooks/useToast';
 import { formatearFecha, formatearFechaHora } from '@/lib/format';
 import { ApiError } from '@/lib/http';
 import layout from '@/styles/layouts.module.css';
-import type { CuentaApiConClave, RolUsuario } from '@/types/api';
+import type { CuentaApiConClave } from '@/types/api';
 
 import estilos from './GestionAccesos.module.css';
-
-const ROLES = [
-  { valor: 'usuario', texto: 'Usuario (lee datos y lanza procesos)' },
-  { valor: 'admin', texto: 'Administrador (además gestiona accesos)' },
-] as const;
 
 const VIGENCIAS = [
   { valor: '30', texto: '30 días' },
@@ -94,7 +89,6 @@ export function CuentasApi() {
   const cliente = useQueryClient();
   const { mostrar } = useToast();
   const [correo, setCorreo] = useState('');
-  const [rol, setRol] = useState<RolUsuario>('usuario');
   const [vigencia, setVigencia] = useState('90');
   const [nueva, setNueva] = useState<CuentaApiConClave | null>(null);
 
@@ -102,7 +96,7 @@ export function CuentasApi() {
   const refrescar = () => cliente.invalidateQueries({ queryKey: ['cuentas-api'] });
 
   const crear = useMutation({
-    mutationFn: () => crearCuentaApi(correo.trim(), rol, Number(vigencia)),
+    mutationFn: () => crearCuentaApi(correo.trim(), Number(vigencia)),
     onSuccess: async (resultado) => {
       setNueva(resultado);
       setCorreo('');
@@ -145,8 +139,9 @@ export function CuentasApi() {
       <h2 className={estilos.titulo}>Cuentas de API</h2>
       <p className={layout.textoSecundario}>
         Para programas (ELT, reportes, scripts): entran con correo y contraseña en{' '}
-        <code>POST /api/v1/auth/token</code>, sin Google. Sire genera la contraseña, la
-        muestra una sola vez y la cambia cuando vence o cuando la regeneras.
+        <code>POST /api/v1/auth/token</code>, sin Google, y reciben un token de 5 horas con
+        acceso completo a la API. Sire genera la contraseña, la muestra una sola vez y la
+        cambia cuando vence o cuando la regeneras.
       </p>
 
       {nueva ? <ClaveNueva nueva={nueva} alCerrar={() => setNueva(null)} /> : null}
@@ -161,13 +156,6 @@ export function CuentasApi() {
           placeholder="administrador@apaclla.au.pe"
           autoComplete="off"
           required
-        />
-        <SelectField
-          etiqueta="Rol"
-          name="rol-api"
-          value={rol}
-          onChange={(evento) => setRol(evento.target.value as RolUsuario)}
-          opciones={ROLES}
         />
         <SelectField
           etiqueta="La contraseña vence en"
@@ -214,9 +202,6 @@ export function CuentasApi() {
                 </small>
               </span>
               <span className={layout.fila}>
-                <Badge tono={cuenta.rol === 'admin' ? 'info' : 'neutro'}>
-                  {cuenta.rol === 'admin' ? 'Admin' : 'Usuario'}
-                </Badge>
                 <Badge tono={cuenta.vigente ? 'exito' : 'error'}>
                   {cuenta.vigente ? 'Vigente' : 'Vencida'}
                 </Badge>

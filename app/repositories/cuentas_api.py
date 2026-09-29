@@ -3,7 +3,7 @@
 Son para programas, no para personas: entran por `POST /auth/token` sin pasar
 por Google. La contraseña la genera Sire y solo se guarda su hash
 (`app.core.claves`); vence a los `vigencia_dias` y el administrador la regenera
-desde el panel cuando quiera.
+desde el panel cuando quiera. Tienen acceso completo (rol admin).
 """
 
 from __future__ import annotations
@@ -41,7 +41,6 @@ async def guardar_clave(
     db: AsyncIOMotorDatabase,
     correo: str,
     *,
-    rol: Rol,
     clave_hash: str,
     vigencia_dias: int,
     por: str,
@@ -53,7 +52,7 @@ async def guardar_clave(
         {"email": correo},
         {
             "$set": {
-                "rol": rol.value,
+                "rol": Rol.ADMIN.value,
                 "clave_hash": clave_hash,
                 "vigencia_dias": vigencia_dias,
                 "clave_generada_en": ahora,
@@ -88,12 +87,13 @@ def vigente(cuenta: dict[str, Any], ahora: datetime | None = None) -> bool:
 
 
 async def rol_de(db: AsyncIOMotorDatabase | None, correo: str) -> str | None:
-    """El rol de una cuenta de API vigente, o `None`."""
+    """`admin` si es una cuenta de API vigente, o `None`.
+
+    Siempre admin, también para las cuentas creadas cuando se elegía el rol.
+    """
     if db is None:
         return None
-    cuenta = await _col(db).find_one(
-        {"email": normalizar_correo(correo)}, {"rol": 1, "expira_en": 1}
-    )
+    cuenta = await _col(db).find_one({"email": normalizar_correo(correo)}, {"expira_en": 1})
     if cuenta is None or not vigente(cuenta):
         return None
-    return cuenta.get("rol")
+    return Rol.ADMIN.value

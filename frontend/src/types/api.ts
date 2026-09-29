@@ -81,7 +81,6 @@ export type RolUsuario = 'admin' | 'usuario';
 /** Cuenta de API para integraciones (`app/api/v1/routes/cuentas_api.py`). */
 export interface CuentaApi {
   email: string;
-  rol: RolUsuario;
   vigencia_dias: number;
   expira_en: string;
   vigente: boolean;
