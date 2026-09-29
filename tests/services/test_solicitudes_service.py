@@ -108,6 +108,8 @@ def mem(monkeypatch):
     monkeypatch.setattr(servicio.cola, "encolar", m.encolar)
     monkeypatch.setattr(servicio.repo_jobs, "listar_de_solicitud", AsyncMock(return_value=[]))
     monkeypatch.setattr(servicio.settings, "CLASIFICADOR_HABILITADO", True)
+    m.integrar_pendientes = AsyncMock(return_value={})
+    monkeypatch.setattr(servicio.integracion_externos, "refrescar", m.integrar_pendientes)
     servicio.jobs_service._candados.clear()
     return m
 
@@ -144,6 +146,11 @@ def test_todas_las_empresas_por_todos_sus_periodos(mem):
 def test_periodos_concretos_crean_los_que_falten_y_rechazan_el_futuro(mem):
     crear(empresas=[RUC_B], periodos=["202606"])
     assert "202606" in mem.periodos[str(mem.empresas[RUC_B]["_id"])]
+    # Los comprobantes de Apaclla Bot que esperaban ese periodo entran al crearlo.
+    mem.integrar_pendientes.assert_awaited_once()
+    assert mem.integrar_pendientes.await_args.args[1:] == (
+        str(mem.empresas[RUC_B]["_id"]), "202606"
+    )
 
     with pytest.raises(servicio.SolicitudInvalida):
         crear(empresas=[RUC_B], periodos=["209912"])

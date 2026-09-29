@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.v1.deps import empresa_id, periodo_valido
 from app.db.database import get_db
 from app.repositories import comprobantes as repo_comprobantes
+from app.repositories import comprobantes_externos as repo_externos
 from app.repositories import periodos as repo_periodos
 from app.schemas.generic import MessageResponse
 from app.schemas.periodo import PeriodoCreate, PeriodoResponse, PeriodoUpdate
+from app.services import integracion_externos
 
 router = APIRouter()
 
@@ -21,6 +23,8 @@ async def crear_periodo(
         raise HTTPException(status_code=409, detail="El periodo ya existe para esta empresa")
 
     creado = await repo_periodos.crear(db, empresa, datos.periodo)
+    # Los comprobantes de Apaclla Bot que esperaban este periodo entran ya.
+    await integracion_externos.refrescar(db, empresa, datos.periodo)
     return {"periodo": creado["periodo"], "estado": creado["estado"]}
 
 
@@ -67,6 +71,8 @@ async def eliminar_periodo(
     db=Depends(get_db),
 ):
     await repo_comprobantes.eliminar_de_periodo(db, empresa, periodo)
+    # Sus externos siguen en Externos: vuelven a esperar a que el periodo exista.
+    await repo_externos.devolver_a_pendiente(db, empresa, periodo)
 
     if await repo_periodos.eliminar(db, empresa, periodo) == 0:
         raise HTTPException(status_code=404, detail="Periodo no encontrado")

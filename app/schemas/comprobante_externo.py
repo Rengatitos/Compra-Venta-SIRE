@@ -122,6 +122,11 @@ class ComprobanteExternoResponse(ComprobanteExternoRecibido):
     dispositivo_id: str
     enviado_en: str | None
     tiene_imagen: bool
+    # Fila del periodo a la que pasó (`integrado`) o que ya lo tenía
+    # (`ya_existia`). Vacíos mientras sigue `recibido`.
+    comprobante_id: str | None = None
+    integrado_en: str | None = None
+    serie_numero_periodo: str | None = None
 
 
 class ListaComprobantesExternos(BaseModel):

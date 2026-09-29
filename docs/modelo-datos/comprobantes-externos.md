@@ -2,10 +2,29 @@
 
 ## `comprobantes_externos`
 
-Son los comprobantes que registra Apaclla Bot ([repositorio](../../app/repositories/comprobantes_externos.py)). Viven **aparte** de `comprobantes` a propósito, porque no vienen de SUNAT. Así:
-- no les aplica `uniq_comprobante`: un Yape no tiene serie ni número;
-- no los tocan la sincronización de la propuesta, el export a Excel de compras (que cuadra contra el resumen del SIRE), la auditoría ni el scraping;
-- no necesitan que exista el documento del periodo.
+Son los comprobantes que registra Apaclla Bot ([repositorio](../../app/repositories/comprobantes_externos.py)). Viven **aparte** de `comprobantes`, porque no vienen de SUNAT: pueden llegar antes de que exista su periodo, y la sincronización de la propuesta nunca los toca.
+
+### Paso al periodo
+
+Cada comprobante externo pertenece al periodo de su `fecha_operacion`: uno del 28/09/2026 va al `202609`. El servicio es [`integracion_externos`](../../app/services/integracion_externos.py).
+
+1. Si el periodo no existe, el externo se queda `recibido`.
+2. Si el periodo existe, se busca en `comprobantes` una fila con la misma identidad: `libro`, `tipo_cp`, `serie` y `numero`, normalizados como en la propuesta SUNAT. El origen no cuenta.
+   - Si la fila ya está, no se hace nada: el externo queda `ya_existia` y `comprobante_id` apunta a esa fila.
+   - Si no está, se copia como una fila más del periodo con `origen: "externo"` (ver [comprobantes](comprobantes.md)). El externo queda `integrado` y `comprobante_id` apunta a la copia.
+3. Un voucher (Yape, Plin, Mercado Pago, Niubiz) no es un comprobante de pago y **no pasa al periodo**: se queda `recibido` y solo se ve en Externos. Solo las boletas y facturas (`tipo_evidencia = "comprobante"`) entran.
+
+Se intenta en estos momentos:
+- al recibirlo del bot;
+- al listar Externos (su «refresco»);
+- al abrir el listado del periodo;
+- al crear el periodo, desde el panel o desde una solicitud masiva.
+
+Cuando la propuesta SUNAT (la API o el ticket RCE) trae después el mismo comprobante:
+- la fila SIRE reemplaza a la externa y hereda lo que se trabajó sobre ella: la clasificación contable, la contraparte manual y la glosa, esta última solo si se editó;
+- el externo pasa a `ya_existia`.
+
+Al borrar el periodo, sus externos vuelven a `recibido`.
 
 | Campo | Tipo | Notas |
 |---|---|---|
@@ -26,14 +45,16 @@ Son los comprobantes que registra Apaclla Bot ([repositorio](../../app/repositor
 | `dispositivo_id` | str | Dispositivo vinculado que lo mandó |
 | `enviado_en`, `creado_en` | datetime | |
 | `periodo` | str `YYYYMM` | Sale de `fecha_operacion` |
-| `estado` | `recibido` | |
-| `comprobante_id` | null | Reservado para conciliarlo con `comprobantes` |
+| `estado` | `recibido` \| `integrado` \| `ya_existia` | Ver «Paso al periodo» |
+| `comprobante_id` | str \| null | `_id` de la fila de `comprobantes` a la que pasó o que ya lo tenía |
+| `integrado_en` | datetime \| null | Cuándo dejó de estar `recibido` |
 
 Índices:
 - `uniq_externo_id_externo`: único sobre `(empresa_id, id_externo)`.
 - `uniq_externo_operacion`: único parcial sobre `(empresa_id, fuente, nro_operacion)`, solo cuando `nro_operacion` no está vacío.
 - `uniq_externo_serie_numero`: único parcial sobre `(empresa_id, libro, tipo_cp, serie, numero)`, solo para `tipo_evidencia = "comprobante"`.
 - `externos_listado`: `(empresa_id, libro, periodo, creado_en -1)`.
+- `externos_pendientes`: `(empresa_id, estado, periodo)`, para los que esperan su periodo.
 
 ## `codigos_vinculacion`
 

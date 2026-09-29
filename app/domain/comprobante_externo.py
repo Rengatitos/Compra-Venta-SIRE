@@ -25,7 +25,19 @@ class TipoEvidencia(str, Enum):
     COMPROBANTE = "comprobante"
 
 
+# `recibido`: todavía no entra a su periodo (no existe o falta refrescar). Un
+# voucher se queda así para siempre: no pasa al periodo.
+# `integrado`: se copió como fila del periodo (`comprobante_id` la apunta).
+# `ya_existia`: el periodo ya tenía ese comprobante, o la propuesta SUNAT lo
+# trajo después y reemplazó a la fila externa.
 ESTADO_RECIBIDO = "recibido"
+ESTADO_INTEGRADO = "integrado"
+ESTADO_YA_EXISTIA = "ya_existia"
+
+
+def va_al_periodo(externo: dict) -> bool:
+    """Sólo los comprobantes pasan al periodo; un voucher se queda en Externos."""
+    return externo.get("tipo_evidencia") != TipoEvidencia.VOUCHER.value
 
 
 def periodo_de(fecha: date) -> str:

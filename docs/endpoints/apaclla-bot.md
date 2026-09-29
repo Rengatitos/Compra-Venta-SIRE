@@ -52,14 +52,15 @@ Respuestas:
 | `409 {detail, comprobante_externo_id}` | El mismo voucher (`fuente` + `nro_operacion`) o la misma boleta o factura (`libro` + `tipo_cp` + `serie` + `numero`) ya entró con otro `id_externo` |
 | `422` | Body inválido o foto que no cuadra |
 
-El `periodo` sale de `fecha_operacion` (`YYYYMM`). Límite: 120/minuto.
+El `periodo` sale de `fecha_operacion` (`YYYYMM`). Si ese periodo ya existe, una boleta o factura entra en él al recibirse, y `estado` es `integrado`, o `ya_existia` si el periodo ya lo tenía. Si no existe, `estado` es `recibido` y entra cuando se crea el periodo o se refresca el panel. Un voucher nunca entra al periodo y se queda `recibido` (ver [comprobantes externos](../modelo-datos/comprobantes-externos.md)). Límite: 120/minuto.
 
 ## `GET /api/v1/empresas/{ruc}/comprobantes-externos`
 
 [listar](../../app/api/v1/routes/comprobantes_externos.py). **Requiere sesión.** Es la base de la página **Externos** del panel.
 
 - Filtros: `libro`, `periodo` (YYYYMM), `fuente`, `limit` (hasta 100) y `skip`.
-- Devuelve `{items, total, periodos}`, donde `periodos` son los periodos con externos, para el selector.
+- Antes de listar, integra los pendientes cuyo periodo ya existe.
+- Devuelve `{items, total, periodos}`, donde `periodos` son los periodos con externos, para el selector. Cada item trae `estado`, `comprobante_id`, `integrado_en` y `serie_numero_periodo`, que es su serie-número en el listado del periodo.
 - Los montos salen como texto.
 
 ## `GET /api/v1/empresas/{ruc}/comprobantes-externos/{id}`

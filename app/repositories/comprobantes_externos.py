@@ -1,17 +1,21 @@
 """Comprobantes que llegan de sire-bot (Apaclla Bot).
 
-Viven aparte de `comprobantes` a propósito: no son de SUNAT, no tienen por qué
-cumplir su clave única ni entrar en la propuesta, el export a Excel o la
-auditoría. `comprobante_id` queda reservado para conciliarlos más adelante.
+Viven aparte de `comprobantes` a propósito: no son de SUNAT y la sincronización
+de la propuesta nunca los toca. Cuando existe su periodo se copian como una fila
+más de `comprobantes` (`app.services.integracion_externos`), y `comprobante_id`
+apunta a esa fila, o a la de SUNAT si el periodo ya lo tenía. Los vouchers se
+quedan sólo aquí.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.domain.comprobante_externo import ESTADO_RECIBIDO, TipoEvidencia
 from app.repositories._mongo import NOMBRE_COL_COMPROBANTES_EXTERNOS
 
 
@@ -42,6 +46,10 @@ async def crear_indices(db: AsyncIOMotorDatabase) -> None:
     await col.create_index(
         [("empresa_id", 1), ("libro", 1), ("periodo", 1), ("creado_en", -1)],
         name="externos_listado",
+    )
+    # Los que esperan su periodo: se buscan en cada refresco.
+    await col.create_index(
+        [("empresa_id", 1), ("estado", 1), ("periodo", 1)], name="externos_pendientes"
     )
 
 
@@ -133,6 +141,44 @@ async def obtener(db: AsyncIOMotorDatabase, empresa_id: str, id_: str) -> dict[s
     if oid is None:
         return None
     return await _col(db).find_one({"_id": oid, "empresa_id": empresa_id})
+
+
+async def pendientes(
+    db: AsyncIOMotorDatabase, empresa_id: str, periodos: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """Los que esperan su periodo. Los vouchers no: nunca pasan a él."""
+    filtro: dict[str, Any] = {
+        "empresa_id": empresa_id,
+        "estado": ESTADO_RECIBIDO,
+        "tipo_evidencia": {"$ne": TipoEvidencia.VOUCHER.value},
+    }
+    if periodos is not None:
+        filtro["periodo"] = {"$in": periodos}
+    return await _col(db).find(filtro).sort("creado_en", 1).to_list(length=None)
+
+
+async def marcar(
+    db: AsyncIOMotorDatabase, documento_id, estado: str, comprobante_id: str | None
+) -> None:
+    await _col(db).update_one(
+        {"_id": documento_id},
+        {
+            "$set": {
+                "estado": estado,
+                "comprobante_id": comprobante_id,
+                "integrado_en": datetime.now(UTC),
+            }
+        },
+    )
+
+
+async def devolver_a_pendiente(db: AsyncIOMotorDatabase, empresa_id: str, periodo: str) -> int:
+    """Al borrar un periodo sus externos vuelven a esperar a que se cree otra vez."""
+    resultado = await _col(db).update_many(
+        {"empresa_id": empresa_id, "periodo": periodo, "estado": {"$ne": ESTADO_RECIBIDO}},
+        {"$set": {"estado": ESTADO_RECIBIDO, "comprobante_id": None, "integrado_en": None}},
+    )
+    return resultado.modified_count
 
 
 async def eliminar_de_empresa(db: AsyncIOMotorDatabase, empresa_id: str) -> int:

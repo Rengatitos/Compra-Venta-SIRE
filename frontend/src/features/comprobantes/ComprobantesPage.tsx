@@ -40,7 +40,7 @@ import estilos from './ComprobantesPage.module.css';
 import { DialogComprobante } from './DialogComprobante';
 import { DescargarDetraccionesButton, DetraccionCelda, NpdPanel } from './Detracciones';
 import { DescargarPdfsButton } from './DescargarPdfsButton';
-import { presentarEstadoComprobante } from './estadoComprobante';
+import { esExterno, presentarEstadoComprobante } from './estadoComprobante';
 import { IconoHojaCalculo, IconoListado, IconoReporteAsociado } from './IconosExportacion';
 import { presentarEstadoGlosa } from './estadoGlosa';
 
@@ -85,7 +85,10 @@ export function ComprobantesPage() {
   // sigue funcionando sobre el número de comprobante.
   const abierto = parametros.get('comprobante');
 
-  const [libro, setLibro] = useState<Libro>('compras');
+  // `?libro=ventas` lo pone el enlace desde Externos, para abrir la ficha en su libro.
+  const [libro, setLibro] = useState<Libro>(() =>
+    parametros.get('libro') === 'ventas' ? 'ventas' : 'compras',
+  );
   const [pagina, setPagina] = useState(1);
   const [verAnulados, setVerAnulados] = useState(false);
   const [verIncompletos, setVerIncompletos] = useState(false);
@@ -256,9 +259,12 @@ export function ComprobantesPage() {
       cabeceraDeFila: true,
       monoespaciada: true,
       render: (fila) => (
-        <Link to={`?comprobante=${encodeURIComponent(fila.serie_numero)}`}>
-          {fila.serie_numero}
-        </Link>
+        <div className={layout.fila}>
+          <Link to={`?comprobante=${encodeURIComponent(fila.serie_numero)}`}>
+            {fila.serie_numero}
+          </Link>
+          {esExterno(fila) ? <Badge tono="info">Externo</Badge> : null}
+        </div>
       ),
     },
     {
@@ -360,7 +366,9 @@ export function ComprobantesPage() {
       clave: 'estado',
       cabecera: 'Estado',
       render: (fila) => {
-        const estado = presentarEstadoComprobante(fila.estado_procesamiento);
+        const estado = esExterno(fila)
+          ? ({ tono: 'info', texto: 'Desde Apaclla Bot' } as const)
+          : presentarEstadoComprobante(fila.estado_procesamiento);
         return (
           <div className={layout.fila}>
             <Badge tono={estado.tono} conPunto>
@@ -665,12 +673,21 @@ export function ComprobantesPage() {
 
             {comprobantes.data ? (
               <>
+                {filas.some(esExterno) ? (
+                  <p className={estilos.notaExternos}>
+                    <span className={estilos.muestraExterna} aria-hidden="true" />
+                    Resaltados: llegaron desde Apaclla Bot y aún no están en la propuesta SUNAT.
+                  </p>
+                ) : null}
                 <DataTable
                   leyenda={`Comprobantes de ${libro} del periodo ${formatearPeriodo(periodo)}`}
                   leyendaOculta
                   columnas={columnas}
                   filas={filas}
-                  claveDeFila={(fila) => fila.serie_numero}
+                  // La fila externa y la de SUNAT pueden coincidir un momento,
+                  // hasta que la sincronización retira la externa.
+                  claveDeFila={(fila) => `${fila.origen}:${fila.serie_numero}`}
+                  claseDeFila={(fila) => (esExterno(fila) ? estilos.filaExterna : undefined)}
                   vacio={
                     <EmptyState
                       titulo={

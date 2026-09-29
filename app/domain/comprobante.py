@@ -20,6 +20,9 @@ class Libro(str, Enum):
 class Origen(str, Enum):
     SIRE = "sire"
     CONTASIS = "contasis"
+    # Llegó desde Apaclla Bot (`comprobantes_externos`) y todavía no está en la
+    # propuesta SUNAT. Cuando la propuesta lo trae, la fila SIRE la reemplaza.
+    EXTERNO = "externo"
 
 
 class EstadoProcesamiento(str, Enum):

@@ -104,6 +104,14 @@ class ExternosFalsos:
 def externos(monkeypatch, tmp_path):
     falsos = ExternosFalsos()
     monkeypatch.setattr(servicio, "repo_externos", falsos)
+    # El paso al periodo tiene sus propias pruebas (`test_integracion_externos`):
+    # aquí el externo se queda donde llegó.
+    monkeypatch.setattr(
+        servicio.integracion_externos, "integrar_uno", AsyncMock(return_value="recibido")
+    )
+    monkeypatch.setattr(
+        servicio.integracion_externos, "refrescar", AsyncMock(return_value={})
+    )
     monkeypatch.setattr(settings, "COMPROBANTES_EXTERNOS_DIR", str(tmp_path))
     return falsos
 

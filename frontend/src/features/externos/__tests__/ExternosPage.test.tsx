@@ -89,6 +89,64 @@ beforeEach(() => {
 });
 
 describe('ExternosPage', () => {
+  it('muestra en qué quedó cada uno respecto de su periodo', async () => {
+    const factura = {
+      ...YAPE,
+      libro: 'compras' as const,
+      fuente: 'factura',
+      tipo_evidencia: 'comprobante',
+      tipo_cp: '01',
+      serie: 'F001',
+      nro_operacion: null,
+    };
+    const esperando = { ...factura, id: 'a', numero: '111' };
+    const integrado = {
+      ...factura,
+      id: 'b',
+      numero: '222',
+      estado: 'integrado',
+      serie_numero_periodo: 'F001-222',
+    };
+    const yaExistia = {
+      ...factura,
+      id: 'c',
+      numero: '333',
+      estado: 'ya_existia',
+      serie_numero_periodo: 'F001-333',
+    };
+    mocks.listar.mockResolvedValue({
+      items: [YAPE, esperando, integrado, yaExistia],
+      total: 4,
+      periodos: ['202609'],
+    });
+
+    const { container } = render(<ExternosPage />, { wrapper: Envoltura });
+
+    const tabla = await screen.findByRole('table');
+    // El Yape no es comprobante de pago: no espera ningún periodo.
+    expect(within(tabla).getByText('Solo en Externos')).toBeInTheDocument();
+    expect(within(tabla).getByText('Esperando periodo')).toBeInTheDocument();
+    expect(within(tabla).getByRole('link', { name: /En el periodo/ })).toHaveAttribute(
+      'href',
+      '/periodos/202609?libro=compras&comprobante=F001-222',
+    );
+    expect(within(tabla).getByRole('link', { name: /Ya existía en el periodo/ })).toHaveAttribute(
+      'href',
+      '/periodos/202609?libro=compras&comprobante=F001-333',
+    );
+    expect(await axe(container, OPCIONES)).toHaveNoViolations();
+  });
+
+  it('Actualizar vuelve a pedir la lista', async () => {
+    mocks.listar.mockResolvedValue({ items: [YAPE], total: 1, periodos: ['202609'] });
+    render(<ExternosPage />, { wrapper: Envoltura });
+    await screen.findByRole('table');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actualizar' }));
+
+    await waitFor(() => expect(mocks.listar).toHaveBeenCalledTimes(2));
+  });
+
   it('lista lo que llegó del bot con su fuente y total', async () => {
     mocks.listar.mockResolvedValue({ items: [YAPE], total: 1, periodos: ['202609'] });
 

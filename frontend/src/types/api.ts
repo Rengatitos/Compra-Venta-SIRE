@@ -584,11 +584,17 @@ export interface DashboardData {
 }
 
 /** `app/schemas/comprobante_externo.py`. Los montos llegan como texto ("1234.50"). */
+/**
+ * `recibido`: espera a que exista su periodo. `integrado`: se copió al periodo.
+ * `ya_existia`: el periodo ya lo tenía (o la propuesta SUNAT lo trajo después).
+ */
+export type EstadoExterno = 'recibido' | 'integrado' | 'ya_existia';
+
 export interface ComprobanteExternoResponse {
   id: string;
   ruc: string;
   periodo: string;
-  estado: string;
+  estado: EstadoExterno | (string & {});
   creado_en: string;
   id_externo: string;
   libro: Libro;
@@ -612,6 +618,11 @@ export interface ComprobanteExternoResponse {
   dispositivo_id: string;
   enviado_en: string | null;
   tiene_imagen: boolean;
+  /** Fila del periodo a la que pasó o que ya lo tenía; `null` mientras espera. */
+  comprobante_id?: string | null;
+  integrado_en?: string | null;
+  /** Su serie-número en el listado del periodo (`?comprobante=`). */
+  serie_numero_periodo?: string | null;
 }
 
 export interface ListaComprobantesExternos {

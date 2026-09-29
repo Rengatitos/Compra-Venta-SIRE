@@ -40,7 +40,7 @@ from app.repositories import empresas as repo_empresas
 from app.repositories import jobs as repo_jobs
 from app.repositories import periodos as repo_periodos
 from app.repositories import solicitudes as repo_solicitudes
-from app.services import cola, jobs_service
+from app.services import cola, integracion_externos, jobs_service
 from app.services.cola.errores import ErrorPermanente
 
 logger = logging.getLogger(__name__)
@@ -102,6 +102,7 @@ async def _periodos(db, empresa: dict[str, Any], periodos: list[str] | str) -> l
                 await repo_periodos.crear(db, empresa_id, periodo)
             except DuplicateKeyError:
                 pass
+            await integracion_externos.refrescar(db, empresa_id, periodo)
         elegidos.append(periodo)
     return sorted(elegidos)
 

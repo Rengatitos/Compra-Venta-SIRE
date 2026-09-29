@@ -7,7 +7,7 @@ Un comprobante (factura, boleta, nota de crédito/débito, etc.), normalizado al
 | `empresa_id` | str | `_id` de la empresa dueña. |
 | `periodo` | str | `YYYYMM`. |
 | `libro` | str | `"ventas"` \| `"compras"`. Discrimina el libro electrónico; los dos se escriben. |
-| `origen` | str | `"sire"` \| `"contasis"`. Hoy solo se escribe `"sire"`. |
+| `origen` | str | `"sire"` \| `"contasis"` \| `"externo"`. `"externo"` es un comprobante de Apaclla Bot que se copió a su periodo ([comprobantes externos](comprobantes-externos.md)). Se resalta en el listado y queda fuera del cuadre contra el resumen SUNAT. Cuando la propuesta trae el mismo comprobante, la fila `"sire"` lo reemplaza. |
 | `tipo_cp` | str | Código de dos caracteres del catálogo SUNAT (`"01"` factura, `"03"` boleta, etc. — ver [catalogos.py](../../app/domain/catalogos.py)). |
 | `serie`, `numero` | str | Normalizados: sin ceros a la izquierda, sin separadores. Ver los normalizadores en [comprobante.py](../../app/domain/comprobante.py). |
 | `serie_numero` | str | Campo derivado, `f"{serie}-{numero}"`. Es el identificador de recurso en la API (`GET .../comprobantes/{serie_numero}`). |

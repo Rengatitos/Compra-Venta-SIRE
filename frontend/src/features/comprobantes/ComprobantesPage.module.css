@@ -83,3 +83,31 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
 }
+
+/* Filas que llegaron desde Apaclla Bot (`origen: "externo"`). El borde va en la
+   primera celda porque `border` sobre un `tr` no se pinta con border-collapse. */
+.filaExterna > * {
+  background-color: var(--color-externo-bg);
+}
+
+.filaExterna > :first-child {
+  box-shadow: inset 3px 0 0 var(--color-externo-border);
+}
+
+.notaExternos {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-block: var(--space-3);
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
+}
+
+.muestraExterna {
+  flex: none;
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  background-color: var(--color-externo-bg);
+  border: 1px solid var(--color-externo-border);
+  border-radius: 0.25rem;
+}

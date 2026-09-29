@@ -25,6 +25,8 @@ interface Props<T> {
   columnas: readonly Columna<T>[];
   filas: readonly T[];
   claveDeFila: (fila: T) => string;
+  /** Clase extra para resaltar filas (p. ej. las que llegaron desde el bot). */
+  claseDeFila?: (fila: T) => string | undefined;
   /** Contenido a mostrar cuando no hay filas. */
   vacio?: ReactNode;
   /** Oculta el `<caption>` visualmente sin quitarlo del árbol accesible. */
@@ -43,6 +45,7 @@ export function DataTable<T>({
   columnas,
   filas,
   claveDeFila,
+  claseDeFila,
   vacio,
   leyendaOculta = false,
   centrada = false,
@@ -73,7 +76,10 @@ export function DataTable<T>({
         </thead>
         <tbody>
           {filas.map((fila) => (
-            <tr key={claveDeFila(fila)} className={estilos.fila}>
+            <tr
+              key={claveDeFila(fila)}
+              className={[estilos.fila, claseDeFila?.(fila)].filter(Boolean).join(' ')}
+            >
               {columnas.map((columna) => {
                 const clases = [
                   estilos.celda,
