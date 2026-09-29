@@ -222,3 +222,15 @@ export function IconoCorreos() {
     </Lienzo>
   );
 }
+
+/** Persona con llave: quién puede entrar al panel. */
+export function IconoAccesos() {
+  return (
+    <Lienzo>
+      <circle cx="9" cy="8" r="3.25" />
+      <path d="M3.75 19.25c.6-3 2.7-4.75 5.25-4.75 1.2 0 2.3.4 3.15 1.1" />
+      <circle cx="17" cy="15.5" r="2" />
+      <path d="M17 17.5v2.75M17 19h1.5" />
+    </Lienzo>
+  );
+}

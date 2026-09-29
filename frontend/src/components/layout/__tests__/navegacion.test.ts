@@ -65,6 +65,7 @@ describe('construirNavegacionGeneral', () => {
       ['/solicitudes', 'Solicitudes'],
       ['/historial', 'Historial'],
       ['/correos', 'Correos'],
+      ['/accesos', 'Accesos'],
     ]);
   });
 

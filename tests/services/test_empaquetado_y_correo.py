@@ -169,6 +169,7 @@ def smtp(monkeypatch):
         return estado.config
 
     monkeypatch.setattr(correo_service.repo_configuracion, "obtener_correo", obtener)
+    monkeypatch.setattr(correo_service.settings, "CORREO_SMTP_PASSWORD", "clave-app")
     monkeypatch.setattr(
         correo_service, "_enviar",
         lambda mensaje, config, timeout=60: estado.enviados.append(mensaje),
@@ -187,25 +188,20 @@ def enviar(monkeypatch, solicitud, intentos=1, max_intentos=5):
     return asyncio.run(correo_service.enviar_solicitud(None, job, AsyncMock()))
 
 
-def test_el_contador_recibe_todo_y_cada_cliente_solo_lo_suyo(datos, smtp, monkeypatch):
+def test_solo_quien_pidio_la_solicitud_recibe_el_zip_completo(datos, smtp, monkeypatch):
+    # Alfa tiene `correos_notificacion`, pero ya no se usan.
     solicitud = solicitud_con_zip(datos, [item(RUC_A), item(RUC_B)])
 
     resultado = enviar(monkeypatch, solicitud)
 
-    assert resultado == {"enviados": 2, "bloqueados": 0, "fallidos": 0}
-    por_correo = {m["To"]: m for m in smtp.enviados}
-    assert set(por_correo) == {"contador@example.com", "c@alfa.pe"}
-    assert por_correo["c@alfa.pe"]["From"] == "Sire <sire@example.com>"
-    adjunto_contador = next(por_correo["contador@example.com"].iter_attachments())
-    assert adjunto_contador.get_filename() == "DESCARGA_2026-09-27.zip"
-    # El cliente de Alfa recibe un ZIP aparte, sin la carpeta de Beta.
-    adjunto_cliente = next(por_correo["c@alfa.pe"].iter_attachments())
-    with zipfile.ZipFile(io.BytesIO(adjunto_cliente.get_content())) as zf:
-        assert all(n.startswith(RUC_A) for n in zf.namelist())
-    envio_cliente = next(e for e in solicitud["envios"] if e["correo"] == "c@alfa.pe")
-    assert envio_cliente["rucs"] == [RUC_A]
-    assert envio_cliente["periodos"] == ["202608"]
-    assert envio_cliente["modo"] == "adjunto"
+    assert resultado == {"enviados": 1, "bloqueados": 0, "fallidos": 0}
+    [mensaje] = smtp.enviados
+    assert mensaje["To"] == "contador@example.com"
+    assert mensaje["From"] == "Sire Apaclla <sire@example.com>"
+    assert next(mensaje.iter_attachments()).get_filename() == "DESCARGA_2026-09-27.zip"
+    [envio] = solicitud["envios"]
+    assert envio["rucs"] == sorted([RUC_A, RUC_B])
+    assert envio["modo"] == "adjunto"
 
 
 def test_fuera_de_la_lista_blanca_no_se_escribe(datos, smtp, monkeypatch):
@@ -214,7 +210,7 @@ def test_fuera_de_la_lista_blanca_no_se_escribe(datos, smtp, monkeypatch):
 
     resultado = enviar(monkeypatch, solicitud)
 
-    assert resultado["bloqueados"] == 2
+    assert resultado["bloqueados"] == 1
     assert smtp.enviados == []
 
 
@@ -380,8 +376,19 @@ def test_la_prueba_respeta_la_lista_blanca_y_exige_servidor(smtp):
     assert smtp.enviados[0]["Subject"].startswith("[Prueba] Sire")
 
     smtp.config = replace(smtp.config, host="")
-    with pytest.raises(correo_service.CorreoNoEnviado, match="SMTP"):
+    with pytest.raises(correo_service.CorreoNoEnviado, match="Correos"):
         asyncio.run(correo_service.enviar_prueba(None, "ok@x.pe"))
+
+
+def test_sin_contrasena_de_aplicacion_no_se_intenta_enviar(datos, smtp, monkeypatch):
+    monkeypatch.setattr(correo_service.settings, "CORREO_SMTP_PASSWORD", None)
+    solicitud = solicitud_con_zip(datos, [item(RUC_B)])
+
+    resultado = enviar(monkeypatch, solicitud)
+
+    assert resultado["fallidos"] == 1
+    assert smtp.enviados == []
+    assert "contraseña de aplicación" in solicitud["envios"][0]["error"]
 
 
 def test_una_solicitud_borrada_es_un_error_permanente(monkeypatch):

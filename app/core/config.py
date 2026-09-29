@@ -149,7 +149,10 @@ class Settings(BaseSettings):
 
     # El correo de fin de solicitud (servidor SMTP, remitente, lista blanca y
     # plantilla) no va aquí: se configura en el panel, en «Correos», y se
-    # guarda en Mongo (`app.repositories.configuracion`).
+    # guarda en Mongo (`app.repositories.configuracion`). La excepción es la
+    # contraseña de aplicación de Gmail de la cuenta del sistema: si no se
+    # guardó en el panel, se usa esta.
+    CORREO_SMTP_PASSWORD: str | None = None
 
     # Clave con la que sire-bot (Apaclla Bot) se autentica en la cabecera
     # `X-Api-Key`. Sin ella los endpoints del bot responden 503: la integración

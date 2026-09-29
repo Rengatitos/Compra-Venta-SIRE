@@ -136,7 +136,7 @@ def _respuesta_configuracion(config: ConfiguracionCorreo) -> dict:
         "puerto": config.puerto,
         "seguridad": config.seguridad,
         "usuario": config.usuario,
-        "password_configurada": bool(config.password_cifrada),
+        "password_configurada": bool(correo_service.password_smtp(config)),
         "remitente_nombre": config.remitente_nombre,
         "remitente_correo": config.remitente_correo,
         "destinatarios_permitidos": config.destinatarios_permitidos,
@@ -145,7 +145,7 @@ def _respuesta_configuracion(config: ConfiguracionCorreo) -> dict:
         "url_publica": config.url_publica,
         "plantilla_asunto": config.plantilla_asunto,
         "plantilla_cuerpo": config.plantilla_cuerpo,
-        "configurado": config.configurado,
+        "configurado": correo_service.listo(config),
         "variables": [{"nombre": n, "descripcion": d} for n, d in VARIABLES.items()],
         "plantilla_por_defecto": {"asunto": ASUNTO_POR_DEFECTO, "cuerpo": CUERPO_POR_DEFECTO},
     }

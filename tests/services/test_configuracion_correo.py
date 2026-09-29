@@ -43,13 +43,15 @@ def test_el_html_escapa_la_plantilla_pero_no_el_html_de_las_variables():
 def test_sin_documento_se_usan_los_valores_por_defecto():
     config = desde_documento(None)
     assert config.plantilla_cuerpo == CUERPO_POR_DEFECTO
-    assert not config.configurado
+    assert (config.host, config.usuario) == ("smtp.gmail.com", "sistemaapacllasire@gmail.com")
+    # Un servidor guardado en blanco no tapa la cuenta del sistema.
+    assert desde_documento({"host": "", "usuario": ""}).usuario == "sistemaapacllasire@gmail.com"
     assert config.permitido("cualquiera@x.pe")
     assert desde_documento({"host": "smtp.x.pe", "puerto": None}).puerto == 587
 
 
 def test_el_remitente_lleva_nombre_y_cae_al_usuario():
-    assert ConfiguracionCorreo(usuario="u@x.pe").remitente == "Sire <u@x.pe>"
+    assert ConfiguracionCorreo(usuario="u@x.pe").remitente == "Sire Apaclla <u@x.pe>"
     assert ConfiguracionCorreo(remitente_nombre="", remitente_correo="r@x.pe").remitente == "r@x.pe"
 
 
@@ -152,10 +154,11 @@ def test_la_vista_previa_no_guarda_nada(guardada):
     assert guardada.config.plantilla_asunto != "Hecho: {{resumen}}"
 
 
-def test_la_prueba_explica_por_que_no_salio(guardada):
+def test_la_prueba_explica_por_que_no_salio(guardada, monkeypatch):
+    monkeypatch.setattr(ruta.correo_service.settings, "CORREO_SMTP_PASSWORD", None)
     r = cliente_con(ADMIN).post("/correos/configuracion/prueba", json={"destinatario": "a@b.pe"})
     assert r.status_code == 422
-    assert "SMTP" in r.json()["detail"]
+    assert "contraseña de aplicación" in r.json()["detail"]
 
 
 def test_solo_un_administrador_ve_o_cambia_la_configuracion(guardada):

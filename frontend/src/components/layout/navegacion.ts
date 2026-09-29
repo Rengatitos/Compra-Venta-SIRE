@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 
 import {
+  IconoAccesos,
   IconoAjustes,
   IconoAuditoria,
   IconoClasificaciones,
@@ -87,5 +88,8 @@ export function construirNavegacionGeneral(): readonly Entrada[] {
     { a: '/solicitudes', texto: 'Solicitudes', icono: IconoSolicitudes },
     { a: '/historial', texto: 'Historial', icono: IconoHistorial },
     { a: '/correos', texto: 'Correos', icono: IconoCorreos },
+    // Antes solo se llegaba desde los ajustes de cada empresa, aunque no
+    // dependen de ninguna.
+    { a: '/accesos', texto: 'Accesos', icono: IconoAccesos },
   ];
 }

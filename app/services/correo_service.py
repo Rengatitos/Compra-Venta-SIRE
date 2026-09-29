@@ -1,11 +1,8 @@
 """Correo final de una solicitud: aviso de que terminó, con el ZIP o un enlace.
 
-Recibe el correo:
-
-- el contador que pidió la solicitud, con todas sus empresas;
-- cada dirección de `correos_notificacion` de las empresas incluidas, solo con
-  las empresas a las que está asociada. Es un cliente del contador y no debe
-  ver los archivos de los demás, así que recibe un ZIP propio.
+Lo recibe solo quien pidió la solicitud (el administrador que entró con su
+cuenta de Google), con todas sus empresas. Los `correos_notificacion` de cada
+empresa ya no se usan.
 
 El servidor SMTP, el remitente, la lista blanca y la plantilla se configuran en
 el panel (`/correos`) y se leen de Mongo en cada envío
@@ -78,33 +75,40 @@ class CorreoNoEnviado(Exception):
 
 
 async def destinatarios(db, solicitud: dict[str, Any]) -> list[dict[str, Any]]:
-    """Un envío por dirección, con las empresas y periodos que le tocan."""
+    """Un solo envío: a quien pidió la solicitud, con todas sus empresas."""
     items = solicitud["items"]
-    todas = sorted({item["ruc"] for item in items})
-    por_correo: dict[str, set[str]] = {solicitud["creado_por"].lower(): set(todas)}
-    nombres: dict[str, str | None] = {}
-    for ruc in todas:
+    rucs = sorted({item["ruc"] for item in items})
+    empresas = []
+    for ruc in rucs:
         empresa = await repo_empresas.obtener_por_ruc(db, ruc) or {}
-        nombres[ruc] = empresa.get("nombre")
-        for correo in empresa.get("correos_notificacion") or []:
-            por_correo.setdefault(correo.lower(), set()).add(ruc)
+        empresas.append({"ruc": ruc, "nombre": empresa.get("nombre")})
+    return [{
+        "correo": solicitud["creado_por"].lower(),
+        "rucs": rucs,
+        "empresas": empresas,
+        "periodos": sorted({i["periodo"] for i in items}),
+        "estado": EstadoEnvio.PENDIENTE.value,
+        "modo": None,
+        "intentos": 0,
+        "error": None,
+        "creado_en": datetime.now(UTC),
+        "enviado_en": None,
+    }]
 
-    envios = []
-    for correo, rucs in por_correo.items():
-        periodos = sorted({i["periodo"] for i in items if i["ruc"] in rucs})
-        envios.append({
-            "correo": correo,
-            "rucs": sorted(rucs),
-            "empresas": [{"ruc": r, "nombre": nombres.get(r)} for r in sorted(rucs)],
-            "periodos": periodos,
-            "estado": EstadoEnvio.PENDIENTE.value,
-            "modo": None,
-            "intentos": 0,
-            "error": None,
-            "creado_en": datetime.now(UTC),
-            "enviado_en": None,
-        })
-    return envios
+
+def password_smtp(config: ConfiguracionCorreo) -> str:
+    """La guardada desde el panel o, si no hay, la de `CORREO_SMTP_PASSWORD`."""
+    if config.password_cifrada:
+        return decrypt_password(config.password_cifrada)
+    return settings.CORREO_SMTP_PASSWORD or ""
+
+
+def listo(config: ConfiguracionCorreo) -> bool:
+    """Hay servidor y, si pide usuario, también contraseña."""
+    return config.configurado and (not config.usuario or bool(password_smtp(config)))
+
+
+FALTA_CONFIGURAR = "Falta la contraseña de aplicación del correo remitente: guárdala en «Correos»"
 
 
 # --- Mensaje -------------------------------------------------------------------
@@ -275,8 +279,7 @@ def _enviar(mensaje: EmailMessage, config: ConfiguracionCorreo, timeout: int = T
         if config.seguridad == "starttls":
             smtp.starttls()
         if config.usuario:
-            password = decrypt_password(config.password_cifrada) if config.password_cifrada else ""
-            smtp.login(config.usuario, password)
+            smtp.login(config.usuario, password_smtp(config))
         smtp.send_message(mensaje)
 
 
@@ -296,8 +299,8 @@ def _explicar(exc: Exception) -> tuple[str, bool]:
 async def enviar_prueba(db, destinatario: str) -> None:
     """Un correo de prueba con la configuración guardada. Lanza `CorreoNoEnviado`."""
     config = await repo_configuracion.obtener_correo(db)
-    if not config.configurado:
-        raise CorreoNoEnviado("Primero guarda el servidor SMTP")
+    if not listo(config):
+        raise CorreoNoEnviado(FALTA_CONFIGURAR)
     if not config.permitido(destinatario):
         raise CorreoNoEnviado("Ese destinatario no está en la lista de destinatarios permitidos")
     previa = vista_previa(config)
@@ -369,11 +372,11 @@ async def enviar_solicitud(db, job: Job, reportar) -> dict[str, Any]:
                 "estado": EstadoEnvio.BLOQUEADO.value,
                 "error": "Destinatario fuera de la lista de destinatarios permitidos",
             }
-        elif not config.configurado:
+        elif not listo(config):
             cambios = {
                 "estado": EstadoEnvio.FALLIDO.value,
                 "definitivo": True,
-                "error": "El correo no está configurado: guarda el servidor SMTP en «Correos»",
+                "error": FALTA_CONFIGURAR,
             }
         else:
             cambios = await _enviar_uno(db, solicitud, envio, config)

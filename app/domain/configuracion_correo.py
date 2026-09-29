@@ -45,15 +45,21 @@ El procesamiento que pediste en Sire ha terminado ({{fecha}}).
 _VARIABLE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
 
+# La cuenta de Gmail del sistema que envía los ZIP. Su contraseña de aplicación
+# no vive en el código: se guarda desde «Correos» o llega por
+# `CORREO_SMTP_PASSWORD` (ver `correo_service.password_smtp`).
+CORREO_SISTEMA = "sistemaapacllasire@gmail.com"
+
+
 @dataclass(frozen=True)
 class ConfiguracionCorreo:
-    host: str = ""
+    host: str = "smtp.gmail.com"
     puerto: int = 587
     seguridad: str = "starttls"
-    usuario: str = ""
+    usuario: str = CORREO_SISTEMA
     # Cifrada con la misma clave que las contraseñas SOL; nunca sale por la API.
     password_cifrada: str = ""
-    remitente_nombre: str = "Sire"
+    remitente_nombre: str = "Sire Apaclla"
     remitente_correo: str = ""
     # Vacía = se puede escribir a cualquiera.
     destinatarios_permitidos: list[str] = field(default_factory=list)
@@ -84,7 +90,13 @@ def desde_documento(documento: dict[str, Any] | None) -> ConfiguracionCorreo:
     base = ConfiguracionCorreo()
     if not documento:
         return base
-    return replace(base, **{c: documento[c] for c in CAMPOS if documento.get(c) is not None})
+    # Un servidor o usuario guardado en blanco (antes no había valores por
+    # defecto) no debe tapar la cuenta del sistema.
+    return replace(base, **{
+        c: documento[c]
+        for c in CAMPOS
+        if documento.get(c) is not None and not (c in ("host", "usuario") and not documento[c])
+    })
 
 
 @dataclass(frozen=True)
