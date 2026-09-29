@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   cargarEmpresas: vi.fn(),
   obtenerCarga: vi.fn(),
   obtenerCredencialesSunat: vi.fn(),
+  listarCargas: vi.fn(),
 }));
 
 vi.mock('@/api/empresas', () => ({
@@ -22,6 +23,7 @@ vi.mock('@/api/empresas', () => ({
   cargarEmpresas: mocks.cargarEmpresas,
   obtenerCarga: mocks.obtenerCarga,
   obtenerCredencialesSunat: mocks.obtenerCredencialesSunat,
+  listarCargas: mocks.listarCargas,
   descargarReporteCarga: vi.fn(),
   descargarPlantillaCarga: vi.fn(),
   listarEmpresas: vi.fn(),
@@ -67,10 +69,10 @@ function carga(parcial: Partial<CargaEmpresas> = {}): CargaEmpresas {
 
 const OPCIONES_AXE = { rules: { 'color-contrast': { enabled: false } } } as const;
 
-function montar() {
+function montar(ruta = '/nueva-empresa') {
   const cliente = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={['/nueva-empresa']}>
+    <MemoryRouter initialEntries={[ruta]}>
       <QueryClientProvider client={cliente}>
         <ToastProvider>
           <Routes>
@@ -313,5 +315,55 @@ describe('carga masiva', () => {
   it('no tiene violaciones de axe', async () => {
     const { container } = montar();
     expect(await axe(container, OPCIONES_AXE)).toHaveNoViolations();
+  });
+
+  it('«Ver ingresos anteriores» lista cada ingreso con su fecha y abre su reporte', async () => {
+    const { filas: _filas, ...enCurso } = carga({
+      id: 'c2',
+      modalidad: 'masiva',
+      archivo: 'empresas.xlsx',
+      estado: 'en_progreso',
+      progreso: { actual: 3, total: 12, mensaje: '3 de 12 filas' },
+      terminado_en: null,
+    });
+    const { filas: _otras, ...terminada } = carga();
+    mocks.listarCargas.mockResolvedValue([enCurso, terminada]);
+    montar();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ver ingresos anteriores' }));
+
+    const lista = await screen.findByRole('list', { name: 'Ingresos anteriores' });
+    expect(lista).toHaveTextContent('Carga masiva · empresas.xlsx · 12 empresas');
+    expect(screen.getByText('En proceso 3/12')).toBeInTheDocument();
+    expect(screen.getByText('Terminado')).toBeInTheDocument();
+    // Mientras se miran los anteriores no se muestra el formulario de carga.
+    expect(screen.queryByLabelText('Archivo Excel')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^Ver el reporte del ingreso/ }));
+
+    expect(mocks.obtenerCarga).toHaveBeenCalledWith('c1');
+    expect(await screen.findByText('EMPRESA DE LA FICHA SAC')).toBeInTheDocument();
+    expect(screen.getByText(/^Ingreso del /)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Descargar reporte' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: '← Ingresos anteriores' }));
+    expect(await screen.findByRole('list', { name: 'Ingresos anteriores' })).toBeInTheDocument();
+  });
+
+  it('con `?carga=` en la URL abre directo ese reporte', async () => {
+    montar('/nueva-empresa?carga=c1');
+
+    expect(await screen.findByText('EMPRESA DE LA FICHA SAC')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ver ingresos anteriores' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('sin ingresos lo dice', async () => {
+    mocks.listarCargas.mockResolvedValue([]);
+    montar('/nueva-empresa?vista=anteriores');
+
+    expect(await screen.findByText('Todavía no hay ingresos')).toBeInTheDocument();
   });
 });

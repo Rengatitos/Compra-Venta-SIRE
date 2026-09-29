@@ -1,5 +1,45 @@
+.barra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: var(--space-5);
+}
+
 .modos {
   display: flex;
   gap: var(--space-2);
-  margin-block-end: var(--space-5);
+}
+
+.icono {
+  inline-size: 1rem;
+  block-size: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.detalle {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.cabeceraDetalle {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.cuando {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.cuando span {
+  font-size: var(--text-body-sm);
+  color: var(--color-text-secondary);
 }

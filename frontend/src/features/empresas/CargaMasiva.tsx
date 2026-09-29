@@ -28,8 +28,10 @@ export function CargaMasiva() {
     onSuccess: async ({ carga_id }) => {
       setCargaId(carga_id);
       if (entrada.current) entrada.current.value = '';
-      // Las válidas ya existen: el selector de empresas debe verlas.
+      // Las válidas ya existen: el selector de empresas debe verlas, y el
+      // ingreso aparece en «Ver ingresos anteriores».
       await cliente.invalidateQueries({ queryKey: ['empresas'] });
+      await cliente.invalidateQueries({ queryKey: ['cargas-empresas'] });
     },
     onError: (fallo) => {
       setErrorArchivo(
