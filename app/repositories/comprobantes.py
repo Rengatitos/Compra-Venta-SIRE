@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.errors import DuplicateKeyError
 
 from app.core.config import settings
 from app.domain.catalogos import (
@@ -187,6 +188,100 @@ async def eliminar_sire_no_incluidos(
         }
     )
     return resultado.deleted_count
+
+
+def _identidad_sin_origen(documento: dict[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        documento.get("libro", ""),
+        documento.get("tipo_cp", ""),
+        documento.get("serie", ""),
+        documento.get("numero", ""),
+    )
+
+
+async def buscar_por_identidad(
+    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, comprobante: Comprobante
+) -> dict[str, Any] | None:
+    """La fila del periodo con la misma identidad, sea cual sea su origen.
+
+    Si hay más de una (la de SUNAT y la externa, mientras no se reconcilian),
+    gana la de SUNAT: es la oficial.
+    """
+    filtro = filtro_identidad(empresa_id, periodo, comprobante)
+    del filtro["origen"]
+    filas = await _col(db).find(filtro).to_list(length=None)
+    if not filas:
+        return None
+    return next((f for f in filas if f.get("origen") == Origen.SIRE.value), filas[0])
+
+
+async def insertar_externo(
+    db: AsyncIOMotorDatabase,
+    empresa_id: str,
+    periodo: str,
+    comprobante: Comprobante,
+    adicionales: dict[str, Any],
+) -> Any:
+    """Agrega al periodo la fila de un comprobante externo y devuelve su `_id`.
+
+    `$setOnInsert` y no `$set`: si dos refrescos integran el mismo externo a la
+    vez, el segundo encuentra la fila y no pisa lo que ya se trabajó en ella.
+    """
+    documento = a_documento(comprobante, empresa_id, periodo)
+    filtro = filtro_identidad(empresa_id, periodo, comprobante)
+    try:
+        await _col(db).update_one(
+            filtro,
+            {
+                "$setOnInsert": {
+                    **documento,
+                    **adicionales,
+                    "estado_procesamiento": EstadoProcesamiento.SIRE_RECIBIDO.value,
+                }
+            },
+            upsert=True,
+        )
+    except DuplicateKeyError:
+        # Dos upserts simultáneos: Mongo deja pasar uno y el otro choca con
+        # `uniq_comprobante`. La fila ya está, que es lo que se buscaba.
+        pass
+    fila = await _col(db).find_one(filtro, {"_id": 1})
+    return fila["_id"] if fila else None
+
+
+async def externos_con_gemela_sire(
+    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, libro: Libro
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Pares `(fila externa, fila SIRE)` con la misma identidad en el periodo."""
+    base = {"empresa_id": empresa_id, "periodo": periodo, "libro": libro.value}
+    externas = await _col(db).find({**base, "origen": Origen.EXTERNO.value}).to_list(length=None)
+    if not externas:
+        return []
+    sire = await _col(db).find(
+        {
+            **base,
+            "origen": Origen.SIRE.value,
+            "$or": [
+                {"tipo_cp": e.get("tipo_cp"), "serie": e.get("serie"), "numero": e.get("numero")}
+                for e in externas
+            ],
+        }
+    ).to_list(length=None)
+    por_identidad = {_identidad_sin_origen(f): f for f in sire}
+    return [
+        (externa, por_identidad[_identidad_sin_origen(externa)])
+        for externa in externas
+        if _identidad_sin_origen(externa) in por_identidad
+    ]
+
+
+async def completar_campos(db: AsyncIOMotorDatabase, documento_id, campos: dict[str, Any]) -> None:
+    if campos:
+        await _col(db).update_one({"_id": documento_id}, {"$set": campos})
+
+
+async def eliminar_por_id(db: AsyncIOMotorDatabase, documento_id) -> None:
+    await _col(db).delete_one({"_id": documento_id})
 
 
 async def listar_anulados_sunat(db, empresa_id: str, periodo: str, libro: Libro):

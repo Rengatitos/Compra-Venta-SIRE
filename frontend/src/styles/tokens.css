@@ -72,6 +72,12 @@
   --color-danger-border: rgb(153 27 27 / 32%);
   --color-info-border: rgb(71 85 105 / 32%);
 
+  /* Comprobantes que llegaron desde Apaclla Bot. Es el único tono no neutro que
+     no es un estado: la fila tiene que distinguirse de las de SUNAT sin leerse
+     como aviso ni como error. */
+  --color-externo-bg: rgb(37 99 235 / 8%);
+  --color-externo-border: rgb(37 99 235 / 55%);
+
   /* Series de gráfico. Todas ≥ 3:1 sobre la superficie, que es lo que exige
      WCAG 1.4.11 para objetos gráficos no textuales. */
   --chart-1: #0f172a;
@@ -197,6 +203,9 @@
   --color-warning-border: rgb(251 191 36 / 32%);
   --color-danger-border: rgb(248 113 113 / 35%);
   --color-info-border: rgb(148 163 184 / 30%);
+
+  --color-externo-bg: rgb(96 165 250 / 12%);
+  --color-externo-border: rgb(96 165 250 / 55%);
 
   --chart-1: #e2e8f0;
   --chart-2: #94a3b8;

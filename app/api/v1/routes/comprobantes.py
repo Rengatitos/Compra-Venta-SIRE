@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from app.api.v1.deps import empresa_actual, empresa_id, periodo_valido
 from app.api.v1.routes.clasificacion import exigir_habilitado
 from app.db.database import get_db
-from app.domain.comprobante import Libro
+from app.domain.comprobante import Libro, Origen
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import periodos as repo_periodos
 from app.schemas.comprobante import (
@@ -20,6 +20,7 @@ from app.services import (
     clasificacion_service,
     destino_compras,
     export_service,
+    integracion_externos,
     plantilla_excel,
     propuesta_service,
 )
@@ -38,6 +39,12 @@ async def _asegurar_periodo(db, empresa: str, periodo: str) -> None:
         raise HTTPException(status_code=404, detail="Periodo no encontrado para esta empresa")
 
 
+def _solo_sunat(datos: list[dict]) -> list[dict]:
+    # Lo que llegó desde Apaclla Bot no está en la propuesta: contarlo haría
+    # que el cuadre contra el resumen SUNAT nunca coincida.
+    return [d for d in datos if d.get("origen") == Origen.SIRE.value]
+
+
 @router.get("", response_model=list[ComprobanteResponse], summary="Listar comprobantes")
 async def listar_comprobantes(
     periodo: str = Depends(periodo_valido),
@@ -48,6 +55,8 @@ async def listar_comprobantes(
     db=Depends(get_db),
 ):
     await _asegurar_periodo(db, empresa, periodo)
+    # Abrir el periodo también es un refresco: entran los externos que esperaban.
+    await integracion_externos.refrescar(db, empresa, periodo)
     filas = await repo_comprobantes.listar(
         db, empresa, periodo, libro=libro, skip=skip, limit=limit
     )
@@ -159,13 +168,14 @@ async def exportar_lote(
                 control_global = await resumen_rce.obtener_control(db, empresa_doc, periodo)
             except ErrorSunat as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
-            conciliacion = resumen_rce.conciliar(resumen_original, datos, control_global)
+            del_sunat = _solo_sunat(datos)
+            conciliacion = resumen_rce.conciliar(resumen_original, del_sunat, control_global)
             logger.info(
                 "Conciliación RCE periodo=%s cantidad_sunat=%s cantidad_procesada=%s "
                 "monedas=%s sin_tc=%s totales_pen=%s total_sire_original=%s",
                 periodo,
                 resumen_original["cantidad"],
-                len(datos),
+                len(del_sunat),
                 conciliacion["procesamiento_pen"]["cantidad_por_moneda"],
                 len(conciliacion["procesamiento_pen"]["comprobantes_sin_tc"]),
                 conciliacion["procesamiento_pen"]["totales_pen"],
@@ -180,8 +190,8 @@ async def exportar_lote(
                             "Descargue e importe la propuesta mediante ticket SUNAT"
                         ),
                         "cantidad_propuesta_sunat": resumen_original["cantidad"],
-                        "cantidad_procesada": len(datos),
-                        "diferencia": resumen_original["cantidad"] - len(datos),
+                        "cantidad_procesada": len(del_sunat),
+                        "diferencia": resumen_original["cantidad"] - len(del_sunat),
                         "advertencias": conciliacion["advertencias"],
                     },
                 )
@@ -230,7 +240,7 @@ async def conciliacion_rce(
     except ErrorSunat as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return resumen_rce.conciliar(
-        resumen_original, serializar_lote(filas), control_global
+        resumen_original, _solo_sunat(serializar_lote(filas)), control_global
     )
 
 

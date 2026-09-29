@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -14,7 +15,9 @@ from app.domain.comprobante_externo import ESTADO_RECIBIDO, periodo_de
 from app.repositories import comprobantes_externos as repo_externos
 from app.repositories._mongo import fecha_a_bson, fecha_desde_bson, monto_a_bson, monto_desde_bson
 from app.schemas.comprobante_externo import ComprobanteExternoCreate
-from app.services import imagenes_externas
+from app.services import imagenes_externas, integracion_externos
+
+logger = logging.getLogger(__name__)
 
 
 class Duplicado(Exception):
@@ -76,6 +79,14 @@ def a_respuesta(documento: dict[str, Any], ruc: str) -> dict[str, Any]:
         "dispositivo_id": documento.get("dispositivo_id") or "",
         "enviado_en": _iso(documento.get("enviado_en")),
         "tiene_imagen": bool(imagen.get("archivo")),
+        "comprobante_id": documento.get("comprobante_id"),
+        "integrado_en": _iso(documento.get("integrado_en")),
+        # Cómo se llama en el listado del periodo (`?comprobante=`).
+        "serie_numero_periodo": (
+            integracion_externos.a_comprobante(documento).serie_numero
+            if documento.get("estado", ESTADO_RECIBIDO) != ESTADO_RECIBIDO
+            else None
+        ),
     }
 
 
@@ -159,6 +170,14 @@ async def recibir(
         existente = await repo_externos.conflicto(db, empresa_id, documento)
         raise Duplicado(str(existente["_id"]) if existente else None) from None
 
+    # Si su periodo ya existe entra de una vez; si no, espera al próximo
+    # refresco. Una falla aquí no debe tumbar la recepción: el refresco lo
+    # vuelve a intentar.
+    try:
+        documento["estado"] = await integracion_externos.integrar_uno(db, empresa_id, documento)
+    except Exception:
+        logger.exception("No se pudo integrar el externo %s a su periodo", oid)
+
     return a_recibido(documento, ruc), True
 
 
@@ -173,6 +192,9 @@ async def listar(
     limit: int,
 ) -> dict[str, Any]:
     empresa_id = str(empresa["_id"])
+    # Listar es el «refresco» de Externos: los que esperaban un periodo que ya
+    # existe entran ahora.
+    await integracion_externos.refrescar(db, empresa_id)
     documentos, total = await repo_externos.listar(
         db, empresa_id, libro=libro, periodo=periodo, fuente=fuente, skip=skip, limit=limit
     )

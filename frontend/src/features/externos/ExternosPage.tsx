@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 
 import { listarComprobantesExternos, POR_PAGINA_EXTERNOS } from '@/api/comprobantesExternos';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -26,7 +27,7 @@ import type { Libro } from '@/types/domain';
 
 import { DialogComprobanteExterno } from './DialogComprobanteExterno';
 import estilos from './ExternosPage.module.css';
-import { identificador, presentarFuente } from './fuenteExterna';
+import { identificador, presentarEstado, presentarFuente } from './fuenteExterna';
 
 const ETIQUETA_LIBRO: Record<Libro, string> = {
   compras: 'Compras',
@@ -42,10 +43,18 @@ export function ExternosPage() {
   const [pagina, setPagina] = useState(1);
   const [abierto, setAbierto] = useState<ComprobanteExternoResponse | null>(null);
 
+  const cliente = useQueryClient();
   const consulta = useQuery({
     queryKey: ['comprobantes-externos', ruc, libro, periodo, pagina],
     queryFn: () => listarComprobantesExternos(ruc, { libro, periodo, pagina }),
   });
+
+  // Cada listado es un refresco: el backend mete en su periodo los que ya
+  // pueden entrar, así que el listado de ese periodo en caché queda viejo.
+  useEffect(() => {
+    if (consulta.dataUpdatedAt)
+      void cliente.invalidateQueries({ queryKey: ['comprobantes', ruc] });
+  }, [cliente, ruc, consulta.dataUpdatedAt]);
 
   function cambiarLibro(nuevo: Libro) {
     setLibro(nuevo);
@@ -96,11 +105,25 @@ export function ExternosPage() {
     {
       clave: 'estado',
       cabecera: 'Estado',
-      render: () => (
-        <Badge tono="exito" conPunto>
-          Recibido
-        </Badge>
-      ),
+      anchoMinimo: '12rem',
+      render: (fila) => {
+        const estado = presentarEstado(fila);
+        const insignia = (
+          <Badge tono={estado.tono} conPunto>
+            {estado.texto}
+          </Badge>
+        );
+        if (!fila.serie_numero_periodo) return insignia;
+        const destino = `/periodos/${fila.periodo}?libro=${fila.libro}&comprobante=${encodeURIComponent(fila.serie_numero_periodo)}`;
+        return (
+          <Link
+            to={destino}
+            aria-label={`${estado.texto}: ver en ${formatearPeriodo(fila.periodo)}`}
+          >
+            {insignia}
+          </Link>
+        );
+      },
     },
     {
       clave: 'enviado',
@@ -113,7 +136,7 @@ export function ExternosPage() {
     <>
       <PageHeader
         titulo="Comprobantes externos"
-        descripcion="Lo que registraron las personas desde Apaclla Bot enviando la foto de un Yape, Plin, boleta o factura. Están aparte de lo que sincroniza el SIRE."
+        descripcion="Lo que registraron las personas desde Apaclla Bot enviando la foto de un Yape, Plin, boleta o factura. Las boletas y facturas entran como comprobante nuevo al periodo de su fecha en cuanto ese periodo existe; si el periodo ya lo tenía, no se duplica. Los Yape, Plin y demás vouchers no son comprobantes de pago y se quedan solo aquí."
         acciones={
           <div className={estilos.libros} role="group" aria-label="Libro">
             {LIBROS.map((opcion) => (
@@ -140,22 +163,31 @@ export function ExternosPage() {
             : undefined
         }
         acciones={
-          periodos.length > 0 ? (
-            <div className={estilos.selector}>
-              <SelectField
-                etiqueta="Periodo"
-                value={periodo}
-                onChange={(evento) => {
-                  setPeriodo(evento.target.value);
-                  setPagina(1);
-                }}
-                opciones={[
-                  { valor: '', texto: 'Todos los periodos' },
-                  ...periodos.map((valor) => ({ valor, texto: formatearPeriodo(valor) })),
-                ]}
-              />
-            </div>
-          ) : null
+          <div className={estilos.filtros}>
+            {periodos.length > 0 ? (
+              <div className={estilos.selector}>
+                <SelectField
+                  etiqueta="Periodo"
+                  value={periodo}
+                  onChange={(evento) => {
+                    setPeriodo(evento.target.value);
+                    setPagina(1);
+                  }}
+                  opciones={[
+                    { valor: '', texto: 'Todos los periodos' },
+                    ...periodos.map((valor) => ({ valor, texto: formatearPeriodo(valor) })),
+                  ]}
+                />
+              </div>
+            ) : null}
+            <Button
+              pequeno
+              disabled={consulta.isFetching}
+              onClick={() => void consulta.refetch()}
+            >
+              {consulta.isFetching && !consulta.isPending ? 'Actualizando…' : 'Actualizar'}
+            </Button>
+          </div>
         }
       >
         {consulta.isPending ? (

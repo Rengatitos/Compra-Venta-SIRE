@@ -41,6 +41,17 @@ async def listar(
     return await _col(db).find({"empresa_id": empresa_id}).to_list(length=limit)
 
 
+async def existentes(
+    db: AsyncIOMotorDatabase, empresa_id: str, periodos: list[str]
+) -> set[str]:
+    """Cuáles de `periodos` ya existen para la empresa."""
+    if not periodos:
+        return set()
+    return set(
+        await _col(db).distinct("periodo", {"empresa_id": empresa_id, "periodo": {"$in": periodos}})
+    )
+
+
 async def actualizar_estado(
     db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, estado: str
 ) -> None:

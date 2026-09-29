@@ -13,6 +13,13 @@ const ESTADOS: Record<string, Presentacion> = {
   sin_datos: { tono: 'aviso', texto: 'Sin datos' },
 };
 
+/** Las filas `origen: "externo"` llegaron desde Apaclla Bot, no de la propuesta SUNAT. */
+export const ORIGEN_EXTERNO = 'externo';
+
+export function esExterno(fila: { origen: string }): boolean {
+  return fila.origen === ORIGEN_EXTERNO;
+}
+
 export function presentarEstadoComprobante(estado: string): Presentacion {
   return ESTADOS[estado] ?? { tono: 'neutro', texto: estado };
 }

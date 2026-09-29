@@ -21,6 +21,21 @@ export function presentarFuente(fuente: FuenteExterna): Presentacion {
   return FUENTES[fuente] ?? { tono: 'neutro', texto: fuente };
 }
 
+/** Espejo de los estados de `app/domain/comprobante_externo.py`. */
+const ESTADOS: Record<string, Presentacion> = {
+  recibido: { tono: 'aviso', texto: 'Esperando periodo' },
+  integrado: { tono: 'info', texto: 'En el periodo' },
+  ya_existia: { tono: 'neutro', texto: 'Ya existía en el periodo' },
+};
+
+/** Un voucher no es comprobante de pago: nunca pasa al periodo. */
+const SOLO_EXTERNOS: Presentacion = { tono: 'neutro', texto: 'Solo en Externos' };
+
+export function presentarEstado(fila: { estado: string; tipo_evidencia: string }): Presentacion {
+  if (fila.tipo_evidencia === 'voucher') return SOLO_EXTERNOS;
+  return ESTADOS[fila.estado] ?? { tono: 'neutro', texto: fila.estado };
+}
+
 /** Lo que identifica al comprobante: serie-número o, en un voucher, la operación. */
 export function identificador(fila: {
   serie: string;

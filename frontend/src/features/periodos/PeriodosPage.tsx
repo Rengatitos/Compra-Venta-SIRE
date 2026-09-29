@@ -127,6 +127,9 @@ export function PeriodosPage() {
     await cliente.invalidateQueries({ queryKey: ['periodos', ruc] });
     await cliente.invalidateQueries({ queryKey: ['analytics-periodos', ruc] });
     await cliente.invalidateQueries({ queryKey: ['dashboard', ruc] });
+    // Al crear o borrar un periodo, sus comprobantes de Apaclla Bot entran o
+    // vuelven a esperar.
+    await cliente.invalidateQueries({ queryKey: ['comprobantes-externos', ruc] });
   }
 
   const crear = useMutation({

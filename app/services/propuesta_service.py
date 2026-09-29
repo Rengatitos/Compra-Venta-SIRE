@@ -11,6 +11,7 @@ from app.domain.jobs import EstadoJob, Job, Progreso, TipoJob
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import jobs as repo_jobs
 from app.repositories import periodos as repo_periodos
+from app.services import integracion_externos
 from app.services.sunat import propuesta as api_propuesta
 from app.services.sunat.archivo_propuesta_rce import leer_zip
 from app.services.sunat.ticket_rce import obtener_zip
@@ -112,6 +113,7 @@ async def descargar_propuesta(
         else:
             actualizados += 1
 
+    await integracion_externos.reconciliar_con_sunat(db, empresa_id, periodo, libro)
     await repo_periodos.actualizar_estado(db, empresa_id, periodo, "sincronizado")
 
     logger.info(
@@ -165,6 +167,7 @@ async def _importar_archivo_rce(
     eliminados = await repo_comprobantes.eliminar_sire_no_incluidos(
         db, empresa_id, periodo, Libro.COMPRAS, comprobantes
     )
+    await integracion_externos.reconciliar_con_sunat(db, empresa_id, periodo, Libro.COMPRAS)
     await repo_periodos.actualizar_estado(db, empresa_id, periodo, "sincronizado")
     logger.info(
         "Archivo de propuesta RCE importado ruc=%s periodo=%s filas=%s "
