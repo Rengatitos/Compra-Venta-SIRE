@@ -98,9 +98,16 @@ async def destinatarios(db, solicitud: dict[str, Any]) -> list[dict[str, Any]]:
 
 def password_smtp(config: ConfiguracionCorreo) -> str:
     """La guardada desde el panel o, si no hay, la de `CORREO_SMTP_PASSWORD`."""
-    if config.password_cifrada:
-        return decrypt_password(config.password_cifrada)
-    return settings.CORREO_SMTP_PASSWORD or ""
+    password = (
+        decrypt_password(config.password_cifrada)
+        if config.password_cifrada
+        else settings.CORREO_SMTP_PASSWORD or ""
+    )
+    # Google muestra la contraseña de aplicación en bloques («abcd efgh ...»);
+    # los espacios no son parte de ella.
+    if config.host.endswith("gmail.com"):
+        password = password.replace(" ", "")
+    return password
 
 
 def listo(config: ConfiguracionCorreo) -> bool:
@@ -270,13 +277,21 @@ def vista_previa(config: ConfiguracionCorreo) -> dict[str, str]:
 # --- SMTP ----------------------------------------------------------------------
 
 
+def _seguridad(config: ConfiguracionCorreo) -> str:
+    """El 465 es SSL implícito siempre: con STARTTLS o sin cifrar, el servidor
+    corta la conexión («Connection unexpectedly closed»). Una configuración
+    guardada con esa mezcla se corrige aquí en vez de fallar."""
+    return "ssl" if config.puerto == 465 else config.seguridad
+
+
 def _enviar(mensaje: EmailMessage, config: ConfiguracionCorreo, timeout: int = TIMEOUT_ENVIO_S):
-    if config.seguridad == "ssl":
+    seguridad = _seguridad(config)
+    if seguridad == "ssl":
         smtp = smtplib.SMTP_SSL(config.host, config.puerto, timeout=timeout)
     else:
         smtp = smtplib.SMTP(config.host, config.puerto, timeout=timeout)
     with smtp:
-        if config.seguridad == "starttls":
+        if seguridad == "starttls":
             smtp.starttls()
         if config.usuario:
             smtp.login(config.usuario, password_smtp(config))
@@ -287,6 +302,11 @@ def _explicar(exc: Exception) -> tuple[str, bool]:
     """Mensaje para el usuario y si es definitivo (reintentar no lo arregla)."""
     if isinstance(exc, smtplib.SMTPAuthenticationError):
         return "El servidor de correo rechazó el usuario o la contraseña (SMTP)", True
+    if isinstance(exc, smtplib.SMTPServerDisconnected):
+        return (
+            "El servidor de correo cortó la conexión: revisa en «Opciones avanzadas» que el "
+            "puerto y la seguridad coincidan (Gmail: 587 con STARTTLS o 465 con SSL/TLS)"
+        ), False
     if isinstance(exc, smtplib.SMTPRecipientsRefused | smtplib.SMTPSenderRefused):
         return f"El servidor de correo rechazó la dirección: {exc}", True
     if isinstance(exc, TimeoutError | ConnectionError | OSError) and not isinstance(

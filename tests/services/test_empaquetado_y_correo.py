@@ -341,10 +341,16 @@ class SmtpSslFalso(SmtpFalso):
 
 
 @pytest.mark.parametrize(
-    ("seguridad", "clase", "con_starttls"),
-    [("starttls", SmtpFalso, True), ("ssl", SmtpSslFalso, False), ("ninguna", SmtpFalso, False)],
+    ("puerto", "seguridad", "clase", "con_starttls"),
+    [
+        (587, "starttls", SmtpFalso, True),
+        (465, "ssl", SmtpSslFalso, False),
+        (25, "ninguna", SmtpFalso, False),
+        # El 465 siempre es SSL: STARTTLS ahí hace que Gmail corte la conexión.
+        (465, "starttls", SmtpSslFalso, False),
+    ],
 )
-def test_la_seguridad_elige_la_conexion(monkeypatch, seguridad, clase, con_starttls):
+def test_la_seguridad_elige_la_conexion(monkeypatch, puerto, seguridad, clase, con_starttls):
     from email.message import EmailMessage
 
     from app.core.encryption import encrypt_password
@@ -353,7 +359,7 @@ def test_la_seguridad_elige_la_conexion(monkeypatch, seguridad, clase, con_start
     monkeypatch.setattr(correo_service.smtplib, "SMTP", SmtpFalso)
     monkeypatch.setattr(correo_service.smtplib, "SMTP_SSL", SmtpSslFalso)
     config = ConfiguracionCorreo(
-        host="smtp.example.com", puerto=465, seguridad=seguridad, usuario="u@x.pe",
+        host="smtp.example.com", puerto=puerto, seguridad=seguridad, usuario="u@x.pe",
         password_cifrada=encrypt_password("clave-app"),
     )
     mensaje = EmailMessage()
@@ -365,6 +371,21 @@ def test_la_seguridad_elige_la_conexion(monkeypatch, seguridad, clase, con_start
     assert type(conexion) is clase
     assert (("starttls",) in conexion.acciones) is con_starttls
     assert ("login", "u@x.pe", "clave-app") in conexion.acciones
+
+
+def test_la_contrasena_de_aplicacion_de_gmail_se_usa_sin_espacios(monkeypatch):
+    monkeypatch.setattr(correo_service.settings, "CORREO_SMTP_PASSWORD", "abcd efgh ijkl mnop")
+    assert correo_service.password_smtp(ConfiguracionCorreo()) == "abcdefghijklmnop"
+    otro = ConfiguracionCorreo(host="smtp.example.com")
+    assert correo_service.password_smtp(otro) == "abcd efgh ijkl mnop"
+
+
+def test_un_corte_de_conexion_se_explica():
+    mensaje, definitivo = correo_service._explicar(
+        smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+    )
+    assert "587 con STARTTLS" in mensaje
+    assert not definitivo
 
 
 def test_la_prueba_respeta_la_lista_blanca_y_exige_servidor(smtp):
