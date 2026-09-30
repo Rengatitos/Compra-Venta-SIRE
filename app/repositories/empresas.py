@@ -44,8 +44,10 @@ async def obtener_por_ruc(db: AsyncIOMotorDatabase, ruc: str) -> dict[str, Any] 
     return await _col(db).find_one({"ruc": ruc})
 
 
-async def listar(db: AsyncIOMotorDatabase, limit: int = 100) -> list[dict[str, Any]]:
-    return await _col(db).find().to_list(length=limit)
+async def listar(db: AsyncIOMotorDatabase, limit: int | None = None) -> list[dict[str, Any]]:
+    """Todas por defecto: el selector y el gate buscan aquí la empresa activa, y
+    con un tope las que quedaban fuera no se podían abrir."""
+    return await _col(db).find().sort("ruc", 1).to_list(length=limit)
 
 
 async def rucs_existentes(db: AsyncIOMotorDatabase, rucs: list[str]) -> set[str]:

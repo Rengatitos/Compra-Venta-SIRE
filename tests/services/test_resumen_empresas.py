@@ -118,3 +118,12 @@ def test_sin_credenciales_requiere_correccion_con_el_motivo_del_alta():
     assert motivo == "Error al obtener información de SUNAT: clave SOL rechazada"
     # Sin rastro de su alta, el motivo genérico.
     assert servicio.estado_alta({}, None) == ("requiere_correccion", servicio.SIN_CREDENCIALES)
+
+
+def test_la_lista_de_empresas_no_tiene_tope():
+    """Con 185 empresas el selector solo recibía 100 y las demás no se abrían."""
+    import inspect
+
+    from app.repositories import empresas as repo
+
+    assert inspect.signature(repo.listar).parameters["limit"].default is None
