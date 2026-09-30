@@ -23,6 +23,12 @@ La glosa procede del detalle SUNAT, de la leyenda del comprobante cuando los ít
 
 A la derecha de la última columna oficial se añaden dos columnas propias, **Observación** y **Estado glosa**, sin desplazar las de la plantilla (Contasis las ignora al importar). Observación explica por qué una fila no tiene glosa —«No se pudo obtener glosa», «SUNAT no publica el detalle de este tipo de comprobante», «Tipo de comprobante en evaluación»— o remite a la hoja Anulados; Estado glosa lleva «Con glosa», «Sin glosa», «En evaluación» o «Pendiente». Las dos letras de columna se calculan antes de escribir la primera fila, porque `max_column` cambia en cuanto se llena la primera de ellas.
 
+Después van **Medio de pago (voucher)** y **N.º de operación**, con los vouchers de Apaclla Bot (Yape, Plin…) que pagan el comprobante; si son varios, se unen con « / ». Un voucher no es una fila del registro sino el pago de una, de su periodo o del anterior ([comprobantes externos](../modelo-datos/comprobantes-externos.md)). Un Yape de octubre que paga una boleta de septiembre sale en el registro de septiembre, no en el de octubre:
+- En ventas, la columna oficial **MEDIO DE PAGO** (AN) lleva el código de la Tabla 1 de SUNAT del primer voucher: `003` para Yape y Plin, `999` para Mercado Pago y Niubiz.
+- La hoja de compras no tiene esa columna.
+- Los vouchers sin comprobante no van al registro, porque una fila sin tipo, serie ni número rompería la importación. Van a la hoja **Vouchers sin comprobante**, con medio de pago, n.º de operación, fecha, contraparte, total y moneda.
+- El reporte y asociado solo copia la hoja del registro, así que lleva las columnas de pago pero no esa hoja.
+
 ### Columnas que se llenan con una regla, y lo que sigue vacío
 
 Tres columnas no vienen de SUNAT ni del análisis, sino de una regla, porque así aparecen en el 100 % de los registros reales de contador usados para comparar esta exportación:

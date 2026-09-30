@@ -20,3 +20,13 @@ def validar(periodo: str) -> str:
 def anio_mes(periodo: str) -> tuple[int, int]:
     validar(periodo)
     return int(periodo[:4]), int(periodo[4:])
+
+
+def anterior(periodo: str) -> str:
+    anio, mes = anio_mes(periodo)
+    return f"{anio - 1:04d}12" if mes == 1 else f"{anio:04d}{mes - 1:02d}"
+
+
+def siguiente(periodo: str) -> str:
+    anio, mes = anio_mes(periodo)
+    return f"{anio + 1:04d}01" if mes == 12 else f"{anio:04d}{mes + 1:02d}"

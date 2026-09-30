@@ -10,8 +10,9 @@ periodo por su identidad (libro, tipo, serie y número normalizados):
 Cuando la propuesta SUNAT trae después ese mismo comprobante, la fila SIRE
 reemplaza a la externa (`reconciliar_con_sunat`).
 
-Los vouchers (Yape, Plin...) no son comprobantes de pago: se quedan sólo en
-Externos y nunca pasan al periodo.
+Los vouchers (Yape, Plin...) no son comprobantes de pago: no se copian como
+fila sino que pasan al periodo como pago de un comprobante
+(`app.services.pagos_vouchers`).
 """
 
 from __future__ import annotations
@@ -27,12 +28,13 @@ from app.domain.comprobante_externo import (
     ESTADO_INTEGRADO,
     ESTADO_RECIBIDO,
     ESTADO_YA_EXISTIA,
-    va_al_periodo,
+    es_voucher,
 )
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import comprobantes_externos as repo_externos
 from app.repositories import periodos as repo_periodos
 from app.repositories._mongo import fecha_desde_bson, monto_desde_bson
+from app.services import pagos_vouchers
 
 logger = logging.getLogger(__name__)
 
@@ -110,35 +112,51 @@ async def integrar_uno(db, empresa_id: str, externo: dict[str, Any]) -> str:
     """Intenta llevar un externo a su periodo. Devuelve el estado en que queda."""
     if externo.get("estado", ESTADO_RECIBIDO) != ESTADO_RECIBIDO:
         return externo["estado"]
-    if not va_al_periodo(externo):
-        return ESTADO_RECIBIDO
     if not await repo_periodos.obtener(db, empresa_id, externo["periodo"]):
         return ESTADO_RECIBIDO
+    if es_voucher(externo):
+        return await pagos_vouchers.integrar_voucher(db, empresa_id, externo)
     return await _integrar(db, empresa_id, externo)
 
 
 async def integrar_pendientes(
     db, empresa_id: str, periodo: str | None = None
 ) -> dict[str, int]:
-    """Integra los externos pendientes cuyo periodo ya existe."""
-    conteo = {"integrados": 0, "ya_existian": 0}
+    """Integra los externos pendientes cuyo periodo ya existe.
+
+    Con `periodo`, además vuelve a intentar asociar sus vouchers y los del
+    periodo siguiente: pueden haber llegado boletas o facturas nuevas desde el
+    último refresco.
+    """
+    conteo = {"integrados": 0, "ya_existian": 0, "vouchers": 0}
     pendientes = await repo_externos.pendientes(
         db, empresa_id, [periodo] if periodo is not None else None
     )
-    if not pendientes:
-        return conteo
-    existentes = await repo_periodos.existentes(
-        db, empresa_id, sorted({p["periodo"] for p in pendientes})
+    existentes = (
+        await repo_periodos.existentes(db, empresa_id, sorted({p["periodo"] for p in pendientes}))
+        if pendientes
+        else set()
     )
+    con_vouchers: set[str] = {periodo} if periodo is not None else set()
     for externo in pendientes:
         if externo["periodo"] not in existentes:
             continue
+        if es_voucher(externo):
+            await repo_externos.marcar(db, externo["_id"], ESTADO_INTEGRADO, None)
+            con_vouchers.add(externo["periodo"])
+            conteo["vouchers"] += 1
+            continue
         estado = await _integrar(db, empresa_id, externo)
         conteo["integrados" if estado == ESTADO_INTEGRADO else "ya_existian"] += 1
+    # Después de los comprobantes: un voucher puede pagar uno que acaba de entrar.
+    for con_voucher in sorted(con_vouchers):
+        await pagos_vouchers.asociar_alrededor(db, empresa_id, con_voucher)
     if any(conteo.values()):
         logger.info(
-            "Externos integrados empresa=%s periodo=%s integrados=%s ya_existian=%s",
+            "Externos integrados empresa=%s periodo=%s integrados=%s ya_existian=%s "
+            "vouchers=%s",
             empresa_id, periodo or "todos", conteo["integrados"], conteo["ya_existian"],
+            conteo["vouchers"],
         )
     return conteo
 

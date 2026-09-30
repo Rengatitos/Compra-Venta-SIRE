@@ -3,8 +3,10 @@
 Viven aparte de `comprobantes` a propósito: no son de SUNAT y la sincronización
 de la propuesta nunca los toca. Cuando existe su periodo se copian como una fila
 más de `comprobantes` (`app.services.integracion_externos`), y `comprobante_id`
-apunta a esa fila, o a la de SUNAT si el periodo ya lo tenía. Los vouchers se
-quedan sólo aquí.
+apunta a esa fila, o a la de SUNAT si el periodo ya lo tenía.
+
+Un voucher nunca se copia: es el pago de un comprobante, de su periodo o del
+anterior, y lo apunta con `pago_de`, su identidad (`app.services.pagos_vouchers`).
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from typing import Any
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.domain.comprobante_externo import ESTADO_RECIBIDO, TipoEvidencia
+from app.domain.comprobante_externo import ESTADO_INTEGRADO, ESTADO_RECIBIDO, TipoEvidencia
 from app.repositories._mongo import NOMBRE_COL_COMPROBANTES_EXTERNOS
 
 
@@ -50,6 +52,16 @@ async def crear_indices(db: AsyncIOMotorDatabase) -> None:
     # Los que esperan su periodo: se buscan en cada refresco.
     await col.create_index(
         [("empresa_id", 1), ("estado", 1), ("periodo", 1)], name="externos_pendientes"
+    )
+    # Los vouchers de un periodo y los que pagan sus comprobantes: se leen en
+    # cada listado y en cada export.
+    await col.create_index(
+        [("empresa_id", 1), ("periodo", 1), ("tipo_evidencia", 1)], name="externos_vouchers"
+    )
+    await col.create_index(
+        [("empresa_id", 1), ("pago_de.periodo", 1)],
+        name="externos_vouchers_pago_de",
+        partialFilterExpression={"tipo_evidencia": "voucher"},
     )
 
 
@@ -146,12 +158,7 @@ async def obtener(db: AsyncIOMotorDatabase, empresa_id: str, id_: str) -> dict[s
 async def pendientes(
     db: AsyncIOMotorDatabase, empresa_id: str, periodos: list[str] | None = None
 ) -> list[dict[str, Any]]:
-    """Los que esperan su periodo. Los vouchers no: nunca pasan a él."""
-    filtro: dict[str, Any] = {
-        "empresa_id": empresa_id,
-        "estado": ESTADO_RECIBIDO,
-        "tipo_evidencia": {"$ne": TipoEvidencia.VOUCHER.value},
-    }
+    filtro: dict[str, Any] = {"empresa_id": empresa_id, "estado": ESTADO_RECIBIDO}
     if periodos is not None:
         filtro["periodo"] = {"$in": periodos}
     return await _col(db).find(filtro).sort("creado_en", 1).to_list(length=None)
@@ -169,6 +176,48 @@ async def marcar(
                 "integrado_en": datetime.now(UTC),
             }
         },
+    )
+
+
+async def vouchers_del_periodo(
+    db: AsyncIOMotorDatabase, empresa_id: str, periodo: str, libro: str | None = None
+) -> list[dict[str, Any]]:
+    """Los vouchers que ya se ven en el periodo, asociados o no."""
+    filtro: dict[str, Any] = {
+        "empresa_id": empresa_id,
+        "periodo": periodo,
+        "tipo_evidencia": TipoEvidencia.VOUCHER.value,
+        "estado": ESTADO_INTEGRADO,
+    }
+    if libro:
+        filtro["libro"] = libro
+    return await _col(db).find(filtro).sort("fecha_operacion", 1).to_list(length=None)
+
+
+async def vouchers_que_pagan(
+    db: AsyncIOMotorDatabase, empresa_id: str, periodos: list[str], libro: str | None = None
+) -> list[dict[str, Any]]:
+    """Los vouchers asociados a un comprobante de esos periodos, sean del mes
+    que sean: un voucher puede pagar un comprobante del periodo anterior."""
+    filtro: dict[str, Any] = {
+        "empresa_id": empresa_id,
+        "tipo_evidencia": TipoEvidencia.VOUCHER.value,
+        "estado": ESTADO_INTEGRADO,
+        "pago_de.periodo": {"$in": periodos},
+    }
+    if libro:
+        filtro["libro"] = libro
+    return await _col(db).find(filtro).sort("fecha_operacion", 1).to_list(length=None)
+
+
+async def asociar(
+    db: AsyncIOMotorDatabase,
+    documento_id,
+    pago_de: dict[str, str] | None,
+    asociacion: str | None,
+) -> None:
+    await _col(db).update_one(
+        {"_id": documento_id}, {"$set": {"pago_de": pago_de, "asociacion": asociacion}}
     )
 
 

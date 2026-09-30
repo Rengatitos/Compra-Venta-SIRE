@@ -275,6 +275,31 @@ async def externos_con_gemela_sire(
     ]
 
 
+async def candidatas_de_pago(
+    db: AsyncIOMotorDatabase, empresa_id: str, periodos: list[str], libro: str | None = None
+) -> list[dict[str, Any]]:
+    """Lo mínimo de cada fila de esos periodos para asociarle un voucher."""
+    filtro: dict[str, Any] = {"empresa_id": empresa_id, "periodo": {"$in": periodos}}
+    if libro:
+        filtro["libro"] = libro
+    proyeccion = {
+        "periodo": 1, "libro": 1, "origen": 1, "tipo_cp": 1, "serie": 1, "numero": 1, "serie_numero": 1,
+        "moneda": 1, "total": 1, "documento_contraparte": 1, "razon_social": 1,
+        "fecha_emision": 1,
+    }
+    return await _col(db).find(filtro, proyeccion).to_list(length=None)
+
+
+async def eliminar_externas(db: AsyncIOMotorDatabase, ids: list[Any]) -> int:
+    """Borra filas `origen: "externo"` por `_id`; nunca toca una de SUNAT."""
+    if not ids:
+        return 0
+    resultado = await _col(db).delete_many(
+        {"_id": {"$in": ids}, "origen": Origen.EXTERNO.value}
+    )
+    return resultado.deleted_count
+
+
 async def completar_campos(db: AsyncIOMotorDatabase, documento_id, campos: dict[str, Any]) -> None:
     if campos:
         await _col(db).update_one({"_id": documento_id}, {"$set": campos})

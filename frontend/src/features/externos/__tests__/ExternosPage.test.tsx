@@ -114,17 +114,29 @@ describe('ExternosPage', () => {
       estado: 'ya_existia',
       serie_numero_periodo: 'F001-333',
     };
+    const yapeSinComprobante = { ...YAPE, id: 'd', nro_operacion: '444', estado: 'integrado' };
+    const yapePagado = {
+      ...YAPE,
+      id: 'e',
+      nro_operacion: '555',
+      estado: 'integrado',
+      serie_numero_periodo: 'B001-45',
+    };
     mocks.listar.mockResolvedValue({
-      items: [YAPE, esperando, integrado, yaExistia],
-      total: 4,
+      items: [esperando, integrado, yaExistia, yapeSinComprobante, yapePagado],
+      total: 5,
       periodos: ['202609'],
     });
 
     const { container } = render(<ExternosPage />, { wrapper: Envoltura });
 
     const tabla = await screen.findByRole('table');
-    // El Yape no es comprobante de pago: no espera ningún periodo.
-    expect(within(tabla).getByText('Solo en Externos')).toBeInTheDocument();
+    // Un voucher no es una fila del periodo: es el pago de un comprobante.
+    expect(within(tabla).getByText('Sin comprobante')).toBeInTheDocument();
+    expect(within(tabla).getByRole('link', { name: /Pago de B001-45/ })).toHaveAttribute(
+      'href',
+      '/periodos/202609?libro=ventas&comprobante=B001-45',
+    );
     expect(within(tabla).getByText('Esperando periodo')).toBeInTheDocument();
     expect(within(tabla).getByRole('link', { name: /En el periodo/ })).toHaveAttribute(
       'href',

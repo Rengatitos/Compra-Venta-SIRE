@@ -52,7 +52,7 @@ Respuestas:
 | `409 {detail, comprobante_externo_id}` | El mismo voucher (`fuente` + `nro_operacion`) o la misma boleta o factura (`libro` + `tipo_cp` + `serie` + `numero`) ya entró con otro `id_externo` |
 | `422` | Body inválido o foto que no cuadra |
 
-El `periodo` sale de `fecha_operacion` (`YYYYMM`). Si ese periodo ya existe, una boleta o factura entra en él al recibirse, y `estado` es `integrado`, o `ya_existia` si el periodo ya lo tenía. Si no existe, `estado` es `recibido` y entra cuando se crea el periodo o se refresca el panel. Un voucher nunca entra al periodo y se queda `recibido` (ver [comprobantes externos](../modelo-datos/comprobantes-externos.md)). Límite: 120/minuto.
+El `periodo` sale de `fecha_operacion` (`YYYYMM`). Si ese periodo ya existe, una boleta o factura entra en él al recibirse, y `estado` es `integrado`, o `ya_existia` si el periodo ya lo tenía. Si no existe, `estado` es `recibido` y entra cuando se crea el periodo o se refresca el panel. Un voucher no se copia como fila: con el periodo ya creado queda `integrado` y se asocia a la boleta o factura que paga, si hay una sola que coincide (ver [comprobantes externos](../modelo-datos/comprobantes-externos.md)). Límite: 120/minuto.
 
 ## `GET /api/v1/empresas/{ruc}/comprobantes-externos`
 
@@ -72,3 +72,25 @@ El `periodo` sale de `fecha_operacion` (`YYYYMM`). Si ese periodo ya existe, una
 [imagen](../../app/api/v1/routes/comprobantes_externos.py). **Requiere sesión.** Devuelve la foto con su `Content-Type`. Da `404` si el comprobante llegó sin foto o es de otra empresa.
 
 Ver también [modelo de datos: comprobantes externos](../modelo-datos/comprobantes-externos.md).
+
+## `GET /api/v1/empresas/{ruc}/periodos/{periodo}/vouchers`
+
+[listar_vouchers](../../app/api/v1/routes/vouchers.py). **Requiere sesión.** Filtro opcional: `libro`.
+
+- Antes de listar, integra los externos pendientes del periodo y vuelve a intentar la asociación automática, también la de los vouchers del periodo siguiente.
+- Devuelve los vouchers del periodo. Cada uno trae:
+  - `medio_pago` (Yape, Plin…) y `codigo_medio_pago` (Tabla 1 de SUNAT);
+  - `nro_operacion`, `fecha`, `total`, `moneda` y `contraparte`;
+  - `asociacion`, y `serie_numero` y `periodo_comprobante`, el comprobante que paga, o `null` si está sin comprobante;
+  - `candidatas`: comprobantes del mismo libro, moneda y monto, del periodo o del anterior, cada uno con su `periodo`.
+- `404` si el periodo no existe.
+
+## `PUT /api/v1/empresas/{ruc}/periodos/{periodo}/vouchers/{id}/asociacion`
+
+[asociar_voucher](../../app/api/v1/routes/vouchers.py). **Requiere sesión.**
+
+- Body: `{serie_numero, periodo}`. Asocia el voucher al comprobante de ese periodo, del libro del voucher, que tenga esa serie-número. `periodo` es opcional: sin él se busca primero en el periodo del voucher y luego en el anterior. No se admite otro periodo. Con `{serie_numero: null}` lo desasocia.
+- El `{periodo}` de la ruta puede ser el del voucher o el del comprobante que paga: se desasocia también desde la ficha del comprobante.
+- En los dos casos queda `asociacion: "manual"` y la asociación automática ya no lo toca.
+- Devuelve el voucher con su `serie_numero`.
+- `404` si el voucher no es de ese periodo ni paga un comprobante de él, o si no existe el comprobante.

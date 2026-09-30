@@ -99,6 +99,9 @@ def serializar(documento: dict[str, Any]) -> dict[str, Any]:
         # Lo escribe el clasificador contable; la exportación a Excel toma de
         # aquí la cuenta base.
         "clasificacion_contable": documento.get("clasificacion_contable") or None,
+        # No se guarda en la fila: lo agrega `pagos_vouchers.adjuntar_pagos`, a
+        # veces antes de serializar (el reporte y asociado).
+        "pagos": documento.get("pagos") or [],
     }
     for campo in _CAMPOS_MONTO:
         salida[campo] = monto_a_float(documento.get(campo))

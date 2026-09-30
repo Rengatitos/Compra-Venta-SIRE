@@ -18,6 +18,7 @@ Además de los datos del SIRE y los importes, cada fila trae lo que sale del por
 | `pdf_sunat` | Puntero al PDF descargado, o `null` |
 | `detraccion`, `detracciones` | Marca de detracción de la propuesta y los NPD asociados |
 | `documentos_modificados` | Comprobante que modifica una nota (sólo ventas) |
+| `pagos` | Vouchers de Apaclla Bot (Yape, Plin…) que pagan el comprobante: medio de pago, n.º de operación, fecha, monto y cómo se asociaron. No se guarda en la fila; sale de `comprobantes_externos.pago_de` ([comprobantes externos](../modelo-datos/comprobantes-externos.md)) |
 
 ## `GET …/comprobantes/incompletos`
 
@@ -50,7 +51,7 @@ Alimenta las tarjetas «Con detalle SOL», «Con PDF guardado» y «Con glosa» 
 
 **El Excel de compras reconstruye primero el registro desde el ZIP oficial del ticket RCE** (`sincronizar_ticket_rce`), así que nunca exporta una instantánea vieja de Mongo — y puede cambiar la cantidad de comprobantes del periodo respecto a lo que había. Si el ticket no se puede obtener responde `502`. Después compara cantidad y totales con el resumen oficial y responde `409` si la cantidad no cuadra; `422` si algún comprobante en moneda extranjera no tiene tipo de cambio.
 
-El Excel lo genera [plantilla_excel](../../app/services/plantilla_excel.py) y se llama `registro_{libro}_{periodo}.xlsx`. A la derecha de las columnas de la plantilla añade dos propias, **Observación** y **Estado glosa**, sin desplazar las oficiales (ver [consulta y exportación](../flujo/06-consulta-exportacion.md)). El PDF lo genera [export_service](../../app/services/export_service.py). `404` si el periodo no tiene comprobantes del libro pedido.
+El Excel lo genera [plantilla_excel](../../app/services/plantilla_excel.py) y se llama `registro_{libro}_{periodo}.xlsx`. A la derecha de las columnas de la plantilla añade cuatro propias, sin desplazar las oficiales: **Observación**, **Estado glosa**, **Medio de pago (voucher)** y **N.º de operación**. Las dos últimas salen de los vouchers de Apaclla Bot que pagan el comprobante; los vouchers sin comprobante van en la hoja «Vouchers sin comprobante» (ver [consulta y exportación](../flujo/06-consulta-exportacion.md)). El PDF lo genera [export_service](../../app/services/export_service.py). `404` si el periodo no tiene comprobantes del libro pedido.
 
 ## `GET …/comprobantes/conciliacion-rce`
 

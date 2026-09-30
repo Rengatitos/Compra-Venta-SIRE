@@ -20,24 +20,47 @@ class Fuente(str, Enum):
 
 class TipoEvidencia(str, Enum):
     # Un voucher de pago no es un comprobante de SUNAT: no tiene serie ni número,
-    # se identifica por su número de operación y va con tipo_cp "00".
+    # se identifica por su número de operación y va con tipo_cp "00". No es una
+    # fila del periodo sino el pago de una: ver `app.services.pagos_vouchers`.
     VOUCHER = "voucher"
     COMPROBANTE = "comprobante"
 
 
-# `recibido`: todavía no entra a su periodo (no existe o falta refrescar). Un
-# voucher se queda así para siempre: no pasa al periodo.
-# `integrado`: se copió como fila del periodo (`comprobante_id` la apunta).
+# `recibido`: todavía no entra a su periodo (no existe o falta refrescar).
+# `integrado`: un comprobante se copió como fila del periodo (`comprobante_id`
+# la apunta); un voucher ya se ve en el periodo, asociado o no (`pago_de`).
 # `ya_existia`: el periodo ya tenía ese comprobante, o la propuesta SUNAT lo
-# trajo después y reemplazó a la fila externa.
+# trajo después y reemplazó a la fila externa. No aplica a vouchers.
 ESTADO_RECIBIDO = "recibido"
 ESTADO_INTEGRADO = "integrado"
 ESTADO_YA_EXISTIA = "ya_existia"
 
+# Cómo quedó asociado un voucher al comprobante que paga. `manual` también
+# vale para uno que el usuario desasoció: la asociación automática no lo toca.
+ASOCIACION_AUTO = "auto"
+ASOCIACION_MANUAL = "manual"
 
-def va_al_periodo(externo: dict) -> bool:
-    """Sólo los comprobantes pasan al periodo; un voucher se queda en Externos."""
-    return externo.get("tipo_evidencia") != TipoEvidencia.VOUCHER.value
+# Código de la Tabla 1 de SUNAT (`catalogos.MEDIOS_DE_PAGO`) de cada fuente.
+# Yape y Plin son transferencias entre cuentas; de Mercado Pago y Niubiz no se
+# sabe si fue tarjeta de débito o de crédito. Pendiente de confirmar con el
+# contador.
+MEDIO_PAGO_POR_FUENTE: dict[str, str] = {
+    Fuente.YAPE.value: "003",
+    Fuente.PLIN.value: "003",
+    Fuente.MERCADO_PAGO.value: "999",
+    Fuente.NIUBIZ.value: "999",
+}
+
+NOMBRE_FUENTE: dict[str, str] = {
+    Fuente.YAPE.value: "Yape",
+    Fuente.PLIN.value: "Plin",
+    Fuente.MERCADO_PAGO.value: "Mercado Pago",
+    Fuente.NIUBIZ.value: "Niubiz",
+}
+
+
+def es_voucher(externo: dict) -> bool:
+    return externo.get("tipo_evidencia") == TipoEvidencia.VOUCHER.value
 
 
 def periodo_de(fecha: date) -> str:

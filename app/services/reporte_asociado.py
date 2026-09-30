@@ -13,7 +13,7 @@ from openpyxl.styles import Font
 
 from app.domain.comprobante import Libro
 from app.repositories import comprobantes
-from app.services import almacen_pdf
+from app.services import almacen_pdf, pagos_vouchers
 from app.services.comprobante_service import serializar_lote
 from app.services.glosa import ESTADO_PENDIENTE, estado_glosa
 from app.services.plantilla_excel import excel_plantilla
@@ -35,6 +35,8 @@ async def registros(db, empresa, periodo):
             filas.extend(pagina)
             if len(pagina) < 500:
                 break
+        # El medio de pago y el n.º de operación de sus vouchers van en la fila.
+        await pagos_vouchers.adjuntar_pagos(db, str(empresa['_id']), periodo, filas, libro.value)
         salida[libro] = filas
     return salida
 

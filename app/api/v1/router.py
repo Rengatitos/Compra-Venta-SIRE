@@ -23,6 +23,7 @@ from app.api.v1.routes import (
     solicitudes,
     usuarios,
     vinculacion,
+    vouchers,
 )
 
 api_router = APIRouter()
@@ -123,6 +124,11 @@ api_router.include_router(
 api_router.include_router(
     comprobantes_externos.router,
     prefix="/empresas/{ruc}/comprobantes-externos",
+    tags=["Apaclla Bot"],
+)
+api_router.include_router(
+    vouchers.router,
+    prefix="/empresas/{ruc}/periodos/{periodo}/vouchers",
     tags=["Apaclla Bot"],
 )
 # Canal de WhatsApp: el chat se vincula con el RUC y el usuario SOL.

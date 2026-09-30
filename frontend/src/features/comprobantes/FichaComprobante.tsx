@@ -20,6 +20,7 @@ import { presentarEstadoComprobante } from './estadoComprobante';
 import { presentarEstadoGlosa } from './estadoGlosa';
 import { Dato, Seccion } from './Seccion';
 import { TablaDetalleSunat } from './TablaDetalleSunat';
+import { SeccionPagos } from './Vouchers';
 
 /**
  * Un comprobante tiene desglose que mostrar solo si alguna adquisición fue a
@@ -159,6 +160,8 @@ export function FichaComprobante({ datos, ruc, periodo }: Props) {
           <Dato termino="Total">{formatearImporteComprobante(datos.total, datos)}</Dato>
         </dl>
       </Seccion>
+
+      <SeccionPagos ruc={ruc} periodo={periodo} pagos={datos.pagos} />
 
       <SeccionClasificacion datos={datos} ruc={ruc} periodo={periodo} />
 

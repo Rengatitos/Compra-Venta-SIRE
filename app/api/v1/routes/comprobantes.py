@@ -21,6 +21,7 @@ from app.services import (
     destino_compras,
     export_service,
     integracion_externos,
+    pagos_vouchers,
     plantilla_excel,
     propuesta_service,
 )
@@ -60,7 +61,11 @@ async def listar_comprobantes(
     filas = await repo_comprobantes.listar(
         db, empresa, periodo, libro=libro, skip=skip, limit=limit
     )
-    return serializar_lote(filas)
+    datos = serializar_lote(filas)
+    await pagos_vouchers.adjuntar_pagos(
+        db, empresa, periodo, datos, libro.value if libro else None
+    )
+    return datos
 
 
 @router.get("/incompletos", response_model=list[ComprobanteResponse])
@@ -156,6 +161,9 @@ async def exportar_lote(
         raise HTTPException(status_code=404, detail="No hay comprobantes en el periodo indicado")
 
     datos = serializar_lote(filas)
+    sin_comprobante = await pagos_vouchers.adjuntar_pagos(
+        db, empresa, periodo, datos, libro.value if libro else None
+    )
 
     if formato == "excel":
         destino_resuelto = destino
@@ -198,7 +206,9 @@ async def exportar_lote(
 
         nombre = f"registro_{libro.value}_{periodo}.xlsx"
         try:
-            archivo = plantilla_excel.excel_plantilla(datos, libro, destino=destino_resuelto)
+            archivo = plantilla_excel.excel_plantilla(
+                datos, libro, destino=destino_resuelto, vouchers_sin_comprobante=sin_comprobante
+            )
         except plantilla_excel.ErrorTipoCambio as exc:
             raise HTTPException(
                 status_code=422,
@@ -258,7 +268,9 @@ async def obtener_comprobante(
     fila = await repo_comprobantes.obtener(db, empresa, periodo, serie_numero, libro)
     if not fila:
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
-    return serializar(fila)
+    dato = serializar(fila)
+    await pagos_vouchers.adjuntar_pagos(db, empresa, periodo, [dato], fila.get("libro"))
+    return dato
 
 
 @router.patch(
