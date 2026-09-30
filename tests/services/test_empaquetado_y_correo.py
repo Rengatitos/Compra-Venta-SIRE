@@ -76,7 +76,12 @@ def datos(monkeypatch, tmp_path):
         empaquetado_service.destino_compras, "detectar", AsyncMock(return_value=None)
     )
     monkeypatch.setattr(
-        empaquetado_service, "excel_plantilla", lambda datos, libro, destino: io.BytesIO(b"xlsx")
+        empaquetado_service.pagos_vouchers, "adjuntar_pagos", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        empaquetado_service,
+        "excel_plantilla",
+        lambda datos, libro, destino, vouchers=None: io.BytesIO(b"xlsx"),
     )
     monkeypatch.setattr(correo_service.repo_empresas, "obtener_por_ruc", por_ruc)
     return tmp_path
@@ -107,7 +112,7 @@ def test_el_zip_organiza_cada_empresa_y_periodo_en_su_carpeta(datos):
 
 
 def test_sin_tipo_de_cambio_no_hay_excel_de_ese_libro_pero_si_el_motivo(datos, monkeypatch):
-    def plantilla(datos_, libro, destino):
+    def plantilla(datos_, libro, destino, vouchers=None):
         if libro is Libro.COMPRAS:
             raise ErrorTipoCambio([{"serie_numero": "F001-1"}])
         return io.BytesIO(b"xlsx")

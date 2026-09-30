@@ -30,6 +30,13 @@ la emisión), la cuenta contable total (4212 en compras, 1212 en ventas) y el
 porcentaje de IGV (la tasa
 declarada o, en su defecto, la general — en todas las filas, también las
 exoneradas).
+
+Los vouchers de Apaclla Bot (Yape, Plin...) no son filas: son el pago de un
+comprobante (`app.services.pagos_vouchers`). La fila de ese comprobante lleva
+su medio de pago y su número de operación en dos columnas finales y, en
+ventas, el código de la Tabla 1 en «MEDIO DE PAGO». Los que no tienen
+comprobante van a la hoja «Vouchers sin comprobante»: una fila sin tipo, serie
+ni número rompería la importación a Contasis.
 """
 
 from __future__ import annotations
@@ -517,8 +524,24 @@ def _fila_ventas(comprobante: dict[str, Any], conversion: _Conversion) -> dict[s
         "AD": _cuenta_total(comprobante, Libro.VENTAS),
         "AL": _tasa_igv(comprobante),
         "AM": _glosa(comprobante),
+        # Tabla 1 de SUNAT; la hoja de compras no tiene esta columna.
+        "AN": _codigo_medio_pago(comprobante),
         **_referencia_modificado(comprobante),
     }
+
+
+def _pagos(comprobante: dict[str, Any]) -> list[dict[str, Any]]:
+    return [p for p in comprobante.get("pagos") or [] if isinstance(p, dict)]
+
+
+def _codigo_medio_pago(comprobante: dict[str, Any]) -> str | None:
+    pagos = _pagos(comprobante)
+    return pagos[0].get("codigo_medio_pago") if pagos else None
+
+
+def _unir_pagos(comprobante: dict[str, Any], campo: str) -> str | None:
+    valores = [str(p.get(campo)) for p in _pagos(comprobante) if p.get(campo)]
+    return " / ".join(valores) or None
 
 
 # Columnas de fecha y celda que rotula el pie de totales. `R` es la fecha del
@@ -600,12 +623,45 @@ def _escribir_totales(hoja: Worksheet, indice: int, ultima: int, libro: Libro) -
         celda.number_format = FORMATO_IMPORTE
 
 
+def _hoja_vouchers(wb, vouchers: list[dict[str, Any]]) -> None:
+    from openpyxl.styles import Font, PatternFill
+
+    hoja = wb.create_sheet("Vouchers sin comprobante")
+    hoja.append(["Medio de pago", "N.º de operación", "Fecha", "Contraparte", "Total", "Moneda"])
+    for voucher in vouchers:
+        fecha = normalizar_fecha(voucher.get("fecha"))
+        total = voucher.get("total")
+        hoja.append([
+            voucher.get("medio_pago"),
+            voucher.get("nro_operacion"),
+            fecha,
+            voucher.get("contraparte") or None,
+            Decimal(total) if total else None,
+            voucher.get("moneda"),
+        ])
+    for celda in hoja[1]:
+        celda.fill = PatternFill("solid", fgColor="1D4ED8")
+        celda.font = Font(color="FFFFFF", bold=True)
+    for fila in hoja.iter_rows(min_row=2):
+        # El n.º de operación es texto: sin esto Excel se come los ceros.
+        fila[1].data_type = "s"
+        fila[2].number_format = FORMATO_FECHA
+        fila[4].number_format = FORMATO_IMPORTE
+    for columna, ancho in {"A": 18, "B": 22, "C": 14, "D": 40, "E": 14, "F": 10}.items():
+        hoja.column_dimensions[columna].width = ancho
+    hoja.freeze_panes = "A2"
+
+
 def excel_plantilla(
     comprobantes: list[dict[str, Any]],
     libro: Libro,
     destino: str | None = None,
+    vouchers_sin_comprobante: list[dict[str, Any]] | None = None,
 ) -> io.BytesIO:
-    """Genera el registro del libro pedido sobre la plantilla oficial."""
+    """Genera el registro del libro pedido sobre la plantilla oficial.
+
+    Cada comprobante puede traer `pagos` (`pagos_vouchers.adjuntar_pagos`).
+    """
     from app.services.revision_comprobantes import anulado
 
     auditoria = auditar_conversion([c for c in comprobantes if not anulado(c)])
@@ -630,9 +686,13 @@ def excel_plantilla(
     # la primera, `max_column` ya cambia.
     columna_observacion = get_column_letter(hoja.max_column + 1)
     columna_estado = get_column_letter(hoja.max_column + 2)
+    columna_medio_pago = get_column_letter(hoja.max_column + 3)
+    columna_operacion = get_column_letter(hoja.max_column + 4)
     for columna, cabecera, ancho in (
         (columna_observacion, "Observación", 34),
         (columna_estado, "Estado glosa", 16),
+        (columna_medio_pago, "Medio de pago (voucher)", 20),
+        (columna_operacion, "N.º de operación", 22),
     ):
         hoja[f"{columna}2"] = cabecera
         hoja.merge_cells(f"{columna}2:{columna}3")
@@ -653,6 +713,8 @@ def excel_plantilla(
         )
         valores[columna_observacion] = comprobante.get("observacion") or None
         valores[columna_estado] = ETIQUETA_ESTADO_GLOSA.get(comprobante.get("estado_glosa"))
+        valores[columna_medio_pago] = _unir_pagos(comprobante, "medio_pago")
+        valores[columna_operacion] = _unir_pagos(comprobante, "nro_operacion")
         descripciones_anulado = [
             item["descripcion"]
             for item in comprobante.get("detalle_sunat") or []
@@ -708,6 +770,9 @@ def excel_plantilla(
             revision.column_dimensions[columna].width = ancho
         revision.freeze_panes = "A2"
         revision.auto_filter.ref = revision.dimensions
+
+    if vouchers_sin_comprobante:
+        _hoja_vouchers(wb, vouchers_sin_comprobante)
 
     salida = io.BytesIO()
     wb.save(salida)

@@ -11,7 +11,7 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from app.domain.catalogos import describe_comprobante
-from app.domain.comprobante_externo import ESTADO_RECIBIDO, periodo_de
+from app.domain.comprobante_externo import ESTADO_RECIBIDO, es_voucher, periodo_de
 from app.repositories import comprobantes_externos as repo_externos
 from app.repositories._mongo import fecha_a_bson, fecha_desde_bson, monto_a_bson, monto_desde_bson
 from app.schemas.comprobante_externo import ComprobanteExternoCreate
@@ -81,13 +81,25 @@ def a_respuesta(documento: dict[str, Any], ruc: str) -> dict[str, Any]:
         "tiene_imagen": bool(imagen.get("archivo")),
         "comprobante_id": documento.get("comprobante_id"),
         "integrado_en": _iso(documento.get("integrado_en")),
-        # Cómo se llama en el listado del periodo (`?comprobante=`).
-        "serie_numero_periodo": (
-            integracion_externos.a_comprobante(documento).serie_numero
-            if documento.get("estado", ESTADO_RECIBIDO) != ESTADO_RECIBIDO
+        # Cómo se llama en el listado del periodo (`?comprobante=`): la fila a la
+        # que pasó o, en un voucher, el comprobante que paga.
+        "serie_numero_periodo": _serie_numero_periodo(documento),
+        # Un voucher puede pagar un comprobante del periodo anterior.
+        "periodo_comprobante": (
+            (documento.get("pago_de") or {}).get("periodo") or documento.get("periodo")
+            if _serie_numero_periodo(documento)
             else None
         ),
     }
+
+
+def _serie_numero_periodo(documento: dict[str, Any]) -> str | None:
+    if documento.get("estado", ESTADO_RECIBIDO) == ESTADO_RECIBIDO:
+        return None
+    if es_voucher(documento):
+        pago_de = documento.get("pago_de")
+        return f"{pago_de['serie']}-{pago_de['numero']}" if pago_de else None
+    return integracion_externos.a_comprobante(documento).serie_numero
 
 
 def _monto(valor: Decimal | None):

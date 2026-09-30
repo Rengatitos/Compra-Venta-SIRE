@@ -335,6 +335,8 @@ export interface ComprobanteResponse {
   pdf_sunat: PdfSunat | null;
   /** Referencia al comprobante que modifica una nota de crédito o débito. Sólo en ventas. */
   documentos_modificados: Record<string, unknown>[];
+  /** Vouchers de Apaclla Bot (Yape, Plin…) que pagan este comprobante. */
+  pagos?: PagoVoucher[];
   /** `null` mientras el clasificador contable no lo haya procesado. */
   clasificacion_contable?: ClasificacionContable | null;
 }
@@ -609,6 +611,44 @@ export interface DashboardData {
  */
 export type EstadoExterno = 'recibido' | 'integrado' | 'ya_existia';
 
+/** Espejo de `app/schemas/voucher.py::PagoVoucher`. */
+export interface PagoVoucher {
+  id: string;
+  /** El del voucher, por su fecha. */
+  periodo: string;
+  libro: string;
+  fuente: string;
+  /** Nombre para mostrar: Yape, Plin, Mercado Pago, Niubiz. */
+  medio_pago: string;
+  /** Código de la Tabla 1 de SUNAT (003, 999…). */
+  codigo_medio_pago: string;
+  nro_operacion: string;
+  fecha: string | null;
+  total: string | null;
+  moneda: string;
+  contraparte: string;
+  documento_contraparte: string;
+  asociacion: 'auto' | 'manual' | null;
+  /** El comprobante que paga, de este periodo o del anterior; `null` si está sin comprobante. */
+  serie_numero: string | null;
+  periodo_comprobante: string | null;
+}
+
+export interface CandidataVoucher {
+  periodo: string;
+  serie_numero: string;
+  razon_social: string;
+  fecha_emision: string | null;
+  total: string | null;
+  moneda: string;
+}
+
+/** `GET …/periodos/{periodo}/vouchers`. */
+export interface VoucherPeriodo extends PagoVoucher {
+  /** Comprobantes del mismo libro, moneda y monto que podría pagar, en su periodo o en el anterior. */
+  candidatas: CandidataVoucher[];
+}
+
 export interface ComprobanteExternoResponse {
   id: string;
   ruc: string;
@@ -642,6 +682,8 @@ export interface ComprobanteExternoResponse {
   integrado_en?: string | null;
   /** Su serie-número en el listado del periodo (`?comprobante=`). */
   serie_numero_periodo?: string | null;
+  /** Periodo de esa fila; en un voucher puede ser el anterior al suyo. */
+  periodo_comprobante?: string | null;
 }
 
 export interface ListaComprobantesExternos {

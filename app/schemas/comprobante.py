@@ -3,6 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.schemas.voucher import PagoVoucher
+
 
 class PdfSunat(BaseModel):
     """Respaldo del comprobante descargado del portal SOL."""
@@ -113,6 +115,8 @@ class ComprobanteResponse(BaseModel):
     # Referencia al comprobante que modifica una nota de crédito o débito.
     # Sólo el RVIE la manda; en compras (RCE) queda siempre vacía.
     documentos_modificados: list[dict[str, Any]] = []
+    # Vouchers de Apaclla Bot asociados a este comprobante (Yape, Plin...).
+    pagos: list[PagoVoucher] = []
     # `None` mientras no se haya clasificado.
     clasificacion_contable: ClasificacionContable | None = None
 

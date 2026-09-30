@@ -127,6 +127,8 @@ class ComprobanteExternoResponse(ComprobanteExternoRecibido):
     comprobante_id: str | None = None
     integrado_en: str | None = None
     serie_numero_periodo: str | None = None
+    # Periodo de esa fila. En un voucher puede ser el anterior al suyo.
+    periodo_comprobante: str | None = None
 
 
 class ListaComprobantesExternos(BaseModel):

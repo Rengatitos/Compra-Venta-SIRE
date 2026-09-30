@@ -28,11 +28,20 @@ const ESTADOS: Record<string, Presentacion> = {
   ya_existia: { tono: 'neutro', texto: 'Ya existía en el periodo' },
 };
 
-/** Un voucher no es comprobante de pago: nunca pasa al periodo. */
-const SOLO_EXTERNOS: Presentacion = { tono: 'neutro', texto: 'Solo en Externos' };
-
-export function presentarEstado(fila: { estado: string; tipo_evidencia: string }): Presentacion {
-  if (fila.tipo_evidencia === 'voucher') return SOLO_EXTERNOS;
+/**
+ * Un voucher no es una fila del periodo sino el pago de un comprobante: en el
+ * periodo está asociado a uno o queda «sin comprobante».
+ */
+export function presentarEstado(fila: {
+  estado: string;
+  tipo_evidencia: string;
+  serie_numero_periodo?: string | null;
+}): Presentacion {
+  if (fila.tipo_evidencia === 'voucher' && fila.estado === 'integrado') {
+    return fila.serie_numero_periodo
+      ? { tono: 'info', texto: `Pago de ${fila.serie_numero_periodo}` }
+      : { tono: 'aviso', texto: 'Sin comprobante' };
+  }
   return ESTADOS[fila.estado] ?? { tono: 'neutro', texto: fila.estado };
 }
 

@@ -114,11 +114,12 @@ export function ExternosPage() {
           </Badge>
         );
         if (!fila.serie_numero_periodo) return insignia;
-        const destino = `/periodos/${fila.periodo}?libro=${fila.libro}&comprobante=${encodeURIComponent(fila.serie_numero_periodo)}`;
+        // Un voucher puede pagar un comprobante del periodo anterior.
+        const destino = `/periodos/${fila.periodo_comprobante ?? fila.periodo}?libro=${fila.libro}&comprobante=${encodeURIComponent(fila.serie_numero_periodo)}`;
         return (
           <Link
             to={destino}
-            aria-label={`${estado.texto}: ver en ${formatearPeriodo(fila.periodo)}`}
+            aria-label={`${estado.texto}: ver en ${formatearPeriodo(fila.periodo_comprobante ?? fila.periodo)}`}
           >
             {insignia}
           </Link>
@@ -136,7 +137,7 @@ export function ExternosPage() {
     <>
       <PageHeader
         titulo="Comprobantes externos"
-        descripcion="Lo que registraron las personas desde Apaclla Bot enviando la foto de un Yape, Plin, boleta o factura. Las boletas y facturas entran como comprobante nuevo al periodo de su fecha en cuanto ese periodo existe; si el periodo ya lo tenía, no se duplica. Los Yape, Plin y demás vouchers no son comprobantes de pago y se quedan solo aquí."
+        descripcion="Lo que registraron las personas desde Apaclla Bot enviando la foto de un Yape, Plin, boleta o factura. Las boletas y facturas entran como comprobante nuevo al periodo de su fecha en cuanto ese periodo existe; si el periodo ya lo tenía, no se duplica. Los Yape, Plin y demás vouchers no son comprobantes: entran como el pago de la boleta o factura del mismo monto, o quedan «sin comprobante» para asociarlos desde el periodo."
         acciones={
           <div className={estilos.libros} role="group" aria-label="Libro">
             {LIBROS.map((opcion) => (

@@ -150,6 +150,31 @@ def sin_detalle_en_sunat(tipo_cp: str, libro: str = "", serie: str = "") -> bool
         return not str(serie or "").strip().upper().startswith(PREFIJO_SERIE_SEE_SOL)
     return False
 
+# Tabla 1 de SUNAT, «Tipo de medio de pago». Transcrita del comentario de la
+# columna MEDIO DE PAGO de la hoja de ventas de la plantilla Contasis.
+MEDIOS_DE_PAGO: dict[str, str] = {
+    "001": "DEPOSITO EN CUENTA",
+    "002": "GIRO",
+    "003": "TRANSFERENCIA DE FONDOS",
+    "004": "ORDEN DE PAGO",
+    "005": "TARJETA DE DEBITO",
+    "006": "TARJETA DE CREDITO",
+    "007": 'CHEQUES "NO NEGOCIABLE" "INTRANSFERIBLE"',
+    "008": "EFECTIVO SIN UTILIZAR MEDIOS DE PAGO",
+    "009": "EFECTIVO MEDIOS DE PAGO",
+    "010": "MEDIOS DE PAGO DE COMERCIO EXTERIOR",
+    "011": "LETRAS DE CAMBIO",
+    "101": "TRANSFERENCIAS - COMERCIO EXTERIOR",
+    "102": "CHEQUES BANCARIOS - COMERCIO EXTERIOR",
+    "103": "ORDEN DE PAGO SIMPLE - COMERCIO EXTERIOR",
+    "104": "ORDEN DE PAGO DOCUMENTARIO - COMERCIO EXTERIOR",
+    "105": "REMESA SIMPLE - COMERCIO EXTERIOR",
+    "106": "REMESA DOCUMENTARIA - COMERCIO EXTERIOR",
+    "107": "CARTA DE CREDITO SIMPLE - COMERCIO EXTERIOR",
+    "108": "CARTA DE CREDITO DOCUMENTARIO - COMERCIO EXTERIOR",
+    "999": "OTROS MEDIOS DE PAGO",
+}
+
 # Documento de identidad genérico usado en boletas al público. Contasis escribe
 # "1 / 11111111"; la descarga del SIRE trae "-" en ambos campos.
 DOC_IDENTIDAD_GENERICO = "11111111"

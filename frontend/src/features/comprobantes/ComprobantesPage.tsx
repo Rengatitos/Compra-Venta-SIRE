@@ -43,6 +43,7 @@ import { DescargarPdfsButton } from './DescargarPdfsButton';
 import { esExterno, presentarEstadoComprobante } from './estadoComprobante';
 import { IconoHojaCalculo, IconoListado, IconoReporteAsociado } from './IconosExportacion';
 import { presentarEstadoGlosa } from './estadoGlosa';
+import { PagoCelda, VouchersSinComprobantePanel } from './Vouchers';
 
 const POR_PAGINA = 100;
 
@@ -358,6 +359,11 @@ export function ComprobantesPage() {
         ]
       : []),
     {
+      clave: 'pago',
+      cabecera: 'Pago',
+      render: (fila) => <PagoCelda pagos={fila.pagos} />,
+    },
+    {
       clave: 'respaldo',
       cabecera: 'Respaldo SOL',
       render: (fila) => <RespaldoCelda fila={fila} />,
@@ -606,6 +612,8 @@ export function ComprobantesPage() {
             acciones={<DescargarDetraccionesButton ruc={ruc} periodo={periodo} />}
           />
         ) : null}
+
+        <VouchersSinComprobantePanel ruc={ruc} periodo={periodo} libro={libro} />
 
         <div ref={listadoRef} tabIndex={-1} className={estilos.destinoListado}>
           <Panel titulo="Listado">

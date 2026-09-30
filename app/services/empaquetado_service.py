@@ -31,7 +31,7 @@ from app.domain.solicitudes import nombre_carpeta
 from app.repositories import comprobantes as repo_comprobantes
 from app.repositories import empresas as repo_empresas
 from app.repositories import jobs as repo_jobs
-from app.services import almacen_pdf, destino_compras
+from app.services import almacen_pdf, destino_compras, pagos_vouchers
 from app.services.comprobante_service import serializar_lote
 from app.services.plantilla_excel import ErrorTipoCambio, excel_plantilla
 
@@ -101,8 +101,14 @@ async def reunir(db, item: dict[str, Any]) -> Carpeta:
             if libro is Libro.COMPRAS
             else None
         )
+        datos = serializar_lote(filas)
+        sin_comprobante = await pagos_vouchers.adjuntar_pagos(
+            db, empresa_id, periodo, datos, libro.value
+        )
         try:
-            excel = await asyncio.to_thread(excel_plantilla, serializar_lote(filas), libro, destino)
+            excel = await asyncio.to_thread(
+                excel_plantilla, datos, libro, destino, sin_comprobante
+            )
         except ErrorTipoCambio as exc:
             carpeta.observaciones.append(
                 f"{CARPETA_LIBRO[libro]}: no se generó el Excel, {exc}. Registra el tipo de "
