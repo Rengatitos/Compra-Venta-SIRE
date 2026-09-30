@@ -297,7 +297,8 @@ def test_una_clave_sol_rechazada_no_se_reintenta(almacen, sunat):
     sunat["credenciales"].side_effect = CredencialesSolError("Usuario o Clave Incorrectos")
     _, carga = alta(almacen, intentos=1, max_intentos=3)
     fila = carga["filas"][0]
-    assert fila["estado"] == "agregada_con_observaciones"
+    # Sin credenciales del API no sirve: se corrige desde el panel.
+    assert fila["estado"] == "requiere_correccion"
     assert "clave SOL rechazada" in fila["motivos"][0]
     sunat["token"].assert_not_awaited()
     # La ficha RUC es pública: el CIIU sale de ahí aunque la clave falle.

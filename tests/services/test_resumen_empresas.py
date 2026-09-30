@@ -18,9 +18,13 @@ from app.domain.jobs import EstadoJob, Job, TipoJob
 from app.services import resumen_empresas_service as servicio
 
 ID_A, ID_B = ObjectId(), ObjectId()
+CREDENCIALES = {"sunat_client_id": "id", "sunat_client_secret": "secreto"}
 EMPRESAS = [
-    {"_id": ID_B, "ruc": "20603391692", "nombre": "zeta sac", "correos_notificacion": ["z@x.pe"]},
-    {"_id": ID_A, "ruc": "20610202251", "nombre": "Alfa SAC"},
+    {
+        "_id": ID_B, "ruc": "20603391692", "nombre": "zeta sac",
+        "correos_notificacion": ["z@x.pe"], **CREDENCIALES,
+    },
+    {"_id": ID_A, "ruc": "20610202251", "nombre": "Alfa SAC", **CREDENCIALES},
 ]
 SIRE = datetime(2026, 9, 27, 10, tzinfo=UTC)
 
@@ -45,6 +49,7 @@ def datos(monkeypatch):
             }
         }),
     )
+    monkeypatch.setattr(servicio.repo_cargas, "ultima_fila_por_ruc", AsyncMock(return_value={}))
     monkeypatch.setattr(
         servicio.repo_periodos,
         "listar_por_empresas",
@@ -89,3 +94,27 @@ def test_la_ruta_del_resumen_no_choca_con_la_de_una_empresa(datos):
 
     assert r.status_code == 200
     assert r.json()["empresas"][0]["ultima_actualizacion_sire"].endswith("Z")
+
+
+def test_con_credenciales_la_empresa_esta_lista():
+    assert servicio.estado_alta(CREDENCIALES, None) == ("lista", None)
+
+
+def test_mientras_la_cola_completa_su_alta_esta_registrando():
+    fila = {"estado": "pendiente", "motivos": ["Completando los datos de SUNAT"]}
+    assert servicio.estado_alta({}, fila) == ("registrando", None)
+
+
+def test_sin_credenciales_requiere_correccion_con_el_motivo_del_alta():
+    fila = {
+        "estado": "agregada_con_observaciones",
+        "motivos": [
+            "Completando los datos de SUNAT (reintento 4 de 4)",
+            "Error al obtener información de SUNAT: clave SOL rechazada",
+        ],
+    }
+    estado, motivo = servicio.estado_alta({}, fila)
+    assert estado == "requiere_correccion"
+    assert motivo == "Error al obtener información de SUNAT: clave SOL rechazada"
+    # Sin rastro de su alta, el motivo genérico.
+    assert servicio.estado_alta({}, None) == ("requiere_correccion", servicio.SIN_CREDENCIALES)

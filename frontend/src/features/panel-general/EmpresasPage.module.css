@@ -41,3 +41,91 @@
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: var(--gap);
 }
+
+/* Empresa sin credenciales del API SUNAT (o aún registrándose): se ve apagada
+   y no se abre. El aviso y las acciones (corregir, eliminar) no se apagan:
+   son lo que hay que usar. La opacidad no se puede deshacer en un hijo, así
+   que se apaga cada parte y no la fila entera. */
+.filaBloqueada {
+  background-color: var(--color-surface-2);
+}
+
+.filaBloqueada > :not(:nth-child(2), :last-child),
+.filaBloqueada .textoEmpresa {
+  opacity: 0.5;
+}
+
+.empresa {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.textoEmpresa {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+}
+
+.advertencia,
+.basura {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+}
+
+.advertencia {
+  color: var(--color-warning);
+  background-color: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+}
+
+.basura {
+  color: var(--color-text-secondary);
+}
+
+.basura:hover {
+  color: var(--color-danger);
+  background-color: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+}
+
+.advertencia:focus-visible,
+.basura:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.advertencia svg,
+.basura svg,
+.iconoBoton {
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.iconoBoton {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+.motivo {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  overflow-wrap: anywhere;
+  font-size: var(--text-body-sm);
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-control);
+}

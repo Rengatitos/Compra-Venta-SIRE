@@ -27,11 +27,19 @@ class EstadoFila(str, Enum):
     PENDIENTE = "pendiente"
     AGREGADA = "agregada"
     CON_OBSERVACIONES = "agregada_con_observaciones"
+    # Existe, pero sin las credenciales del API SUNAT no sirve: hay que corregir
+    # su RUC, usuario o clave SOL desde el panel de empresas y reintentar.
+    REQUIERE_CORRECCION = "requiere_correccion"
     NO_AGREGADA = "no_agregada"
 
 
 ESTADOS_FILA_TERMINALES = frozenset(
-    {EstadoFila.AGREGADA, EstadoFila.CON_OBSERVACIONES, EstadoFila.NO_AGREGADA}
+    {
+        EstadoFila.AGREGADA,
+        EstadoFila.CON_OBSERVACIONES,
+        EstadoFila.REQUIERE_CORRECCION,
+        EstadoFila.NO_AGREGADA,
+    }
 )
 
 

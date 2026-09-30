@@ -15,8 +15,12 @@ export function useResumenEmpresas() {
     queryFn: obtenerResumenEmpresas,
     // Mientras haya procesos vivos el panel se refresca solo; después, no.
     refetchInterval: (consulta) => {
-      const vivos = consulta.state.data?.procesos_por_estado;
-      return vivos && vivos.pendiente + vivos.en_progreso > 0 ? INTERVALO_MS : false;
+      const datos = consulta.state.data;
+      const vivos = datos?.procesos_por_estado;
+      const registrando = datos?.empresas.some((e) => e.estado_alta === 'registrando');
+      return registrando || (vivos && vivos.pendiente + vivos.en_progreso > 0)
+        ? INTERVALO_MS
+        : false;
     },
   });
 

@@ -4,6 +4,7 @@
  * repo lleve directamente a su origen.
  */
 import type {
+  EstadoAlta,
   EstadoCarga,
   EstadoEnvio,
   EstadoFilaCarga,
@@ -765,6 +766,10 @@ export interface ResumenEmpresa {
   ultima_actualizacion_sire: string | null;
   ultimo_proceso: JobResponse | null;
   procesos_por_estado: ProcesosPorEstado;
+  /** Sin credenciales del API SUNAT la empresa no se puede abrir. */
+  estado_alta: EstadoAlta;
+  /** Por qué requiere corrección; `null` si está lista o registrándose. */
+  motivo_alta: string | null;
 }
 
 export interface ResumenEmpresas {

@@ -268,7 +268,7 @@ describe('carga masiva', () => {
     expect(await screen.findByText('Agregada con observaciones')).toBeInTheDocument();
     expect(screen.getByText('RUC inválido')).toBeInTheDocument();
     expect(
-      screen.getByText(/0 agregadas · 1 con observaciones · 1 no agregadas/),
+      screen.getByText(/0 agregadas · 1 con observaciones · 0 requieren corrección · 1 no agregadas/),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Descargar reporte' })).toBeInTheDocument();
   });

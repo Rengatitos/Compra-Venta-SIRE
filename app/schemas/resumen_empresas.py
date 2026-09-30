@@ -25,6 +25,10 @@ class ResumenEmpresa(BaseModel):
     ultima_actualizacion_sire: FechaUtc | None = None
     ultimo_proceso: JobResponse | None = None
     procesos_por_estado: ProcesosPorEstado
+    # `lista`, `registrando` o `requiere_correccion` (sin credenciales del API
+    # SUNAT: no se puede abrir hasta corregirla).
+    estado_alta: str = "lista"
+    motivo_alta: str | None = None
 
 
 class ResumenEmpresas(BaseModel):

@@ -22,9 +22,20 @@ const mocks = vi.hoisted(() => ({
   crearSolicitud: vi.fn(),
   listarSolicitudes: vi.fn(),
   listarEnvios: vi.fn(),
+  eliminarEmpresa: vi.fn(),
+  actualizarEmpresa: vi.fn(),
+  obtenerCredencialesSunat: vi.fn(),
+  obtenerEmpresa: vi.fn(),
 }));
 
-vi.mock('@/api/empresas', () => ({ obtenerResumenEmpresas: mocks.obtenerResumenEmpresas }));
+vi.mock('@/api/empresas', () => ({
+  obtenerResumenEmpresas: mocks.obtenerResumenEmpresas,
+  eliminarEmpresa: mocks.eliminarEmpresa,
+  actualizarEmpresa: mocks.actualizarEmpresa,
+  obtenerCredencialesSunat: mocks.obtenerCredencialesSunat,
+  obtenerEmpresa: mocks.obtenerEmpresa,
+  crearEmpresa: vi.fn(),
+}));
 vi.mock('@/api/jobs', () => ({ listarJobs: mocks.listarJobs, reintentarJob: vi.fn() }));
 vi.mock('@/api/usuarios', () => ({ obtenerYo: vi.fn().mockResolvedValue({ rol: 'admin' }) }));
 vi.mock('@/api/solicitudes', () => ({
@@ -71,9 +82,25 @@ function empresa(parcial: Partial<ResumenEmpresa> = {}): ResumenEmpresa {
     ultima_actualizacion_sire: '2026-09-27T10:01:00Z',
     ultimo_proceso: job(),
     procesos_por_estado: { pendiente: 0, en_progreso: 0, completado: 3, fallido: 1 },
+    estado_alta: 'lista',
+    motivo_alta: null,
     ...parcial,
   };
 }
+
+const MOTIVO =
+  'Error al obtener información de SUNAT: no se obtuvieron las credenciales de API';
+
+const SIN_CREDENCIALES = empresa({
+  ruc: '20612635910',
+  nombre: 'CONSTRUCTORA E INMOBILIARIA CH EIRL',
+  total_periodos: 0,
+  periodos: [],
+  ultima_actualizacion_sire: null,
+  ultimo_proceso: null,
+  estado_alta: 'requiere_correccion',
+  motivo_alta: MOTIVO,
+});
 
 const RESUMEN: ResumenEmpresas = {
   total_empresas: 2,
@@ -306,5 +333,78 @@ describe('panel general de empresas', () => {
     expect(
       await axe(container, { rules: { 'color-contrast': { enabled: false } } }),
     ).toHaveNoViolations();
+  });
+
+  describe('empresas que requieren corrección', () => {
+    beforeEach(() => {
+      mocks.obtenerResumenEmpresas.mockResolvedValue({
+        ...RESUMEN,
+        empresas: [...RESUMEN.empresas, SIN_CREDENCIALES],
+      });
+      mocks.obtenerEmpresa.mockResolvedValue({ ruc: SIN_CREDENCIALES.ruc, usuario: '45797157' });
+    });
+
+    it('no se abren ni se procesan, y el aviso muestra el motivo', async () => {
+      const { container } = montar();
+      const nombre = 'CONSTRUCTORA E INMOBILIARIA CH EIRL';
+
+      const aviso = await screen.findByRole('button', {
+        name: `Ver por qué ${nombre} requiere corrección`,
+      });
+      expect(
+        screen.queryByRole('button', { name: `Entrar al panel de ${nombre}` }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: `Procesar ${nombre}` })).toBeDisabled();
+      expect(await axe(container, { rules: { 'color-contrast': { enabled: false } } }))
+        .toHaveNoViolations();
+
+      await userEvent.click(aviso);
+      const dialogo = await screen.findByRole('dialog');
+      expect(within(dialogo).getByText(MOTIVO)).toBeInTheDocument();
+    });
+
+    it('«Corregir» guarda el usuario y la clave SOL y vuelve a traer las credenciales', async () => {
+      mocks.actualizarEmpresa.mockResolvedValue({});
+      mocks.obtenerCredencialesSunat.mockResolvedValue({
+        origen: 'nueva',
+        aplicacion: 'SIRE',
+        client_id: 'x',
+        token_valido: true,
+        mensaje: 'Se registró una aplicación nueva en SUNAT y ya funciona.',
+      });
+      montar();
+
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: 'Corregir RUC, usuario y clave SOL de CONSTRUCTORA E INMOBILIARIA CH EIRL',
+        }),
+      );
+      const dialogo = await screen.findByRole('dialog');
+      expect(await within(dialogo).findByDisplayValue('45797157')).toBeInTheDocument();
+      await userEvent.type(within(dialogo).getByLabelText('Clave SOL'), 'nueva-clave');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Guardar y reintentar' }));
+
+      expect(mocks.actualizarEmpresa).toHaveBeenCalledWith('20612635910', {
+        usuario: '45797157',
+        password: 'nueva-clave',
+      });
+      expect(mocks.obtenerCredencialesSunat).toHaveBeenCalledWith('20612635910');
+      expect(await screen.findByText('Empresa corregida: ya se puede abrir')).toBeInTheDocument();
+    });
+
+    it('la papelera pide confirmación y elimina la empresa', async () => {
+      mocks.eliminarEmpresa.mockResolvedValue({ mensaje: 'ok' });
+      montar();
+
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: 'Eliminar CONSTRUCTORA E INMOBILIARIA CH EIRL',
+        }),
+      );
+      const dialogo = await screen.findByRole('dialog');
+      await userEvent.click(within(dialogo).getByRole('button', { name: 'Sí, eliminar' }));
+
+      expect(mocks.eliminarEmpresa).toHaveBeenCalledWith('20612635910');
+    });
   });
 });

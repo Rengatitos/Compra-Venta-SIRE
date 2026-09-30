@@ -65,6 +65,7 @@ ETIQUETA_ESTADO = {
     EstadoFila.PENDIENTE.value: "En proceso",
     EstadoFila.AGREGADA.value: "Agregada",
     EstadoFila.CON_OBSERVACIONES.value: "Agregada con observaciones",
+    EstadoFila.REQUIERE_CORRECCION.value: "Requiere corrección",
     EstadoFila.NO_AGREGADA.value: "No agregada",
 }
 
@@ -285,6 +286,8 @@ class Completado:
     # Algún fallo puede ser pasajero (SUNAT no respondió): vale la pena otro
     # intento. Una clave SOL rechazada no lo es.
     reintentable: bool
+    # Terminó sin client_id/secret: sin ellos la empresa no descarga el SIRE.
+    sin_credenciales: bool = False
 
 
 async def completar(db, empresa: dict[str, Any], *, obtener_credenciales: bool) -> Completado:
@@ -346,7 +349,8 @@ async def completar(db, empresa: dict[str, Any], *, obtener_credenciales: bool) 
         cambios["nombre"] = razon_social
     if cambios:
         await repo_empresas.actualizar(db, empresa["_id"], cambios)
-    return Completado(observaciones, reintentable)
+    sin_credenciales = not (empresa.get("sunat_client_id") and empresa.get("sunat_client_secret"))
+    return Completado(observaciones, reintentable, sin_credenciales)
 
 
 def ciiu_principal(actividades: list[dict[str, Any]]) -> str:
@@ -380,7 +384,12 @@ async def alta_empresa(db, job: Job, reportar) -> dict[str, Any]:
             })
         raise ErrorTransitorio("; ".join(completado.observaciones))
 
-    estado = EstadoFila.CON_OBSERVACIONES if completado.observaciones else EstadoFila.AGREGADA
+    if job.parametros.get("obtener_credenciales") and completado.sin_credenciales:
+        estado = EstadoFila.REQUIERE_CORRECCION
+    elif completado.observaciones:
+        estado = EstadoFila.CON_OBSERVACIONES
+    else:
+        estado = EstadoFila.AGREGADA
     if carga_id and fila is not None:
         await repo_cargas.guardar_fila(db, carga_id, fila, {
             "estado": estado.value,

@@ -38,7 +38,14 @@ export type TipoJob =
 
 /** `app/domain/carga_empresas.py::EstadoFila`. */
 export type EstadoFilaCarga =
-  'pendiente' | 'agregada' | 'agregada_con_observaciones' | 'no_agregada';
+  | 'pendiente'
+  | 'agregada'
+  | 'agregada_con_observaciones'
+  | 'requiere_correccion'
+  | 'no_agregada';
+
+/** `app/services/resumen_empresas_service.py::estado_alta`. */
+export type EstadoAlta = 'lista' | 'registrando' | 'requiere_correccion';
 
 /** `app/domain/carga_empresas.py::EstadoCarga`. */
 export type EstadoCarga = 'en_progreso' | 'completada';

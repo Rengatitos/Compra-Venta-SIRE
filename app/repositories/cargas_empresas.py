@@ -41,6 +41,23 @@ async def listar(db: AsyncIOMotorDatabase, limit: int = 50) -> list[dict[str, An
     return await cursor.to_list(length=limit)
 
 
+async def ultima_fila_por_ruc(
+    db: AsyncIOMotorDatabase, rucs: list[str]
+) -> dict[str, dict[str, Any]]:
+    """La fila más reciente de cada RUC entre todas las cargas: su estado y
+    motivos dicen cómo terminó (o si sigue) su alta."""
+    if not rucs:
+        return {}
+    cursor = _col(db).aggregate([
+        {"$match": {"filas.ruc": {"$in": rucs}}},
+        {"$unwind": "$filas"},
+        {"$match": {"filas.ruc": {"$in": rucs}}},
+        {"$sort": {"creado_en": -1}},
+        {"$group": {"_id": "$filas.ruc", "fila": {"$first": "$filas"}}},
+    ])
+    return {doc["_id"]: doc["fila"] async for doc in cursor}
+
+
 async def guardar_fila(
     db: AsyncIOMotorDatabase, carga_id: str, fila: int, cambios: dict[str, Any]
 ) -> None:

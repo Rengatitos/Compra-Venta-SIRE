@@ -22,6 +22,7 @@ const ESTADOS: Record<EstadoFilaCarga, { tono: TonoInsignia; texto: string }> = 
   pendiente: { tono: 'info', texto: 'En proceso' },
   agregada: { tono: 'exito', texto: 'Agregada' },
   agregada_con_observaciones: { tono: 'aviso', texto: 'Agregada con observaciones' },
+  requiere_correccion: { tono: 'error', texto: 'Requiere corrección' },
   no_agregada: { tono: 'error', texto: 'No agregada' },
 };
 
@@ -125,7 +126,7 @@ export function ResultadoCarga({ cargaId, onTerminada, accion }: Props) {
       {datos.estado === 'completada' ? (
         <p className={estilos.resumen} aria-live="polite">
           {conteo.agregada} agregadas · {conteo.agregada_con_observaciones} con observaciones ·{' '}
-          {conteo.no_agregada} no agregadas
+          {conteo.requiere_correccion} requieren corrección · {conteo.no_agregada} no agregadas
         </p>
       ) : (
         <ProgressBar
@@ -159,6 +160,7 @@ function contar(filas: readonly FilaCarga[]): Record<EstadoFilaCarga, number> {
     pendiente: 0,
     agregada: 0,
     agregada_con_observaciones: 0,
+    requiere_correccion: 0,
     no_agregada: 0,
   };
   for (const fila of filas) conteo[fila.estado] += 1;
