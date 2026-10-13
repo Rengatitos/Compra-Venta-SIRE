@@ -7,7 +7,7 @@ from starlette.background import BackgroundTask
 from app.api.v1.deps import empresa_actual, empresa_id, periodo_valido
 from app.db.database import get_db
 from app.repositories import periodos as repo_periodos
-from app.services import reporte_asociado
+from app.services import plantilla_excel, reporte_asociado
 
 router = APIRouter()
 
@@ -42,7 +42,21 @@ async def descargar_reporte_asociado(
             status_code=409,
             detail="Completa las glosas de los comprobantes disponibles antes de descargar",
         )
-    ruta = reporte_asociado.zip_reporte(registros, periodo, empresa["ruc"], empresa["usuario"])
+    try:
+        ruta = reporte_asociado.zip_reporte(
+            registros, periodo, empresa["ruc"], empresa["usuario"]
+        )
+    except plantilla_excel.ErrorTipoCambio as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "mensaje": (
+                    "No se puede exportar: hay comprobantes en moneda extranjera "
+                    "sin tipo de cambio SUNAT"
+                ),
+                "comprobantes_sin_tc": exc.pendientes,
+            },
+        ) from exc
     return FileResponse(
         ruta,
         media_type="application/zip",

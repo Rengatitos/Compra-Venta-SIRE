@@ -292,6 +292,11 @@ def auditar_conversion(comprobantes: list[dict[str, Any]]) -> dict[str, Any]:
         monedas[conversion.moneda] = monedas.get(conversion.moneda, 0) + 1
         if conversion.moneda != "PEN" and conversion.tipo_cambio is None:
             pendientes.append({
+                "libro": comprobante.get("libro", ""),
+                "origen": comprobante.get("origen", ""),
+                "tipo_cp": comprobante.get("tipo_cp", ""),
+                "documento_contraparte": comprobante.get("documento_contraparte", ""),
+                "razon_social": comprobante.get("razon_social", ""),
                 "serie": comprobante.get("serie", ""),
                 "numero": comprobante.get("numero", ""),
                 "serie_numero": comprobante.get("serie_numero")
@@ -752,7 +757,9 @@ def excel_plantilla(
         from openpyxl.styles import Font, PatternFill
 
         revision = wb.create_sheet("Anulados")
-        revision.append(["Comprobante", "Emisión", "Contraparte", "RUC / Doc.", "Descripción SUNAT"])
+        revision.append([
+            "Comprobante", "Emisión", "Contraparte", "RUC / Doc.", "Descripción SUNAT",
+        ])
         for comprobante, descripcion in anulados:
             revision.append([
                 comprobante.get("serie_numero"), comprobante.get("fecha_emision"),

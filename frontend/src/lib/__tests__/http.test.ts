@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, pedir, registrarManejadorDeSesionExpirada } from '../http';
+import { ApiError, descargar, pedir, registrarManejadorDeSesionExpirada } from '../http';
 import { guardarSesion, limpiarSesion } from '../session';
 
 function respuestaJson(cuerpo: unknown, status = 200): Response {
@@ -59,12 +59,14 @@ describe('pedir', () => {
   it('junta los mensajes de un error de validación de Pydantic', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        respuestaJson(
-          { detail: [{ msg: 'El RUC debe tener 11 dígitos' }, { msg: 'Campo requerido' }] },
-          422,
+      vi
+        .fn()
+        .mockResolvedValue(
+          respuestaJson(
+            { detail: [{ msg: 'El RUC debe tener 11 dígitos' }, { msg: 'Campo requerido' }] },
+            422,
+          ),
         ),
-      ),
     );
 
     await expect(pedir('/empresas', { metodo: 'POST' })).rejects.toThrow(
@@ -73,7 +75,10 @@ describe('pedir', () => {
   });
 
   it('limpia la sesión ante un 401, porque el JWT solo dura dos horas', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuestaJson({ detail: 'Token expirado' }, 401)));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(respuestaJson({ detail: 'Token expirado' }, 401)),
+    );
     guardarSesion({ token: 'caducado', correo: 'prueba@example.com', ruc: '20608997106' });
 
     await expect(pedir('/empresas/20608997106')).rejects.toBeInstanceOf(ApiError);
@@ -133,5 +138,82 @@ describe('pedir', () => {
     );
 
     await expect(pedir('/analytics/summary')).rejects.toThrow(/SUNAT no respondió/);
+  });
+});
+
+describe('descargar', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('muestra libro y contraparte ante un TC faltante sin iniciar la descarga', async () => {
+    const respuesta = respuestaJson(
+      {
+        detail: {
+          mensaje: 'Hay comprobantes sin tipo de cambio SUNAT',
+          comprobantes_sin_tc: [
+            {
+              libro: 'compras',
+              documento_contraparte: '20123456789',
+              serie_numero: 'F001-42',
+              moneda: 'USD',
+              monto_original: 374,
+            },
+            {
+              libro: 'ventas',
+              documento_contraparte: '20987654321',
+              serie_numero: 'F001-42',
+              moneda: 'USD',
+              monto_original: 748,
+            },
+          ],
+        },
+      },
+      422,
+    );
+    const blob = vi.spyOn(respuesta, 'blob');
+    const crearEnlace = vi.spyOn(document, 'createElement');
+    const crearUrl = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuesta));
+    vi.stubGlobal('URL', { createObjectURL: crearUrl });
+
+    const error = await descargar('/reportes/1/archivo', 'reporte.xlsx').catch(
+      (fallo: unknown) => fallo,
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 422,
+      message:
+        'Hay comprobantes sin tipo de cambio SUNAT: compras · proveedor 20123456789 · F001-42 (USD), ventas · cliente 20987654321 · F001-42 (USD)',
+    });
+    expect(blob).not.toHaveBeenCalled();
+    expect(crearUrl).not.toHaveBeenCalled();
+    expect(crearEnlace).not.toHaveBeenCalled();
+  });
+
+  it('acepta el detalle anterior sin libro ni contraparte y evita confundir el importe con USD', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        respuestaJson(
+          {
+            detail: {
+              mensaje: 'Hay comprobantes sin tipo de cambio SUNAT',
+              comprobantes_sin_tc: [
+                { serie_numero: 'F001-9', moneda: 'USD', monto_original: 374 },
+              ],
+            },
+          },
+          422,
+        ),
+      ),
+    );
+
+    await expect(descargar('/reportes/1/archivo', 'reporte.xlsx')).rejects.toMatchObject({
+      status: 422,
+      message: 'Hay comprobantes sin tipo de cambio SUNAT: F001-9 (USD)',
+    });
   });
 });

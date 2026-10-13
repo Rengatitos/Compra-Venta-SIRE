@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+from math import isfinite
 from typing import Any
 
 from app.domain.catalogos import describe_comprobante
+from app.domain.comprobante import normalizar_numero, normalizar_serie, normalizar_tipo_cp
 from app.repositories._mongo import fecha_desde_bson, monto_a_float
 from app.services.glosa import estado_glosa, observacion_glosa, obtener_glosa
+from app.services.sunat.campos import fuente
 from app.services.sunat.contraparte import completar
 
 logger = logging.getLogger(__name__)
@@ -30,18 +33,60 @@ _CAMPOS_MONTO = (
 )
 
 
-def _tiene_detraccion(documento: dict[str, Any]) -> bool:
-    """Lee la marca de la propuesta conservada, incluidos registros anteriores."""
+def _raw_sire(documento: dict[str, Any]) -> dict[str, Any]:
     extra = documento.get("extra")
     if not isinstance(extra, dict):
-        return False
+        return {}
     crudo = extra.get("raw_sire")
     if isinstance(crudo, str):
         try:
             crudo = json.loads(crudo)
         except ValueError:
-            return False
-    return isinstance(crudo, dict) and crudo.get("indDetraccion") == "D"
+            return {}
+    return crudo if isinstance(crudo, dict) else {}
+
+
+def _tiene_detraccion(documento: dict[str, Any]) -> bool:
+    """Lee la marca de la propuesta conservada, incluidos registros anteriores."""
+    return _raw_sire(documento).get("indDetraccion") == "D"
+
+
+def _tipo_cambio(documento: dict[str, Any]) -> float:
+    actual = monto_a_float(documento.get("tipo_cambio"))
+    if isfinite(actual) and actual > 0:
+        return actual
+    actual = actual if isfinite(actual) else 0.0
+    moneda = documento.get("moneda", "PEN")
+    if documento.get("origen") != "sire" or moneda == "PEN":
+        return actual
+
+    # Los documentos antiguos pueden conservar el TC anidado en la respuesta
+    # original aunque el mapeo de entonces no lo guardara en el campo canónico.
+    # Sólo se recupera el TC de esa fila; sus importes y Mongo no se modifican.
+    crudo = _raw_sire(documento)
+    moneda_cruda = crudo.get("codMoneda") or crudo.get("desMoneda")
+    if moneda_cruda and str(moneda_cruda).strip().upper() != str(moneda).strip().upper():
+        return actual
+    for campo, aliases, normalizar in (
+        ("tipo_cp", ("codTipoCDP", "codTipoComprobante", "codTipoDocumento"), normalizar_tipo_cp),
+        ("serie", ("numSerieCDP", "numSerie", "desSerieCDP"), normalizar_serie),
+        ("numero", ("numCDP", "numComprobante", "numCorrelativo"), normalizar_numero),
+    ):
+        valor_crudo = next(
+            (crudo[alias] for alias in aliases if crudo.get(alias) not in (None, "")), None
+        )
+        if documento.get(campo) and valor_crudo is not None:
+            if normalizar(documento[campo]) != normalizar(valor_crudo):
+                return actual
+    datos = fuente(crudo)
+    for campo in ("mtoTipoCambio", "valTipoCambio"):
+        valor = datos.get(campo)
+        if isinstance(valor, bool):
+            continue
+        candidato = monto_a_float(valor)
+        if isfinite(candidato) and candidato > 0:
+            return candidato
+    return actual
 
 
 def serializar(documento: dict[str, Any]) -> dict[str, Any]:
@@ -65,7 +110,7 @@ def serializar(documento: dict[str, Any]) -> dict[str, Any]:
         "fecha_emision": fecha_desde_bson(documento.get("fecha_emision")),
         "fecha_vencimiento": fecha_desde_bson(documento.get("fecha_vencimiento")),
         "moneda": documento.get("moneda", "PEN"),
-        "tipo_cambio": monto_a_float(documento.get("tipo_cambio")),
+        "tipo_cambio": _tipo_cambio(documento),
         # Sin `or None` un comprobante sin tasa saldría al Excel como 0 %.
         "porcentaje_igv": monto_a_float(documento.get("porcentaje_igv")) or None,
         "estado_procesamiento": documento.get("estado_procesamiento", "pendiente"),

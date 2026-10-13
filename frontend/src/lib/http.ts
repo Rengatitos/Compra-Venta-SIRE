@@ -107,10 +107,28 @@ async function extraerDetalle(respuesta: Response): Promise<string> {
               if (!item || typeof item !== 'object' || !('serie_numero' in item)) return null;
               const serieNumero = item.serie_numero;
               const moneda = 'moneda' in item ? item.moneda : '';
-              const monto = 'monto_original' in item ? item.monto_original : '';
-              return typeof serieNumero === 'string'
-                ? `${serieNumero} (${String(moneda)}, ${String(monto)})`
-                : null;
+              if (typeof serieNumero !== 'string' || !serieNumero.trim()) return null;
+
+              const libro = 'libro' in item ? item.libro : '';
+              const documento =
+                'documento_contraparte' in item ? item.documento_contraparte : '';
+              const identidad: string[] = [];
+              if (libro === 'compras' || libro === 'ventas') identidad.push(libro);
+              if (typeof documento === 'string' && documento.trim()) {
+                const contraparte =
+                  libro === 'compras'
+                    ? 'proveedor'
+                    : libro === 'ventas'
+                      ? 'cliente'
+                      : 'contraparte';
+                identidad.push(`${contraparte} ${documento}`);
+              }
+              identidad.push(
+                typeof moneda === 'string' && moneda.trim()
+                  ? `${serieNumero} (${moneda})`
+                  : serieNumero,
+              );
+              return identidad.join(' · ');
             })
             .filter((item): item is string => item !== null);
           return pendientes.length > 0 ? `${mensaje}: ${pendientes.join(', ')}` : mensaje;
