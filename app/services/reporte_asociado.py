@@ -19,7 +19,9 @@ from app.services.glosa import ESTADO_PENDIENTE, estado_glosa
 from app.services.plantilla_excel import excel_plantilla
 from app.services.revision_comprobantes import anulado
 
-MESES = ('ENERO FEBRERO MARZO ABRIL MAYO JUNIO JULIO AGOSTO SEPTIEMBRE OCTUBRE NOVIEMBRE DICIEMBRE').split()
+MESES = (
+    'ENERO FEBRERO MARZO ABRIL MAYO JUNIO JULIO AGOSTO SEPTIEMBRE OCTUBRE NOVIEMBRE DICIEMBRE'
+).split()
 
 
 def nombre(usuario, periodo):
@@ -31,7 +33,9 @@ async def registros(db, empresa, periodo):
     for libro in (Libro.VENTAS, Libro.COMPRAS):
         filas = []
         while True:
-            pagina = await comprobantes.listar(db, str(empresa['_id']), periodo, libro=libro, skip=len(filas), limit=500)
+            pagina = await comprobantes.listar(
+                db, str(empresa['_id']), periodo, libro=libro, skip=len(filas), limit=500
+            )
             filas.extend(pagina)
             if len(pagina) < 500:
                 break
@@ -42,11 +46,11 @@ async def registros(db, empresa, periodo):
 
 
 def estado(registros):
-    filas = [f for grupo in registros.values() for f in grupo]
+    filas = [f for grupo in registros.values() for f in grupo if not anulado(f)]
     # Sólo bloquea el reporte lo que aún puede cambiar: un tipo consultable
     # que no se ha consultado. Los tipos que SUNAT no publica ya son definitivos.
     pendientes = sum(estado_glosa(f) == ESTADO_PENDIENTE for f in filas)
-    hay_libros = any(registros.get(libro) for libro in (Libro.COMPRAS, Libro.VENTAS))
+    hay_libros = bool(filas)
     return {'habilitado': hay_libros and pendientes == 0, 'pendientes': pendientes}
 
 
@@ -55,24 +59,47 @@ def excel(registros, periodo, ruc):
     control = wb.active
     control.title = 'Correlatividad cp'
     control.append(['CONTROL DE NUMERACIÓN DE COMPROBANTES · RVIE Y RCE'])
-    control.append(['Los saltos corresponden solo a los documentos del periodo; no prueban omisiones del emisor.'])
-    control.append(['Mes', 'Registro', 'Emisor / Proveedor', 'Tipo', 'Serie', 'Del', 'Al', 'Cantidad', 'Saltos', 'Duplicados', 'Fuera de secuencia por fecha'])
+    control.append([
+        'Los saltos corresponden solo a los documentos del periodo; '
+        'no prueban omisiones del emisor.'
+    ])
+    control.append([
+        'Mes', 'Registro', 'Emisor / Proveedor', 'Tipo', 'Serie', 'Del', 'Al', 'Cantidad',
+        'Saltos', 'Duplicados', 'Fuera de secuencia por fecha'
+    ])
     for libro, filas in registros.items():
         grupos = defaultdict(list)
         for f in filas:
+            if anulado(f):
+                continue
             emisor = ruc if libro == Libro.VENTAS else f.get('documento_contraparte', '')
             grupos[(emisor, f.get('tipo_cp', ''), f.get('serie', ''))].append(f)
         for (emisor, tipo, serie), grupo in sorted(grupos.items(), key=lambda par: str(par[0])):
-            numeros = [int(str(f.get('numero'))) for f in grupo if str(f.get('numero', '')).isdigit()]
+            numeros = [
+                int(str(f.get('numero'))) for f in grupo if str(f.get('numero', '')).isdigit()
+            ]
             orden = sorted(set(numeros))
-            saltos = [str(a+1) if b == a+2 else f'{a+1}-{b-1}' for a, b in zip(orden, orden[1:]) if b > a+1]
+            saltos = [
+                str(a+1) if b == a+2 else f'{a+1}-{b-1}'
+                for a, b in zip(orden, orden[1:], strict=False) if b > a+1
+            ]
             duplicados = [str(n) for n, cantidad in Counter(numeros).items() if cantidad > 1]
-            por_fecha = sorted(grupo, key=lambda f: (str(f.get('fecha_emision') or ''), int(str(f.get('numero'))) if str(f.get('numero', '')).isdigit() else -1))
-            secuencia = [int(str(f['numero'])) for f in por_fecha if str(f.get('numero', '')).isdigit()]
+            por_fecha = sorted(grupo, key=lambda f: (
+                str(f.get('fecha_emision') or ''),
+                int(str(f.get('numero'))) if str(f.get('numero', '')).isdigit() else -1,
+            ))
+            secuencia = [
+                int(str(f['numero'])) for f in por_fecha if str(f.get('numero', '')).isdigit()
+            ]
             control.append([MESES[int(periodo[4:6])-1], libro.value, emisor, tipo, serie,
                 min(orden) if orden else None, max(orden) if orden else None, len(grupo),
-                ', '.join(saltos) or ('Numeración no numérica' if len(numeros) != len(grupo) else ''),
-                ', '.join(duplicados), 'Revisar' if any(b < a for a, b in zip(secuencia, secuencia[1:])) else ''])
+                ', '.join(saltos) or (
+                    'Numeración no numérica' if len(numeros) != len(grupo) else ''
+                ),
+                ', '.join(duplicados), 'Revisar' if any(
+                    b < a for a, b in zip(secuencia, secuencia[1:], strict=False)
+                ) else ''
+            ])
     control.freeze_panes = 'A4'
     control.auto_filter.ref = f'A3:K{max(3, control.max_row)}'
     for celda in control[3]:
@@ -91,7 +118,9 @@ def excel(registros, periodo, ruc):
             if not dato.get('glosa') and dato.get('observacion'):
                 dato['glosa'] = dato['observacion']
         original = load_workbook(excel_plantilla(datos, libro)).worksheets[0]
-        hoja = wb.create_sheet('Registro de ventas' if libro == Libro.VENTAS else 'Registro de compras')
+        hoja = wb.create_sheet(
+            'Registro de ventas' if libro == Libro.VENTAS else 'Registro de compras'
+        )
         for rango in original.merged_cells.ranges:
             hoja.merge_cells(str(rango))
         for fila in original:
@@ -141,7 +170,29 @@ def zip_reporte(registros, periodo, ruc, usuario):
                 (Libro.VENTAS, 'comprobantes venta'),
             ):
                 base = almacen_pdf.raiz_periodo(ruc, libro, periodo)
+                pdfs_anulados = set()
+                for fila in registros.get(libro, []):
+                    if not anulado(fila):
+                        continue
+                    try:
+                        pdfs_anulados.add(almacen_pdf.ruta_pdf(
+                            ruc, libro, periodo, fila.get('tipo_cp'),
+                            fila.get('serie'), fila.get('numero'),
+                        ).resolve())
+                    except ValueError:
+                        # Sin una clave válida no se identifica un PDF del almacén.
+                        pass
+                    puntero = fila.get('pdf_sunat')
+                    if isinstance(puntero, dict) and isinstance(puntero.get('ruta'), str):
+                        try:
+                            guardado = almacen_pdf.absoluta(puntero['ruta'])
+                        except ValueError:
+                            continue
+                        if guardado.is_relative_to(base.resolve()):
+                            pdfs_anulados.add(guardado)
                 for pdf in almacen_pdf.listar(ruc, libro, periodo):
+                    if pdf.resolve() in pdfs_anulados:
+                        continue
                     archivo.write(pdf, arcname=f'{carpeta}/{pdf.relative_to(base).as_posix()}')
     except Exception:
         Path(ruta_temporal).unlink(missing_ok=True)

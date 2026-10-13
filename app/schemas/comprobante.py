@@ -97,6 +97,8 @@ class ComprobanteResponse(BaseModel):
     analisis: None = None
     glosa: str = ""
     observacion: str = ""
+    # Estado BAJA declarado por la propuesta SUNAT.
+    de_baja_sunat: bool = False
     # `con_glosa`, `sin_glosa`, `en_evaluacion` o `pendiente`
     # (`app/services/glosa.py`). Depende del tipo de comprobante y de si ya se
     # consultó el portal; "pendiente" es un tipo consultable aún sin consultar.

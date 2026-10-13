@@ -5,6 +5,7 @@ from typing import Any
 
 from app.domain.catalogos import TIPOS_CON_DETALLE_SUNAT, sin_detalle_en_sunat
 from app.domain.comprobante import normalizar_tipo_cp
+from app.services.revision_comprobantes import de_baja
 from app.services.sunat.texto import corregir_codificacion
 
 MAX_GLOSA = 500
@@ -26,6 +27,7 @@ ETIQUETA_ESTADO_GLOSA = {
 OBSERVACION_SIN_GLOSA = "No se pudo obtener glosa"
 OBSERVACION_SIN_DETALLE_SUNAT = "SUNAT no publica el detalle de este tipo de comprobante"
 OBSERVACION_EN_EVALUACION = "Tipo de comprobante en evaluación"
+OBSERVACION_BAJA_SUNAT = "Comprobante de BAJA en SUNAT. Excluido del reporte asociado"
 
 # Líneas del recuadro «LEYENDA» que no describen nada: el importe en letras,
 # fechas, números de tarjeta enmascarados y siglas sueltas (TD, SAT).
@@ -79,6 +81,8 @@ def _sin_detalle(documento: dict[str, Any], tipo: str) -> bool:
 def estado_glosa(documento: dict[str, Any]) -> str:
     if obtener_glosa(documento):
         return ESTADO_CON_GLOSA
+    if de_baja(documento):
+        return ESTADO_SIN_GLOSA
     tipo = normalizar_tipo_cp(documento.get("tipo_cp"))
     if _sin_detalle(documento, tipo):
         return ESTADO_SIN_GLOSA
@@ -93,6 +97,8 @@ def estado_glosa(documento: dict[str, Any]) -> str:
 
 
 def observacion_glosa(documento: dict[str, Any]) -> str:
+    if de_baja(documento):
+        return OBSERVACION_BAJA_SUNAT
     estado = estado_glosa(documento)
     if estado == ESTADO_EN_EVALUACION:
         return OBSERVACION_EN_EVALUACION

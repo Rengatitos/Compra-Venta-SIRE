@@ -75,6 +75,11 @@ _MONTOS = {
     "total": ("mtoTotalCp", "mtoImporteTotal"),
 }
 
+_EXTRAS = {
+    "estado_comprobante": ("codEstadoComprobante",),
+    "descripcion_estado_comprobante": ("desEstadoComprobante",),
+}
+
 
 def a_comprobante(registro: dict[str, Any]) -> Comprobante:
     fuente_montos = fuente(registro)
@@ -121,4 +126,8 @@ def _extra(registro: dict[str, Any]) -> dict[str, Any]:
     periodo = periodo_tributario(registro)
     if periodo:
         extra["periodo_sunat"] = periodo
+    for destino, candidatos in _EXTRAS.items():
+        valor = primero(registro, candidatos, None)
+        if valor is not None:
+            extra[destino] = valor
     return extra

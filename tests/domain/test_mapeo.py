@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
 from bson.decimal128 import Decimal128
 from openpyxl import load_workbook
 
@@ -81,6 +82,22 @@ PAYLOAD_RVIE = {
 
 
 class TestMapeoDesdeSire:
+    @pytest.mark.parametrize(
+        ("codigo", "descripcion"), [("1", "ACTIVO"), ("2", "BAJA"), (2, "BAJA")]
+    )
+    def test_conserva_el_estado_sunat_sin_alterar_importes(self, codigo, descripcion):
+        payload = {
+            **PAYLOAD_SIRE,
+            "codEstadoComprobante": codigo,
+            "desEstadoComprobante": descripcion,
+        }
+        c = a_comprobante(payload, Libro.COMPRAS)
+        assert c.extra["estado_comprobante"] == codigo
+        assert c.extra["descripcion_estado_comprobante"] == descripcion
+        assert c.base_imponible == Decimal("100.00")
+        assert c.igv == Decimal("18.00")
+        assert c.total == Decimal("118.00")
+
     def test_campos_principales(self):
         c = a_comprobante(PAYLOAD_SIRE, Libro.COMPRAS)
         assert c.tipo_cp == "01"
@@ -534,7 +551,9 @@ class TestPlantillaContasis:
             {"producto": "Aceite de motor"},
             {"producto": "Filtro de aire"},
         ]
-        documento["detalle_sunat"] = [{"descripcion": "Aceite de motor"}, {"descripcion": "Filtro de aire"}]
+        documento["detalle_sunat"] = [
+            {"descripcion": "Aceite de motor"}, {"descripcion": "Filtro de aire"}
+        ]
         hoja = _hoja([serializar(documento)], Libro.COMPRAS)
         assert hoja["AS4"].value == "ACEITE DE MOTOR / FILTRO DE AIRE"
 

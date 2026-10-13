@@ -10,6 +10,8 @@ manda los descuentos en campo aparte, y no trae ni vencimiento ni tasa de IGV.
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from app.domain.comprobante import Libro, Origen
 from app.services.sunat.propuesta import a_comprobante, pertenece_al_periodo
 
@@ -137,7 +139,21 @@ class TestMapeoDeVentas:
         assert extra["car_sunat"] == "2060339169203EB010000000160"
         assert extra["tipo_operacion"] == "0101"
         assert extra["estado_comprobante"] == "1"
+        assert extra["descripcion_estado_comprobante"] == "ACTIVO"
         assert "PEREZ QUISPE" in extra["raw_sire"]
+
+    @pytest.mark.parametrize("codigo", ["2", 2])
+    def test_conserva_el_estado_baja_sin_alterar_importes(self, codigo):
+        payload = {
+            **PAYLOAD_BOLETA,
+            "codEstadoComprobante": codigo,
+            "desEstadoComprobante": "BAJA",
+        }
+        c = a_comprobante(payload, Libro.VENTAS)
+        assert c.extra["estado_comprobante"] == codigo
+        assert c.extra["descripcion_estado_comprobante"] == "BAJA"
+        assert c.exonerado == Decimal("400.00")
+        assert c.total == Decimal("400.00")
 
     def test_la_referencia_de_una_nota_de_credito_se_conserva(self):
         payload = {

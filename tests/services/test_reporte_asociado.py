@@ -154,3 +154,144 @@ def test_glosa_pendiente_sigue_bloqueando_la_descarga(contexto):
     assert respuesta.status_code == 409
     assert "Completa las glosas" in respuesta.json()["detail"]
     assert contexto.temporales == []
+
+
+def comprobante_en_cero(libro, tipo_cambio=None):
+    fila = comprobante(libro, tipo_cambio)
+    fila.update(
+        base_imponible=0, igv=0, base_imponible_dg=0, igv_dg=0, total=0
+    )
+    return fila
+
+
+@pytest.mark.parametrize("tipo_cambio", [None, 0])
+def test_el_zip_conserva_comprobantes_usd_en_cero_sin_inventar_tc(contexto, tipo_cambio):
+    for libro in (Libro.COMPRAS, Libro.VENTAS):
+        contexto.filas[libro].append(comprobante_en_cero(libro, tipo_cambio))
+
+    respuesta = contexto.cliente.get(URL)
+
+    assert respuesta.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(respuesta.content)) as archivo:
+        libro = load_workbook(io.BytesIO(archivo.read("PRUEBA-JUNIO2024.xlsx")))
+        for nombre, numero, tc, moneda, equivalente, glosa in (
+            ("Registro de compras", "F4", "W4", "AB4", "AC4", "AS4"),
+            ("Registro de ventas", "E4", "Q4", "V4", "W4", "AM4"),
+        ):
+            hoja = libro[nombre]
+            assert hoja["D4"].value == "F001"
+            assert hoja[numero].value == 1
+            assert hoja[glosa].value == "SERVICIO DE PRUEBA"
+            assert hoja[moneda].value == "D"
+            assert hoja[tc].value is None
+            assert hoja[equivalente].value is None
+    assert len(contexto.temporales) == 1
+    assert not contexto.temporales[0].exists()
+
+
+@pytest.mark.parametrize("libro", [Libro.COMPRAS, Libro.VENTAS])
+@pytest.mark.parametrize(
+    ("campo", "importe"),
+    [("base_imponible", 100), ("igv", 18), ("otros_tributos", -5)],
+)
+def test_total_cero_con_otros_importes_sigue_bloqueando_sin_tc(contexto, libro, campo, importe):
+    fila = comprobante_en_cero(libro)
+    fila[campo] = importe
+    contexto.filas[libro].append(fila)
+
+    respuesta = contexto.cliente.get(URL)
+
+    assert respuesta.status_code == 422
+    [pendiente] = respuesta.json()["detail"]["comprobantes_sin_tc"]
+    assert pendiente["serie_numero"] == "F001-1"
+    assert pendiente["libro"] == libro.value
+    assert pendiente["monto_original"] == "0.0"
+    assert len(contexto.temporales) == 1
+    assert not contexto.temporales[0].exists()
+
+
+def comprobante_de_baja(libro):
+    fila = comprobante_en_cero(libro, tipo_cambio=0)
+    fila.update(serie_numero="F001-2", numero="2")
+    fila.pop("glosa")
+    fila["extra"]["raw_sire"] = {
+        "codEstadoComprobante": "2",
+        "desEstadoComprobante": "BAJA",
+        "codMoneda": "USD",
+        "mtoTipoCambio": "0.000",
+    }
+    return fila
+
+
+@pytest.mark.parametrize("libro", [Libro.COMPRAS, Libro.VENTAS])
+def test_la_baja_no_bloquea_ni_se_incluye_en_excel_control_o_pdfs(contexto, libro):
+    contexto.filas[libro].extend([
+        comprobante(libro, tipo_cambio=3.74), comprobante_de_baja(libro)
+    ])
+    for numero in ("1", "2", "99"):
+        pdf = reporte_asociado.almacen_pdf.ruta_pdf(
+            RUC, libro, PERIODO, "01", "F001", numero
+        )
+        pdf.parent.mkdir(parents=True, exist_ok=True)
+        pdf.write_bytes(b"%PDF prueba")
+    pdf_legacy = (
+        reporte_asociado.almacen_pdf.raiz_periodo(RUC, libro, PERIODO) / "legacy/F001-2.pdf"
+    )
+    pdf_legacy.parent.mkdir()
+    pdf_legacy.write_bytes(b"%PDF baja anterior")
+    contexto.filas[libro][1]["pdf_sunat"] = {
+        "ruta": reporte_asociado.almacen_pdf.relativa(pdf_legacy)
+    }
+
+    estado = contexto.cliente.get(f"{URL}/estado")
+    assert estado.status_code == 200
+    assert estado.json() == {"habilitado": True, "pendientes": 0}
+
+    respuesta = contexto.cliente.get(URL)
+
+    assert respuesta.status_code == 200
+    carpeta = "comprobantes compra" if libro is Libro.COMPRAS else "comprobantes venta"
+    nombre_hoja = "Registro de compras" if libro is Libro.COMPRAS else "Registro de ventas"
+    with zipfile.ZipFile(io.BytesIO(respuesta.content)) as archivo:
+        assert f"{carpeta}/facturas/F001-1.pdf" in archivo.namelist()
+        assert f"{carpeta}/facturas/F001-2.pdf" not in archivo.namelist()
+        assert f"{carpeta}/legacy/F001-2.pdf" not in archivo.namelist()
+        # Los PDFs adicionales del periodo se conservan aunque no estén en la base.
+        assert f"{carpeta}/facturas/F001-99.pdf" in archivo.namelist()
+        wb = load_workbook(io.BytesIO(archivo.read("PRUEBA-JUNIO2024.xlsx")))
+        assert wb.sheetnames == ["Correlatividad cp", nombre_hoja]
+        control = wb["Correlatividad cp"]
+        assert control.max_row == 4
+        assert [control[f"{columna}4"].value for columna in "FGH"] == [1, 1, 1]
+        hoja = wb[nombre_hoja]
+        numero = "F" if libro is Libro.COMPRAS else "E"
+        total = "S" if libro is Libro.COMPRAS else "P"
+        assert hoja[f"{numero}4"].value == 1
+        assert hoja[f"{numero}5"].value is None
+        assert hoja[f"{total}4"].value == 118
+        assert hoja[f"{total}5"].value == f"=SUM({total}4:{total}4)"
+    assert len(contexto.temporales) == 1
+    assert not contexto.temporales[0].exists()
+
+
+@pytest.mark.parametrize("libro", [Libro.COMPRAS, Libro.VENTAS])
+def test_un_periodo_solo_con_bajas_no_habilita_el_reporte(contexto, libro):
+    contexto.filas[libro].append(comprobante_de_baja(libro))
+
+    respuesta = contexto.cliente.get(f"{URL}/estado")
+
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {"habilitado": False, "pendientes": 0}
+    assert contexto.temporales == []
+
+
+@pytest.mark.parametrize("libro", [Libro.COMPRAS, Libro.VENTAS])
+def test_la_glosa_pendiente_de_un_activo_sigue_bloqueando_junto_a_una_baja(contexto, libro):
+    activo = comprobante(libro, tipo_cambio=3.74)
+    activo.pop("glosa")
+    contexto.filas[libro].extend([activo, comprobante_de_baja(libro)])
+
+    respuesta = contexto.cliente.get(f"{URL}/estado")
+
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {"habilitado": False, "pendientes": 1}

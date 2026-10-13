@@ -253,7 +253,7 @@ class _Conversion(NamedTuple):
 
     def equivalente(self, total: Any) -> float | None:
         """Total en la moneda original, para la columna «EQUIVALENTE EN DOLARES»."""
-        if self.moneda == "PEN":
+        if self.moneda == "PEN" or decimal_value(total) == 0:
             return None
         return _monto(total, factor=Decimal("1") / self.factor)
 
@@ -278,6 +278,10 @@ CAMPOS_MONETARIOS = (
     "otros_tributos", "total",
 )
 
+# Incluye también los importes propios de ventas. Un total cero no basta:
+# una fila puede tener base, IGV u otros conceptos que se compensan.
+_CAMPOS_IMPORTES_TC = (*CAMPOS_MONETARIOS, "base_imponible", "igv", "exonerado", "inafecto")
+
 
 def auditar_conversion(comprobantes: list[dict[str, Any]]) -> dict[str, Any]:
     """Valida TC y calcula trazabilidad monetaria previa a la exportación."""
@@ -290,7 +294,11 @@ def auditar_conversion(comprobantes: list[dict[str, Any]]) -> dict[str, Any]:
     for comprobante in comprobantes:
         conversion = _conversion(comprobante)
         monedas[conversion.moneda] = monedas.get(conversion.moneda, 0) + 1
-        if conversion.moneda != "PEN" and conversion.tipo_cambio is None:
+        if (
+            conversion.moneda != "PEN"
+            and conversion.tipo_cambio is None
+            and any(decimal_value(comprobante.get(campo)) != 0 for campo in _CAMPOS_IMPORTES_TC)
+        ):
             pendientes.append({
                 "libro": comprobante.get("libro", ""),
                 "origen": comprobante.get("origen", ""),
@@ -667,7 +675,7 @@ def excel_plantilla(
 
     Cada comprobante puede traer `pagos` (`pagos_vouchers.adjuntar_pagos`).
     """
-    from app.services.revision_comprobantes import anulado
+    from app.services.revision_comprobantes import anulado, de_baja
 
     auditoria = auditar_conversion([c for c in comprobantes if not anulado(c)])
     if auditoria["comprobantes_sin_tc"]:
@@ -710,6 +718,9 @@ def excel_plantilla(
     anulados = []
     indice = PRIMERA_FILA_DATOS
     for comprobante in comprobantes:
+        if de_baja(comprobante):
+            anulados.append((comprobante, "BAJA"))
+            continue
         conversion = _conversion(comprobante)
         valores = (
             _fila_compras(comprobante, conversion, destino=destino)

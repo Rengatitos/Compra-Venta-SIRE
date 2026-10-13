@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from math import isfinite
 from typing import Any
@@ -9,7 +8,8 @@ from app.domain.catalogos import describe_comprobante
 from app.domain.comprobante import normalizar_numero, normalizar_serie, normalizar_tipo_cp
 from app.repositories._mongo import fecha_desde_bson, monto_a_float
 from app.services.glosa import estado_glosa, observacion_glosa, obtener_glosa
-from app.services.sunat.campos import fuente
+from app.services.revision_comprobantes import de_baja
+from app.services.sunat.campos import fuente, raw_sire
 from app.services.sunat.contraparte import completar
 
 logger = logging.getLogger(__name__)
@@ -33,22 +33,9 @@ _CAMPOS_MONTO = (
 )
 
 
-def _raw_sire(documento: dict[str, Any]) -> dict[str, Any]:
-    extra = documento.get("extra")
-    if not isinstance(extra, dict):
-        return {}
-    crudo = extra.get("raw_sire")
-    if isinstance(crudo, str):
-        try:
-            crudo = json.loads(crudo)
-        except ValueError:
-            return {}
-    return crudo if isinstance(crudo, dict) else {}
-
-
 def _tiene_detraccion(documento: dict[str, Any]) -> bool:
     """Lee la marca de la propuesta conservada, incluidos registros anteriores."""
-    return _raw_sire(documento).get("indDetraccion") == "D"
+    return raw_sire(documento).get("indDetraccion") == "D"
 
 
 def _tipo_cambio(documento: dict[str, Any]) -> float:
@@ -63,7 +50,7 @@ def _tipo_cambio(documento: dict[str, Any]) -> float:
     # Los documentos antiguos pueden conservar el TC anidado en la respuesta
     # original aunque el mapeo de entonces no lo guardara en el campo canónico.
     # Sólo se recupera el TC de esa fila; sus importes y Mongo no se modifican.
-    crudo = _raw_sire(documento)
+    crudo = raw_sire(documento)
     moneda_cruda = crudo.get("codMoneda") or crudo.get("desMoneda")
     if moneda_cruda and str(moneda_cruda).strip().upper() != str(moneda).strip().upper():
         return actual
@@ -117,6 +104,7 @@ def serializar(documento: dict[str, Any]) -> dict[str, Any]:
         "analisis": None,
         "glosa": obtener_glosa(documento),
         "observacion": observacion_glosa(documento),
+        "de_baja_sunat": de_baja(documento),
         # Con glosa / sin glosa / en evaluación / pendiente, según el tipo de
         # comprobante y si ya se consultó el portal. Lo lee el listado, el
         # Excel y el reporte asociado.

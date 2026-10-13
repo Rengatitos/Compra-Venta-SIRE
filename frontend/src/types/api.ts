@@ -254,6 +254,8 @@ export interface CoberturaSunat {
 export interface ComprobanteResponse {
   glosa?: string;
   observacion?: string;
+  /** Estado BAJA declarado por la propuesta SUNAT. */
+  de_baja_sunat?: boolean;
   /**
    * Con glosa / sin glosa / en evaluación / pendiente, según el tipo de
    * comprobante y si el portal ya se consultó (`app/services/glosa.py`).

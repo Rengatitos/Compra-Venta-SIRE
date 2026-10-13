@@ -79,6 +79,7 @@ _EXTRAS = {
     "car_sunat": ("codCar",),
     "tipo_operacion": ("indTipoOperacion",),
     "estado_comprobante": ("codEstadoComprobante",),
+    "descripcion_estado_comprobante": ("desEstadoComprobante",),
     "operacion_gratuita": ("indOperGratuita",),
     "valor_op_gratuitas": ("mtoValorOpGratuitas",),
     "valor_fob": ("mtoValorFob",),

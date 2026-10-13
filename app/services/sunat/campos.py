@@ -7,6 +7,7 @@ allí montaba un ciclo de imports.
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -15,6 +16,20 @@ from typing import Any
 # vive en la raíz del registro sino dentro de él, así que sin aplanarlo la
 # columna se quedaba vacía incluso en los comprobantes en dólares.
 _BLOQUES_ANIDADOS = ("montos", "tipoCambio")
+
+
+def raw_sire(documento: dict[str, Any]) -> dict[str, Any]:
+    """Lee la propuesta original conservada, incluso en documentos antiguos."""
+    extra = documento.get("extra")
+    if not isinstance(extra, dict):
+        return {}
+    crudo = extra.get("raw_sire")
+    if isinstance(crudo, str):
+        try:
+            crudo = json.loads(crudo)
+        except ValueError:
+            return {}
+    return crudo if isinstance(crudo, dict) else {}
 
 
 def fuente(registro: dict[str, Any]) -> dict[str, Any]:

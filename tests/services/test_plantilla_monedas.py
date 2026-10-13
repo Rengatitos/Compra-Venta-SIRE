@@ -127,6 +127,43 @@ class TestFilaSinTipoDeCambio:
         assert auditoria["totales_pen"]["total"] == "185.19"
 
 
+class TestFilaSinImportes:
+    @pytest.mark.parametrize("libro", list(Libro))
+    @pytest.mark.parametrize("tipo_cambio", [None, 0, -1])
+    def test_fila_completamente_cero_no_necesita_tc(self, libro, tipo_cambio):
+        comprobante = _comprobante("USD", 0, tipo_cambio)
+        auditoria = plantilla_excel.auditar_conversion([comprobante])
+        assert auditoria["comprobantes_sin_tc"] == []
+        assert auditoria["cantidad_procesada"] == 1
+        assert auditoria["cantidad_por_moneda"] == {"USD": 1}
+
+        hoja = _hoja([comprobante], libro)
+        columna_tc, columna_moneda, columna_equivalente = (
+            ("W", "AB", "AC") if libro == Libro.COMPRAS else ("Q", "V", "W")
+        )
+        assert hoja["D4"].value == "F001"
+        assert hoja[f"{columna_tc}4"].value is None
+        assert hoja[f"{columna_moneda}4"].value == "D"
+        assert hoja[f"{columna_equivalente}4"].value is None
+
+    @pytest.mark.parametrize(
+        "campo",
+        [*plantilla_excel.CAMPOS_MONETARIOS, "base_imponible", "igv", "exonerado", "inafecto"],
+    )
+    def test_cualquier_importe_no_cero_sigue_necesitando_tc(self, campo):
+        comprobante = _comprobante("USD", 0, 0)
+        comprobante[campo] = 1
+        for libro in Libro:
+            with pytest.raises(plantilla_excel.ErrorTipoCambio):
+                _hoja([comprobante], libro)
+
+    def test_importes_que_se_compensan_no_son_una_fila_cero(self):
+        comprobante = _comprobante("USD", 0, 0)
+        comprobante.update(base_imponible=100, igv=-100)
+        with pytest.raises(plantilla_excel.ErrorTipoCambio):
+            _hoja([comprobante], Libro.VENTAS)
+
+
 class TestPieDeTotales:
     def test_el_pie_es_una_unica_suma_del_rango_de_datos(self):
         # Todo el registro está en soles, así que no hace falta un pie por
